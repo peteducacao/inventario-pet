@@ -249,3 +249,139 @@ async function shrinkImage(file){
     return encoded;
   }finally{URL.revokeObjectURL(src);}
 }
+
+
+let reserveStatusFilter="ativas";
+const namesStatus={pendente:"Pendente",aprovada:"Aprovada",retirada:"Retirado",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"};
+function lateReserve(r){return r.status==="retirada"&&r.data_devolucao<localDate();}
+function resStatus(r){return lateReserve(r)?["Atrasado","late"]:{pendente:["Pendente","pending"],aprovada:["Aprovada","approved"],retirada:["Retirado","picked"],devolvida:["Devolvido","done"],recusada:["Recusada","done"],cancelada:["Cancelada","done"]}[r.status]||["Desconhecido","done"];}
+function renderAdminReservations(target){
+  const reservations=state.admin.reservas;
+  const active=r=>["pendente","aprovada","retirada"].includes(r.status);
+  const list=reservations.filter(r=>reserveStatusFilter==="todas" || (reserveStatusFilter==="ativas"?active(r):reserveStatusFilter==="atrasadas"?lateReserve(r):reserveStatusFilter==="concluidas"?!active(r):r.status===reserveStatusFilter));
+  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Solicitações e devoluções</h3><p>Pedidos dos visitantes, controle de retiradas e prazos.</p></div><span class="status pending">'+reservations.filter(r=>r.status==="pendente").length+' pendentes</span></div>'+
+    '<div class="filter-row" style="padding:0 0 18px">'+[["ativas","Ativas"],["pendente","Pendentes"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]].map(([key,label])=>'<button class="chip '+(reserveStatusFilter===key?"active":"")+'" data-r-filter="'+key+'">'+label+'</button>').join("")+'</div>'+
+    '<div class="admin-list">'+(list.length?list.map(r=>reservationCard(r)).join(""):'<div class="empty-state">Nenhuma reserva nesta seleção.</div>')+'</div></section>';
+  $$("[data-r-filter]").forEach(b=>b.onclick=()=>{reserveStatusFilter=b.dataset.rFilter;renderTab()});
+  $$("[data-action-reserve]").forEach(b=>b.onclick=()=>doReserveAction(Number(b.dataset.id),b.dataset.actionReserve));
+}
+function reservationCard(r){
+  const [status,color]=resStatus(r);
+  let actions="";
+  if(r.status==="pendente")actions='<button class="primary-button small-button" data-action-reserve="aprovar" data-id="'+r.id+'">Aprovar</button><button class="danger-button small-button" data-action-reserve="recusar" data-id="'+r.id+'">Recusar</button>';
+  if(r.status==="aprovada")actions='<button class="primary-button small-button" data-action-reserve="retirar" data-id="'+r.id+'">Registrar retirada</button><button class="danger-button small-button" data-action-reserve="recusar" data-id="'+r.id+'">Cancelar</button>';
+  if(r.status==="retirada")actions='<button class="primary-button small-button" data-action-reserve="devolver" data-id="'+r.id+'">Registrar devolução</button>';
+  return '<div class="admin-list-row" style="align-items:flex-start;display:block"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div class="main-info"><strong>#'+r.id+' · '+esc(r.componente_nome||"Material removido")+'</strong><small>'+esc(r.nome_solicitante)+' · '+moneyless(r.quantidade)+' unidade(s)</small></div><span class="status '+color+'">'+status+'</span></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:13px 0;font-size:12px;color:#687b8e">'+
+    '<span>Retirada: <strong>'+formatDay(r.data_inicio)+'</strong></span><span>Devolução: <strong>'+formatDay(r.data_devolucao)+'</strong></span>'+
+    (r.contato?'<span>Contato: <strong>'+esc(r.contato)+'</strong></span>':"")+
+    (r.email?'<span>E-mail: <strong>'+esc(r.email)+'</strong></span>':"")+
+    '<span>Solicitado: '+esc(fmt(r.solicitado_em))+'</span>'+(r.devolvido_em?'<span>Devolvido: '+esc(fmt(r.devolvido_em))+'</span>':"")+'</div>'+
+    (r.observacao?'<p class="notice" style="margin:8px 0 11px;word-break:break-word">'+esc(r.observacao)+'</p>':"")+
+    (lateReserve(r)?'<p style="font-size:12px;color:#bd4050;margin:8px 0 12px"><strong>⚠ Devolução atrasada!</strong> Entre em contato com o solicitante.</p>':"")+
+    '<div class="actions" style="display:flex;gap:7px;flex-wrap:wrap">'+actions+'</div></div>';
+}
+async function doReserveAction(id,action){
+  const r=state.admin.reservas.find(x=>x.id===id);
+  if(!r)return;
+  if(action==="devolver")return returnModal(r);
+  const asks={aprovar:"Aprovar esta solicitação? O material ficará reservado para o período.",recusar:"Recusar ou cancelar esta reserva?",retirar:"Confirmar que o material foi entregue ao solicitante?"};
+  if(!confirm(asks[action]||"Confirmar operação?"))return;
+  try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:state.actor||"PETiane"});await adminReload();adminModal();toast("Reserva atualizada com sucesso.");}
+  catch(error){toast(error.message,true);}
+}
+function returnModal(r){
+  openModal("Registrar devolução","Reserva #"+r.id+" · "+(r.componente_nome||"Material"),'<form class="modal-main" id="return-form"><p>Confirme a devolução de <strong>'+moneyless(r.quantidade)+' unidade(s)</strong> por <strong>'+esc(r.nome_solicitante)+'</strong>.</p>'+
+    stepInput("return-broken","Quantas unidades voltaram com defeito?",0)+
+    '<div class="field"><label for="return-note">Observações (opcional)</label><textarea maxlength="500" id="return-note" placeholder="Condição do material ou outras observações"></textarea></div>'+
+    '<p class="notice">Ao salvar, as quantidades em uso e com defeito serão atualizadas automaticamente. Essa reserva ficará concluída.</p>'+
+    '<div class="modal-footer" style="padding:17px 0 0;border:0"><button type="button" id="return-cancel" class="secondary-button">Cancelar</button><button type="submit" class="primary-button">Confirmar devolução</button></div></form>');
+  $("#return-cancel").onclick=adminModal;
+  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
+  $("#return-form").onsubmit=async e=>{e.preventDefault();try{
+    await api("/api/admin/reservation","POST",{id:r.id,acao:"devolver",responsavel:state.actor||"PETiane",defeituosos:Number($("#return-broken").value),observacao:$("#return-note").value});
+    await adminReload();adminModal();toast("Devolução registrada!");
+  }catch(error){toast(error.message,true)}};
+}
+function renderAdminCategories(target){
+  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Categorias do inventário</h3><p>Crie novas seções, reorganize ou renomeie.</p></div><button class="primary-button small-button" id="new-category">+ Categoria</button></div><div class="admin-list">'+
+    state.admin.categorias.map((c,i)=>'<div class="admin-list-row"><div class="main-info"><strong>'+esc(iconFor(c.nome))+' '+esc(c.nome)+'</strong><small>'+state.admin.componentes.filter(x=>x.categoria_id===c.id).length+' materiais</small></div><div class="actions"><button class="outline-button small-button" data-move-cat="'+c.id+'" data-dir="-1" '+(i===0?"disabled":"")+'>↑</button><button class="outline-button small-button" data-move-cat="'+c.id+'" data-dir="1" '+(i===state.admin.categorias.length-1?"disabled":"")+'>↓</button><button class="outline-button small-button" data-rename-cat="'+c.id+'">Renomear</button><button class="danger-button small-button" data-delete-cat="'+c.id+'">Excluir</button></div></div>').join("")+'</div></section>';
+  $("#new-category").onclick=()=>editCategory();
+  $$("[data-rename-cat]").forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.renameCat)));
+  $$("[data-delete-cat]").forEach(b=>b.onclick=()=>deleteCategory(Number(b.dataset.deleteCat)));
+  $$("[data-move-cat]").forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.moveCat),Number(b.dataset.dir)));
+}
+function editCategory(id){
+  const cat=state.admin.categorias.find(x=>x.id===id);
+  openModal(cat?"Renomear categoria":"Nova categoria","Organize seus materiais por seção.",'<form class="modal-main" id="category-form">'+inputField("cat-name","Nome da categoria *",cat?.nome||"",{required:true,max:80})+'<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="cat-cancel">Cancelar</button><button type="submit" class="primary-button">Salvar categoria</button></div></form>');
+  $("#cat-cancel").onclick=adminModal;
+  $("#category-form").onsubmit=async e=>{e.preventDefault();try{
+    await api("/api/admin/category","POST",{acao:cat?"editar":"criar",id:cat?.id,nome:$("#cat-name").value});
+    await adminReload();adminModal();toast("Categoria salva!");
+  }catch(error){toast(error.message,true)}};
+}
+async function deleteCategory(id){
+  const cat=state.admin.categorias.find(x=>x.id===id);
+  if(!confirm("Excluir a categoria "+cat?.nome+"? Ela precisa estar vazia."))return;
+  try{await api("/api/admin/category","POST",{acao:"excluir",id});await adminReload();adminModal();toast("Categoria excluída.");}catch(error){toast(error.message,true)}
+}
+async function moveCategory(id,dir){
+  const ids=state.admin.categorias.map(x=>x.id),pos=ids.indexOf(id),next=pos+dir;
+  if(next<0||next>=ids.length)return;
+  [ids[pos],ids[next]]=[ids[next],ids[pos]];
+  try{await api("/api/admin/category","POST",{acao:"ordenar",ordem:ids});await adminReload();adminModal();}catch(error){toast(error.message,true)}
+}
+function renderSettings(target){
+  const c=state.admin.configuracoes||{};
+  const days=c.limpeza_reservas||"nunca";
+  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Configurações gerais</h3><p>Limpeza de reservas, demonstração e cópias de segurança.</p></div></div>'+
+    '<form id="settings-form">'+selectField("setting-cleanup","Excluir reservas devolvidas após",[{value:"nunca",label:"Nunca apagar"},{value:"7",label:"7 dias"},{value:"15",label:"15 dias"},{value:"30",label:"30 dias"},{value:"60",label:"60 dias"},{value:"90",label:"90 dias"},{value:"personalizado",label:"Personalizado"}],["nunca","7","15","30","60","90"].includes(days)?days:"personalizado")+
+    '<div class="field" id="custom-days" '+(["nunca","7","15","30","60","90"].includes(days)?'hidden':"")+'><label for="custom-days-number">Dias de armazenamento</label><input id="custom-days-number" type="number" min="1" max="3650" value="'+(/^\d+$/.test(days)?days:"45")+'"></div>'+
+    '<p class="notice warning">Só serão apagadas reservas devolvidas e concluídas. Pedidos pendentes, aprovados, retirados e atrasados nunca entram na limpeza. A exclusão acontece diariamente.</p>'+
+    switchInput("setting-demo","Exibir identificação de demonstração",c.modo_demo==="sim","Desative quando substituir os testes pelos materiais oficiais.")+
+    '<div style="display:flex;gap:10px;margin-top:17px;flex-wrap:wrap"><button type="submit" class="primary-button">Salvar configurações</button><button type="button" class="outline-button" id="run-cleanup">Executar limpeza agora</button></div></form>'+
+    '<hr class="divider"><h3 style="font-size:17px">Backup do inventário</h3><p style="color:var(--muted);font-size:12px">Guarde uma cópia com categorias, materiais e reservas. A restauração substitui todos os registros atuais.</p>'+
+    '<div style="display:flex;gap:9px;flex-wrap:wrap"><button type="button" class="outline-button" id="backup-download">↓ Baixar backup completo</button><button type="button" class="outline-button" id="backup-import">↑ Restaurar backup</button><input id="backup-file" type="file" accept=".json,application/json" hidden></div></section>';
+  $("#setting-cleanup").onchange=()=>$("#custom-days").hidden=$("#setting-cleanup").value!=="personalizado";
+  $("#settings-form").onsubmit=async e=>{e.preventDefault();const days=$("#setting-cleanup").value==="personalizado"?String($("#custom-days-number").value):$("#setting-cleanup").value;try{await api("/api/admin/settings","POST",{limpeza_reservas:days,modo_demo:$("#setting-demo").checked?"sim":"nao"});await adminReload();adminModal();toast("Configurações salvas!");}catch(error){toast(error.message,true)}};
+  $("#run-cleanup").onclick=async()=>{if(!confirm("Executar agora a limpeza das reservas já concluídas, conforme o prazo definido?"))return;try{const r=await api("/api/admin/cleanup","POST",{});await adminReload();adminModal();toast(r.removidas+" reservas removidas.");}catch(error){toast(error.message,true)}};
+  $("#backup-download").onclick=async()=>{
+    try{const backup=await api("/api/admin/backup");saveDownload("backup-inventario-pet-"+localDate()+".json",JSON.stringify(backup,null,2));toast("Backup gerado!");}catch(error){toast(error.message,true)}
+  };
+  $("#backup-import").onclick=()=>$("#backup-file").click();
+  $("#backup-file").onchange=async e=>{
+    const file=e.target.files[0];if(!file)return;
+    if(file.size>1500000){toast("Backup muito grande para este formato.",true);return;}
+    if(!confirm("ATENÇÃO: o backup substituirá todos os materiais, categorias e reservas atuais. Quer continuar?"))return;
+    try{const data=JSON.parse(await file.text());await api("/api/admin/restore","POST",data);await adminReload();adminModal();toast("Backup restaurado!");}catch(error){toast(error.message,true)}
+  };
+}
+function saveDownload(name,contents){
+  const blob=new Blob([contents],{type:"application/json;charset=utf-8"}),a=document.createElement("a"),url=URL.createObjectURL(blob);
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function openPhoto(id){
+  const x=byId(id);
+  if(!x)return;
+  if(!x.imagem){toast("Este material ainda não possui fotografia.");return;}
+  openModal(x.nome,"Visualização ampliada da fotografia.",'<div class="modal-main" style="text-align:center"><img class="photo-lightbox" alt="'+attr(x.nome)+'" src="'+attr(x.imagem)+'"></div>',{size:"wide"});
+}
+$("#search").oninput=e=>{state.query=e.target.value;render()};
+$("#category-filters").addEventListener("click",e=>{const b=e.target.closest("[data-category]");if(!b)return;state.filter=b.dataset.category;render();});
+$("#category-sections").addEventListener("click",e=>{
+  const photo=e.target.closest("[data-photo]");if(photo){openPhoto(Number(photo.dataset.photo));return;}
+  const defect=e.target.closest("[data-defect]");if(defect){const x=$("#defect-"+defect.dataset.defect);if(x)x.hidden=!x.hidden;return;}
+  const book=e.target.closest("[data-reserve-item]");if(book)reserveModal(Number(book.dataset.reserveItem));
+});
+$("#reserve-button").onclick=()=>reserveModal(null);
+$("#profile-button").onclick=()=>profileModal();
+$("#admin-button").onclick=openAdmin;
+$("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda sem conexão.",true)}};
+(async()=>{
+  try{await publicReload();if(!state.actor)setTimeout(()=>profileModal(true),400)}
+  catch(error){
+    console.error(error);
+    $("#offline-alert").hidden=false;
+    $("#category-sections").innerHTML='<div class="empty-state">Não foi possível carregar os materiais neste momento.</div>';
+  }
+})();
