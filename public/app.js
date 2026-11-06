@@ -150,7 +150,10 @@ function stepNumber(id,delta,onChange){
  el.value=String(Math.max(min,Math.min(max,v+delta)));el.dispatchEvent(new Event("change",{bubbles:true}));if(onChange)onChange();
 }
 async function openAdmin(){
-  if(state.admin){adminModal();return;}
+  if(state.admin){
+    try{await adminReload();adminModal();return;}
+    catch(error){state.admin=null; if(!error.message.includes("Entre no painel"))toast(error.message,true);}
+  }
   try{
     state.admin=await api("/api/admin/state");
     state.tab=state.admin.reservas.some(r=>r.status==="pendente")?"reservas":"materiais";
@@ -177,7 +180,14 @@ function adminModal(){
   const count=state.admin.reservas.filter(r=>r.status==="pendente").length;
   const content='<nav class="tabs" aria-label="Áreas do painel">'+tabs.map(([key,symbol,label])=>'<button type="button" class="tab '+(state.tab===key?"active":"")+'" data-tab="'+key+'"><span aria-hidden="true">'+symbol+'</span> '+label+(key==="reservas"&&count?' <span class="tab-count">'+count+'</span>':"")+'</button>').join("")+'</nav><div id="admin-tab-body"></div>';
   openModal("Gerenciar inventário","Administração do PET Educação · "+(state.actor||"PETiane"),content,{size:"full"});
-  $$(".tab").forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;adminModal()});
+  $(".tab").forEach(b=>b.onclick=async()=>{
+    state.tab=b.dataset.tab;
+    if(state.tab==="reservas"){
+      try{await adminReload();}
+      catch(error){toast("Não foi possível atualizar as reservas: "+error.message,true);}
+    }
+    adminModal();
+  });
   renderTab();
 }
 function renderTab(){
