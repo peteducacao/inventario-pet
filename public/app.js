@@ -180,7 +180,7 @@ function adminModal(){
   const count=state.admin.reservas.filter(r=>r.status==="pendente").length;
   const content='<nav class="tabs" aria-label="Áreas do painel">'+tabs.map(([key,symbol,label])=>'<button type="button" class="tab '+(state.tab===key?"active":"")+'" data-tab="'+key+'"><span aria-hidden="true">'+symbol+'</span> '+label+(key==="reservas"&&count?' <span class="tab-count">'+count+'</span>':"")+'</button>').join("")+'</nav><div id="admin-tab-body"></div>';
   openModal("Gerenciar inventário","Administração do PET Educação · "+(state.actor||"PETiane"),content,{size:"full"});
-  $(".tab").forEach(b=>b.onclick=async()=>{
+  $$(".tab").forEach(b=>b.onclick=async()=>{
     state.tab=b.dataset.tab;
     if(state.tab==="reservas"){
       try{await adminReload();}
