@@ -53,6 +53,13 @@ for (const [key,title] of [["materiais","Materiais cadastrados"],["reservas","So
   await click(tab(key));
   assert.equal(tab(key)?.classList.contains("active"),true,"Aba "+key+" não ativou");
   assert.match(panel()?.textContent||"",new RegExp(title),"Conteúdo de "+key+" não abriu");
+  if(key==="configuracoes") {
+    const selector=d.querySelector("#setting-cleanup");
+    assert.ok(selector?.querySelector('option[value="1min"]'),"A opção 1 minuto (teste) não apareceu");
+    selector.value="1min";
+    assert.equal(selector.value,"1min","O prazo de teste não pode ser selecionado");
+    assert.equal(d.querySelector("#custom-days")?.hidden,true,"A opção de 1 minuto não deve pedir quantidade de dias");
+  }
 }
 await click(tab("materiais"));
 await click(d.querySelector("#add-item"));
