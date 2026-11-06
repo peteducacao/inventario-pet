@@ -223,8 +223,10 @@ function itemEditor(id){
   if(!categories.length){toast("Cadastre uma categoria primeiro.",true);state.tab="categorias";adminModal();return;}
   const body='<form id="item-form" class="modal-main"><div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
     '<div class="field-grid">'+inputField("i-id","Identificação / modelo",x?.identificacao||"",{max:120})+inputField("i-patrimony","Número de patrimônio",x?.patrimonio||"",{max:160})+'</div>'+
-    '<div class="field"><label>Foto do componente</label><div id="i-photo-preview" class="media-preview">'+(x?.imagem?'<img alt="Imagem atual" src="'+attr(x.imagem)+'">':'<span style="font-size:40px">📷</span>')+'</div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">A foto será otimizada automaticamente para manter o site leve.</small><button type="button" class="outline-button small-button" id="i-photo-remove" style="align-self:start">Remover foto</button></div>'+
+    '<div class="field"><label>Foto do material</label><div id="i-photo-preview" class="media-preview"><img alt="Imagem ilustrativa" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Foto JPG, PNG ou WEBP. Ajuste automático para o card (quadrado, até 650 px).</small><label class="switch-row" style="margin:5px 0"><span><strong>Remover fundo claro automaticamente</strong><small>Melhor para imagens com fundo uniforme; confira o resultado antes de salvar.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar imagem padrão</button></div>'+
     '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade",x?.quantidade||0)+stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
+    '<div class="field-grid">'+inputField("i-unit","Unidade",x?.unidade||"unidades",{max:40})+'</div>'+
+    '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
     '<div class="notice" id="i-available" style="margin-bottom:14px">Disponíveis: '+available(x||{mostrar_quantidade:1,quantidade:0,em_uso:0,com_defeito:0})+'</div>'+
     '<h3 style="font-size:15px;margin:14px 0 4px">O que mostrar no inventário</h3>'+
     switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true,"Desativado: exibirá Sem estoque.")+
@@ -235,7 +237,7 @@ function itemEditor(id){
     '<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button><button type="submit" class="primary-button" id="i-save">Salvar alterações</button></div></form>';
   openModal(x?"Editar material":"Adicionar material","Informe os dados do cadastro e confirme para gravar.",body,{size:"wide"});
   let image=x?.imagem||"";
-  $("#i-photo-remove").onclick=()=>{image="";$("#i-photo-preview").innerHTML='<span style="font-size:40px">📷</span>';$("#i-photo").value=""};
+  $("#i-photo-remove").onclick=()=>{image="";$("#i-photo-preview").innerHTML='<img alt="Imagem padrão" src="'+attr(defaultImage($("#i-name").value))+'">';$("#i-photo").value="";$("#i-photo").dispatchEvent(new Event("input",{bubbles:true}));};
   $("#i-photo").onchange=async e=>{
     const file=e.target.files?.[0];if(!file)return;
     if(!file.type.startsWith("image/")){toast("Selecione uma fotografia.",true);return;}
@@ -247,7 +249,7 @@ function itemEditor(id){
   $("#i-cancel").onclick=()=>{adminModal()};
   $("#item-form").onsubmit=async e=>{
     e.preventDefault();const submit=$("#i-save");submit.disabled=true;submit.textContent="Salvando…";
-    const body={id:x?.id||null,responsavel:state.actor||"PETiane",categoria_id:Number($("#i-category").value),nome:$("#i-name").value,identificacao:$("#i-id").value,patrimonio:$("#i-patrimony").value,imagem: image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,descricao_defeito:$("#i-description").value};
+    const body={id:x?.id||null,responsavel:state.actor||"PETiane",categoria_id:Number($("#i-category").value),nome:$("#i-name").value,identificacao:$("#i-id").value,patrimonio:$("#i-patrimony").value,imagem: image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value};
     try{await api("/api/admin/item","POST",body);await adminReload();adminModal();toast("Material salvo com sucesso!");}
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar alterações";}
   };
