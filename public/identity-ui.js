@@ -39,10 +39,11 @@ function identityLoginModal(first=false){
     '<div class="modal-footer" style="border:0;padding:12px 0 0"><button type="submit" class="primary-button" id="identity-login-submit" style="width:100%">Entrar</button></div>'+
     '<div class="identity-separator">Primeiro acesso?</div><button type="button" class="outline-button" id="identity-open-register" style="width:100%">Criar minha conta</button></form>');
   wirePasswordVisibility();
-  $("#identity-forgot").onclick=()=>openModal("Esqueci minha senha","Recuperação de acesso pelo PET.",
-    '<div class="modal-main"><p>Peça a um administrador do PET para encontrar seu cadastro na aba <strong>Usuários</strong> e clicar em <strong>Redefinir senha</strong>.</p><p class="notice">O administrador vai gerar uma senha temporária e informar seu nome de usuário. Você deverá escolher uma senha definitiva ao entrar.</p><button type="button" class="primary-button" id="identity-forgot-back" style="width:100%">Voltar ao login</button></div>');
-  const forgotBack=$("#identity-forgot-back");
-  if(forgotBack)forgotBack.onclick=identityLoginModal;
+  $("#identity-forgot").onclick=()=>{
+    openModal("Esqueci minha senha","Recuperação de acesso pelo PET.",
+      '<div class="modal-main"><p>Peça a um administrador do PET para encontrar seu cadastro na aba <strong>Usuários</strong> e clicar em <strong>Redefinir senha</strong>.</p><p class="notice">O administrador vai gerar uma senha temporária e informar seu nome de usuário. Você deverá escolher uma senha definitiva ao entrar.</p><button type="button" class="primary-button" id="identity-forgot-back" style="width:100%">Voltar ao login</button></div>');
+    $("#identity-forgot-back").onclick=identityLoginModal;
+  };
   $("#identity-open-register").onclick=()=>identityRegisterModal(true);
   $("#identity-login-form").onsubmit=async e=>{
     e.preventDefault();
@@ -259,22 +260,22 @@ async function renderAdminUsers(target){
   }catch(error){if(document.contains(target))target.innerHTML='<section class="panel-section"><div class="alert alert-error">'+esc(error.message)+'</div></section>';}
 }
 function renderAdminUserList(target,users){
-  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Usuários cadastrados</h3><p>'+users.length+' perfil(is). Pesquise pelo nome ou ID, mesmo se duas pessoas tiverem o mesmo nome.</p></div></div>'+
-    '<div class="field"><label for="user-search">Buscar usuário</label><input id="user-search" type="search" placeholder="Nome ou ID PET-..." value="'+attr(userSearch)+'"></div>'+
-    '<p class="notice warning" style="margin-bottom:14px">O código de recuperação antigo nunca é visível, nem para o administrador. Você pode gerar outro código quando a pessoa perder o acesso.</p>'+
+  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Usuários cadastrados</h3><p>'+users.length+' perfil(is). Pesquise por nome, login ou ID, mesmo que duas pessoas tenham nomes iguais.</p></div></div>'+
+    '<div class="field"><label for="user-search">Buscar usuário</label><input id="user-search" type="search" placeholder="Nome, login ou ID PET-..." value="'+attr(userSearch)+'"></div>'+
+    '<p class="notice" style="margin-bottom:14px">Se alguém esquecer a senha, use <strong>Redefinir senha</strong> para gerar uma senha temporária. A antiga nunca pode ser visualizada.</p>'+
     '<div class="admin-list" id="users-list"></div></section>';
   const list=$("#users-list");
   function updateList(){
     const query=userSearch.toLocaleLowerCase("pt-BR").trim();
-    const visible=users.filter(u=>!query||(u.nome+" "+u.id).toLocaleLowerCase("pt-BR").includes(query));
+    const visible=users.filter(u=>!query||(u.nome+" "+(u.login||"")+" "+u.id).toLocaleLowerCase("pt-BR").includes(query));
     list.innerHTML=visible.length?visible.map(u=>{
       const member=u.tag==="petiano",active=u.ativo===1;
       return '<div class="admin-list-row user-role-row"><div class="main-info"><strong>'+esc(u.nome)+' <span class="status '+(member?"picked":"done")+'">'+(member?"PETiano":"Visitante")+'</span></strong>'+
-        '<small>ID: <code>'+esc(u.id)+'</code> · Desde '+esc(formatDay(u.criado_em.slice(0,10)))+'</small>'+
+        '<small>Login: <strong>'+esc(u.login||"Não configurado")+'</strong> · ID: <code>'+esc(u.id)+'</code></small>'+
         '<small>'+u.retiradas_ativas+' retirada(s) em uso'+(active?"":" · CONTA BLOQUEADA")+'</small></div>'+
         '<div class="actions user-actions">'+
         '<button type="button" class="'+(member?"secondary-button":"primary-button")+' small-button" data-user-id="'+attr(u.id)+'" data-user-tag="'+(member?"visitante":"petiano")+'" '+(active?"":"disabled")+'>'+(member?"Remover tag":"Tornar PETiano")+'</button>'+
-        '<button type="button" class="outline-button small-button" data-user-recovery="'+attr(u.id)+'" '+(active?"":"disabled")+'>Novo código</button>'+
+        '<button type="button" class="outline-button small-button" data-user-password="'+attr(u.id)+'" '+(active?"":"disabled")+'>Redefinir senha</button>'+
         '<button type="button" class="danger-button small-button" data-user-delete="'+attr(u.id)+'">Excluir</button></div></div>';
     }).join(""):'<div class="empty-state">Nenhum usuário encontrado.</div>';
     $$("[data-user-tag]",list).forEach(btn=>btn.onclick=async()=>{
@@ -290,8 +291,8 @@ function renderAdminUserList(target,users){
       }catch(error){toast(error.message,true);btn.disabled=false;}
     });
     $$("[data-user-recovery]",list).forEach(btn=>btn.onclick=()=>{
-      const u=users.find(x=>x.id===btn.dataset.userRecovery);
-      if(u)adminRecoveryModal(u);
+      const u=users.find(x=>x.id===btn.dataset.userPassword);
+      if(u)adminResetPasswordModal(u);
     });
     $$("[data-user-delete]",list).forEach(btn=>btn.onclick=()=>{
       const u=users.find(x=>x.id===btn.dataset.userDelete);
@@ -301,32 +302,33 @@ function renderAdminUserList(target,users){
   $("#user-search").oninput=e=>{userSearch=e.target.value;updateList();};
   updateList();
 }
-function adminRecoveryModal(u){
-  openModal("Recuperar acesso de usuário","Perfil: "+u.nome+" · "+u.id,
-    '<div class="modal-main"><p class="notice warning">Confirme pessoalmente a identidade do integrante antes de gerar um código. O código anterior deixará de funcionar e o usuário precisará entrar novamente em todos os dispositivos.</p>'+
-    '<p style="font-size:13px">O sistema não permite visualizar o código privado antigo. Você poderá copiar o novo código uma única vez e entregá-lo ao integrante.</p>'+
-    '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="button" class="secondary-button" id="admin-recovery-cancel">Cancelar</button><button type="button" class="primary-button" id="admin-recovery-generate">Gerar novo código</button></div></div>');
-  $("#admin-recovery-cancel").onclick=adminModal;
-  $("#admin-recovery-generate").onclick=async()=>{
-    const btn=$("#admin-recovery-generate");
-    btn.disabled=true;btn.textContent="Gerando…";
+function adminResetPasswordModal(u){
+  openModal("Redefinir senha","Perfil: "+u.nome+" · "+u.id,
+    '<form class="modal-main" id="admin-reset-password-form">'+
+    '<p class="notice warning"><strong>Verifique pessoalmente a identidade do integrante.</strong> A senha atual será invalidada e todos os dispositivos serão desconectados. A pessoa terá de criar uma senha definitiva ao entrar.</p>'+
+    '<div class="field"><label for="admin-reset-login">Nome de usuário</label><input id="admin-reset-login" maxlength="24" minlength="4" required autocapitalize="none" spellcheck="false" value="'+attr(u.login||"")+'" placeholder="Ex.: sergio01"></div>'+
+    '<p class="hint">Para perfis antigos sem login, defina um nome de usuário agora. Letras sem acentos, números, ponto, _ ou traço.</p>'+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="button" class="secondary-button" id="admin-reset-cancel">Cancelar</button><button type="submit" class="primary-button" id="admin-reset-submit">Gerar senha temporária</button></div></form>');
+  $("#admin-reset-cancel").onclick=adminModal;
+  $("#admin-reset-password-form").onsubmit=async e=>{
+    e.preventDefault();const btn=$("#admin-reset-submit");btn.disabled=true;btn.textContent="Gerando…";
     try{
-      const result=await api("/api/admin/users/recovery","POST",{id:u.id});
-      adminShowRecoveryCode(result);
-    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Gerar novo código";}
+      const result=await api("/api/admin/users/password","POST",{id:u.id,login:$("#admin-reset-login").value});
+      adminShowTemporaryPassword(result);
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Gerar senha temporária";}
   };
 }
-function adminShowRecoveryCode(result){
-  openModal("Novo código gerado","Entregue estas informações somente ao titular do perfil.",
+function adminShowTemporaryPassword(result){
+  openModal("Senha temporária gerada","Entregue as informações somente ao titular do perfil.",
     '<div class="modal-main">'+
-    '<p class="notice warning"><strong>Atenção:</strong> o código antigo foi invalidado, assim como as sessões anteriores. Copie o novo código agora. Por segurança ele não aparecerá novamente no painel.</p>'+
-    '<div class="field"><label for="admin-recovery-id">ID público de '+esc(result.nome)+'</label><div class="copy-field"><input id="admin-recovery-id" readonly value="'+attr(result.id)+'"><button type="button" class="outline-button" id="admin-copy-id">Copiar</button></div></div>'+
-    '<div class="field"><label for="admin-new-code">Novo código privado</label><div class="copy-field"><input id="admin-new-code" readonly value="'+attr(result.codigo_recuperacao)+'"><button type="button" class="outline-button" id="admin-copy-code">Copiar</button></div></div>'+
-    '<p class="notice">O integrante acessa <strong>Meu perfil → Usar perfil existente</strong> e informa o ID e o novo código.</p>'+
-    '<button type="button" class="primary-button" style="width:100%" id="admin-recovery-done">Concluir</button></div>');
-  $("#admin-copy-id").onclick=()=>copyValue(result.id,$("#admin-recovery-id"));
-  $("#admin-copy-code").onclick=()=>copyValue(result.codigo_recuperacao,$("#admin-new-code"));
-  $("#admin-recovery-done").onclick=adminModal;
+    '<p class="notice warning">A senha anterior foi invalidada e os dispositivos foram desconectados. <strong>Copie a senha temporária agora:</strong> ela só aparece nesta tela.</p>'+
+    '<div class="field"><label for="admin-temp-login">Nome de usuário de '+esc(result.nome)+'</label><div class="copy-field"><input id="admin-temp-login" readonly value="'+attr(result.login)+'"><button type="button" class="outline-button" id="admin-copy-login">Copiar</button></div></div>'+
+    '<div class="field"><label for="admin-temp-password">Senha temporária</label><div class="copy-field"><input id="admin-temp-password" readonly value="'+attr(result.senha_temporaria)+'"><button type="button" class="outline-button" id="admin-copy-password">Copiar</button></div></div>'+
+    '<p class="notice">O integrante entra normalmente com o login e a senha temporária, depois escolhe sua própria senha definitiva.</p>'+
+    '<button type="button" class="primary-button" style="width:100%" id="admin-reset-done">Concluir</button></div>');
+  $("#admin-copy-login").onclick=()=>copyValue(result.login,$("#admin-temp-login"));
+  $("#admin-copy-password").onclick=()=>copyValue(result.senha_temporaria,$("#admin-temp-password"));
+  $("#admin-reset-done").onclick=adminModal;
 }
 function adminDeleteUserModal(u){
   openModal("Excluir usuário","Confirme a exclusão de "+u.nome+" · "+u.id,
