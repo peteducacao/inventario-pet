@@ -290,7 +290,7 @@ function renderAdminUserList(target,users){
         await renderAdminUsers(target);
       }catch(error){toast(error.message,true);btn.disabled=false;}
     });
-    $$("[data-user-recovery]",list).forEach(btn=>btn.onclick=()=>{
+    $$("[data-user-password]",list).forEach(btn=>btn.onclick=()=>{
       const u=users.find(x=>x.id===btn.dataset.userPassword);
       if(u)adminResetPasswordModal(u);
     });
