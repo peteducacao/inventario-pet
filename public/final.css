@@ -95,3 +95,42 @@ body.admin-mode #app{display:none}
   .inventory-section .catalog-numbers strong{font-size:18px}
   .inventory-section .catalog-body .primary-button{min-height:50px;font-size:15px}
 }
+
+/* Filamentos: representação da cor como amostra física, sem campos supérfluos. */
+.filament-public-card .filament-art{
+  height:190px;width:100%;display:grid;place-items:center;
+  background:radial-gradient(circle at 50% 34%,#fff 0,#eff6f9 66%,#e7eef4);
+  border-bottom:1px solid #e4eef3
+}
+.filament-reel{
+  width:145px;height:145px;border-radius:50%;
+  background:repeating-radial-gradient(circle at 50%,var(--filament-color) 0 9px,#00000017 9px 11px,var(--filament-color) 11px 20px);
+  border:10px solid #253b4d;box-shadow:inset 0 0 0 7px #ffffff38,0 12px 18px #102e3c2e;
+  display:grid;place-items:center
+}
+.filament-reel-core{width:45px;height:45px;border-radius:50%;background:#eff6f9;border:8px solid #263d4c;box-shadow:0 0 0 4px #ffffff40}
+.filament-public-card .catalog-body{padding:16px;display:flex;flex-direction:column;gap:5px;align-items:stretch}
+.filament-public-card .catalog-body h3{min-height:0}
+.filament-quantity{margin-top:7px;background:#eef4f8;border-radius:12px;min-height:52px;display:flex;align-items:center;justify-content:space-between;padding:10px 14px;color:#607486;font-weight:650;font-size:12px}
+.filament-quantity strong{font-size:22px;font-weight:850;color:#17334d;line-height:1;font-variant-numeric:tabular-nums}
+.filament-admin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(265px,1fr));gap:12px}
+.filament-admin-card{display:flex;align-items:center;gap:12px;min-width:0;padding:14px 13px;border:1px solid #e3ecf2;border-radius:14px;background:#fff}
+.filament-color-dot{display:block;width:50px;height:50px;flex-shrink:0;border-radius:50%;box-shadow:inset 0 0 0 2px #152d402a,0 5px 12px #103e4d1b}
+.filament-admin-label{flex:1;min-width:0}
+.filament-admin-label strong{display:block;overflow-wrap:anywhere;font-size:13px}
+.filament-admin-label small{display:block;color:#7a8ea0;font-size:11px;margin-top:5px}
+.filament-admin-label b{font-size:14px;color:#16374e}
+.filament-admin-buttons{display:flex;gap:5px}
+.filament-palette{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:18px}
+.filament-preset{width:39px;height:39px;display:grid;place-items:center;background:transparent;border:1px solid #d5e1e9;border-radius:11px;padding:5px;cursor:pointer}
+.filament-preset:hover{border-color:#0ea988;transform:translateY(-1px)}
+.filament-preset span{width:100%;height:100%;display:block;background:var(--sample);border-radius:8px;box-shadow:inset 0 0 0 1px #172d3c26}
+#filament-hex{width:100%;height:45px;padding:3px;border:1px solid #d5e0e8;cursor:pointer}
+@media(max-width:720px){
+  .filament-public-card .filament-art{height:152px}
+  .filament-reel{width:118px;height:118px;border-width:8px}
+  .filament-reel-core{width:37px;height:37px;border-width:6px}
+  .filament-public-card .catalog-body{padding:13px}
+  .filament-quantity{min-height:50px}
+  .filament-admin-grid{grid-template-columns:1fr}
+}
