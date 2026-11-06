@@ -1,0 +1,31 @@
+name: Verificar inventário sem publicar
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Instalar dependência apenas de testes
+        run: npm install --no-save jsdom@26
+      - name: Validar sintaxe de todos os scripts
+        run: |
+          node --check public/app.js
+          node --check public/identity-ui.js
+          node --check public/final.js
+          node --check public/admin-stage.js
+          node --check src/index.js
+          node --check src/identity.js
+      - name: Testar banco local, identidade e reservas
+        run: node --disable-warning=ExperimentalWarning tests/identity.test.mjs
+      - name: Testar navegação antiga, sem tocar na produção
+        run: node tests/admin-navigation.test.mjs
+      - name: Testar catálogo e painel novos, sem tocar na produção
+        run: node tests/final-ui.test.mjs

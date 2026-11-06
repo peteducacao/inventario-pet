@@ -98,7 +98,7 @@ function itemImage(x){
 }
 function thumb(x,clazz="material-thumb"){
   const img=itemImage(x);
-  return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src='/img/reference-board.svg'">':"")+'</div>';
+  return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">':"")+'</div>';
 }
 function finalCard(x){
   if(x._filament){
@@ -114,7 +114,7 @@ function finalCard(x){
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   return '<article class="catalog-card"><button type="button" class="catalog-photo" '+(img?'data-photo="'+x.id+'"':'disabled')+' aria-label="Ampliar foto de '+attr(x.nome)+'">'+
-    (img?'<img src="'+attr(img)+'" alt="'+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src='/img/reference-board.svg'">':'<span class="no-photo"></span>')+
+    (img?'<img src="'+attr(img)+'" alt="'+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">':'<span class="no-photo"></span>')+
     '<span class="status-dot '+type+'">'+status+'</span></button>'+
     '<div class="catalog-body"><h3>'+esc(x.nome)+'</h3><span class="catalog-category">'+esc(category)+'</span><span class="catalog-asset" title="'+attr(asset)+'">'+(asset||' ')+'</span>'+
     '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+Number(x.quantidade)+'</strong></div><div><span>Em uso</span><strong>'+Number(x.em_uso)+'</strong></div><div><span>Defeito</span><strong class="'+(Number(x.com_defeito)?"stock-defect":"")+'">'+Number(x.com_defeito)+'</strong></div></div>'+
@@ -256,7 +256,7 @@ function setupFinalPublic(){
   $("#stats-toggle").onclick=()=>{UI.summaryMinimized=!UI.summaryMinimized;stored("pet_public_summary_closed",UI.summaryMinimized?"1":"0");finalRender();};
   $("#profile-button").onclick=openUserMenu;
   $("#notification-button").onclick=()=>{if(!state.identity){identityLoginModal();return;}openMyNotificationPopover();};
-  $("#admin-button").onclick=enterAdmin;
+  $("#admin-button").onclick=()=>enterAdmin(false);
   $("#reserve-button").onclick=()=>{
     if(!state.identity){identityLoginModal();return;}
     if(identityIsMember())memberWithdrawModal();else reserveModal(null);
