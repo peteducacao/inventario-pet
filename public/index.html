@@ -1,1 +1,60 @@
-<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Inventário PET</title><style>body{margin:0;background:#f7f9fc;color:#182337;font:16px system-ui,Arial,sans-serif;display:grid;min-height:100dvh;place-items:center}.card{max-width:540px;margin:24px;padding:36px;background:white;border:1px solid #e2e8f0;border-radius:20px;box-shadow:0 16px 40px #10203012}h1{font-size:28px}.muted{color:#5d6879}code{background:#edf4ff;padding:4px;border-radius:4px}</style></head><body><main class="card"><h1>Inventário PET</h1><p class="muted">Estrutura técnica em configuração. Esta é uma página de teste para confirmar a publicação do site e a conexão ao banco Cloudflare D1.</p><p id="status">Verificando banco de dados...</p></main><script>fetch('/api/health').then(r=>r.json()).then(j=>document.getElementById('status').textContent=j.ok?'Conexão com D1 funcionando!':'D1 ainda não conectado.').catch(()=>document.getElementById('status').textContent='API ainda não disponível.');</script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#10283f">
+  <meta name="description" content="Inventário de materiais do PET Educação: consulte componentes, estoques e solicite reservas.">
+  <title>Inventário PET Educação</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="shell topbar-inner">
+        <div class="branding" aria-label="Inventário PET Educação">
+          <span class="brand-mark" aria-hidden="true">P<span>•</span></span>
+          <div><strong>Inventário PET</strong><small>Educação · Materiais e equipamentos</small></div>
+        </div>
+        <div class="header-actions">
+          <button class="quiet-button" id="profile-button" type="button"><span class="avatar" id="header-avatar">P</span><span id="profile-name">PETiane</span></button>
+          <button class="header-admin" id="admin-button" type="button"><span aria-hidden="true">⚙</span><span id="admin-button-text">Administração</span></button>
+        </div>
+      </div>
+    </header>
+    <main class="shell">
+      <div id="offline-alert" class="alert alert-error" hidden>Não foi possível conectar ao inventário. Verifique a conexão e tente novamente. <button id="retry-button">Tentar de novo</button></div>
+      <section class="intro">
+        <div>
+          <div class="eyebrow"><span class="eyebrow-dot"></span> PATRIMÔNIO E MATERIAIS</div>
+          <h1>Tudo do PET, <em>em um só lugar.</em></h1>
+          <p>Encontre componentes, confira a disponibilidade e solicite materiais sem complicação.</p>
+        </div>
+        <div class="intro-actions">
+          <button class="primary-button" type="button" id="reserve-button"><span aria-hidden="true">◷</span> Solicitar reserva</button>
+        </div>
+      </section>
+      <div id="demo-notice" class="demo-notice" hidden><span aria-hidden="true">✦</span><div><strong>Inventário de demonstração</strong><span>Os materiais e quantidades desta versão são fictícios. Vamos substituir tudo pela planilha oficial do PET.</span></div></div>
+      <div class="summary" id="summary">
+        <div class="summary-item"><span class="summary-label">Materiais cadastrados</span><strong id="stat-items">—</strong><span class="summary-note">Tipos de materiais</span></div>
+        <div class="summary-item"><span class="summary-label">Unidades disponíveis</span><strong id="stat-stock">—</strong><span class="summary-note">Prontas para uso</span></div>
+        <div class="summary-item"><span class="summary-label">Unidades em uso</span><strong id="stat-used">—</strong><span class="summary-note">Em atividades e reservas</span></div>
+        <div class="summary-item"><span class="summary-label">Com defeito</span><strong id="stat-broken">—</strong><span class="summary-note">Aguardando verificação</span></div>
+      </div>
+      <section class="inventory-section" aria-label="Materiais">
+        <div class="inventory-head">
+          <div><h2>Explorar inventário</h2><p>Selecione uma categoria ou procure pelo nome.</p></div>
+          <div class="search-box"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar material ou patrimônio..." aria-label="Buscar no inventário"><kbd>/</kbd></div>
+        </div>
+        <div class="filter-row" id="category-filters"><button class="chip active" data-category="all">Todos</button></div>
+        <div id="category-sections" class="section-list"><div class="loading-placeholder">Carregando inventário…</div></div>
+      </section>
+      <footer class="site-footer"><span>Inventário PET Educação</span><span>Feito para cuidar do que é de todos.</span></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <div id="modal-root"></div>
+</body>
+</html>
