@@ -162,8 +162,9 @@ async function withdraw(req,env,user){
   const b=await bodyJson(req,5000),id=Number(b.componente_id),quantity=Number(b.quantidade),due=clean(b.data_devolucao,10),note=clean(b.observacao,500);
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)return error("Material ou quantidade inválidos.");
   if(!formatDateValid(due)||due<brazilDate())return error("Informe uma data de devolução válida.");
-  const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade FROM componentes WHERE id=?").bind(id).first();
+  const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade,arquivado FROM componentes WHERE id=?").bind(id).first();
   if(!item)return error("Material não encontrado.",404);
+  if(item.arquivado===1)return error("Material arquivado. Procure o administrador.",409);
   if(item.mostrar_quantidade!==1)return error("Material indisponível para retirada.",409);
   if(item.quantidade-item.em_uso-item.com_defeito<quantity)return error("Estoque insuficiente para retirada.",409);
   const stamp=now(),actor=user.nome+" ("+user.public_id+")",today=brazilDate();
@@ -192,6 +193,8 @@ async function memberReturn(req,env,user){
     env.DB.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND usuario_id=? AND status='retirada'").bind(stamp,actor,note||r.observacao,id,user.id)
   ]);
   if(done[0].meta?.changes!==1||done[1].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
+  await env.DB.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
+    .bind(user.id,id,"Devolução registrada","A devolução de seu material foi registrada.","devolucao").run();
   return respond({ok:true});
 }
 async function adminUpdate(req,env){
@@ -250,7 +253,7 @@ async function adminList(env){
 }
 export async function identityAPI(req,env,adminAuth){
   const url=new URL(req.url),path=url.pathname,method=req.method,db=env.DB;
-  if(!path.startsWith("/api/identity/")&&!path.startsWith("/api/member/")&&!path.startsWith("/api/admin/users"))return null;
+  if(!path.startsWith("/api/identity/")&&!path.startsWith("/api/member/")&&!path.startsWith("/api/admin/users")&&!path.startsWith("/api/my/")&&!path.startsWith("/api/notifications"))return null;
   if(path==="/api/identity/register"&&method==="POST")return register(req,env);
   if(path==="/api/identity/login"&&method==="POST")return loginUser(req,env);
   if(path==="/api/identity/upgrade"&&method==="POST")return upgradeLegacy(req,env);
@@ -277,6 +280,27 @@ export async function identityAPI(req,env,adminAuth){
     return error("Método inválido.",405);
   }
   const u=await loggedIn(req,db);
+  if(path==="/api/my/loans"&&method==="GET"){
+    if(!u)return error("Entre em sua conta para consultar os empréstimos.",401);
+    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 250",[u.id]);
+    return respond({ok:true,emprestimos:loanRows});
+  }
+  if(path==="/api/notifications"&&method==="GET"){
+    if(!u)return respond({ok:true,notificacoes:[],nao_lidas:0});
+    const notices=await rows(db,"SELECT id,reserva_id,titulo,mensagem,tipo,criada_em,lida_em FROM notificacoes WHERE usuario_id=? ORDER BY criada_em DESC LIMIT 50",[u.id]);
+    return respond({ok:true,notificacoes:notices,nao_lidas:notices.filter(n=>!n.lida_em).length});
+  }
+  if(path==="/api/notifications/read"&&method==="POST"){
+    if(!u)return error("Entre em sua conta.",401);
+    const payload=await bodyJson(req,1000);
+    if(payload.todos===true)await db.prepare("UPDATE notificacoes SET lida_em=? WHERE usuario_id=? AND lida_em IS NULL").bind(now(),u.id).run();
+    else{
+      const id=Number(payload.id);
+      if(!Number.isSafeInteger(id)||id<1)return error("Notificação inválida.");
+      await db.prepare("UPDATE notificacoes SET lida_em=? WHERE id=? AND usuario_id=? AND lida_em IS NULL").bind(now(),id,u.id).run();
+    }
+    return respond({ok:true});
+  }
   if(path==="/api/identity/name"&&method==="POST")return rename(req,env,u);
   if(path==="/api/identity/name"&&method==="POST"&&(u?.must_change_password||!u?.login))return error("Configure sua senha antes de continuar.",403);
   if(path.startsWith("/api/member/")&&u&&(u.must_change_password||!u.login))return error("Crie sua senha definitiva antes de usar as retiradas.",403);
@@ -288,3 +312,5 @@ export async function identityAPI(req,env,adminAuth){
   }
   return error("Rota inválida.",404);
 }
+
+export async function currentIdentity(req,db){return loggedIn(req,db);}
