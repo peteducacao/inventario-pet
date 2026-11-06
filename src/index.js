@@ -234,7 +234,7 @@ async function processRequest(req, env) {
   }
   if (path === "/api/admin/settings" && method === "POST") {
     const b = await input(req,4000), days = String(b.limpeza_reservas);
-    if (days !== "nunca" && (!Number.isSafeInteger(Number(days)) || Number(days) < 1 || Number(days) > 3650)) return bad("Escolha um prazo válido.");
+    if (days !== "nunca" && days !== "1min" && (!Number.isSafeInteger(Number(days)) || Number(days) < 1 || Number(days) > 3650)) return bad("Escolha um prazo válido.");
     await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(days).run();
     if (b.modo_demo === "sim" || b.modo_demo === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('modo_demo',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.modo_demo).run();
     if (b.avisos_email === "sim" || b.avisos_email === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('avisos_email',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.avisos_email).run();
@@ -307,8 +307,8 @@ async function cleanup(db) {
   const cfg = await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_reservas'").first();
   const days = cfg?.valor;
   let removed = 0;
-  if (days && days !== "nunca" && Number(days)>0) {
-    const cutoff = new Date(Date.now() - Number(days) * 86400000).toISOString();
+  if (days === "1min" || (days && days !== "nunca" && Number(days)>0)) {
+    const cutoff = new Date(Date.now() - (days === "1min" ? 60000 : Number(days) * 86400000)).toISOString();
     const done = await db.prepare("DELETE FROM reservas WHERE status='devolvida' AND devolvido_em IS NOT NULL AND devolvido_em < ?").bind(cutoff).run();
     removed = done.meta?.changes || 0;
   }
@@ -330,5 +330,15 @@ export default {
       return bad(msg.length < 180 ? msg : "Não foi possível concluir a operação.",500);
     }
   },
-  async scheduled(_event, env, ctx) { ctx.waitUntil((async () => { await automaticEmails(env); await cleanup(env.DB); })()); }
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {
+      if (event.cron === "* * * * *") {
+        const setting = await env.DB.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_reservas'").first();
+        if (setting?.valor === "1min") await cleanup(env.DB);
+        return;
+      }
+      await automaticEmails(env);
+      await cleanup(env.DB);
+    })());
+  }
 };
