@@ -28,7 +28,9 @@ jobs:
       - name: Verificar sintaxe dos scripts
         run: |
           node --check public/app.js
+          node --check public/identity-ui.js
           node --check src/index.js
+          node --check src/identity.js
       - name: Contar reservas do banco sem mostrar dados pessoais
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
@@ -41,6 +43,8 @@ jobs:
         run: |
           npx wrangler d1 execute DB --remote --command "SELECT chave,valor FROM configuracoes WHERE chave='limpeza_reservas'"
           npx wrangler d1 execute DB --remote --command "SELECT status,COUNT(*) AS total, SUM(CASE WHEN status='devolvida' AND devolvido_em IS NOT NULL AND devolvido_em < strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 minute') THEN 1 ELSE 0 END) AS expiradas FROM reservas GROUP BY status"
+      - name: Testar IDs, tags e retiradas no banco local
+        run: node --disable-warning=ExperimentalWarning tests/identity.test.mjs
       - name: Testar abas e login no navegador simulado
         run: node tests/admin-navigation.test.mjs
       - name: Publicar site
