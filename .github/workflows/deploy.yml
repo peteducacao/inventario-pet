@@ -5,7 +5,6 @@ on:
   workflow_dispatch:
 jobs:
   deploy:
-    if: ${{ vars.DEPLOY_CLOUDFLARE == 'sim' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
