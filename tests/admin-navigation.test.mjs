@@ -4,6 +4,7 @@ import {JSDOM, VirtualConsole} from "jsdom";
 
 const html=readFileSync("public/index.html","utf8");
 const app=readFileSync("public/app.js","utf8");
+const identityUi=readFileSync("public/identity-ui.js","utf8");
 const errors=[];
 const virtualConsole=new VirtualConsole();
 virtualConsole.on("jsdomError",e=>errors.push(String(e)));
@@ -24,6 +25,8 @@ w.fetch=async (uri,init={})=>{
   if(path==="/api/catalog")value={...data,demonstracao:true};
   else if(path==="/api/admin/state")authenticated?value=adminData:(status=401,value={error:"Entre no painel administrativo."});
   else if(path==="/api/login"){authenticated=true;value={ok:true}}
+  else if(path==="/api/identity/me")value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",tag:"visitante",ativo:true,criado_em:"2026-11-06T10:00:00Z"}};
+  else if(path==="/api/admin/users")value={ok:true,usuarios:[{id:"PET-123456789ABC",nome:"Tester",tag:"visitante",ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};
   else if(path==="/api/availability")value={disponiveis:5};
   else {status=404;value={error:"Rota não encontrada"};}
   return {ok:status<400,status,json:async()=>value};
@@ -33,6 +36,7 @@ const tab=name=>d.querySelector('[data-tab="'+name+'"]');
 const panel=()=>d.querySelector("#admin-tab-body");
 const click=async el=>{assert.ok(el,"Controle não encontrado");el.click();await tick();await tick();};
 w.eval(app);
+w.eval(identityUi);
 await tick();
 assert.ok(d.querySelector(".item-card"),"Catálogo não abriu");
 await click(d.querySelector("#admin-button"));
@@ -49,7 +53,7 @@ await tick();await tick();await tick();
 assert.equal(tab("reservas")?.classList.contains("active"),true,"Painel deveria mostrar reservas pendentes após entrar");
 assert.match(panel()?.textContent||"",/Visitante/,"A reserva pendente não aparece");
 assert.ok(panel()?.querySelector('[data-action-reserve="aprovar"]'),"Botão Aprovar indisponível");
-for (const [key,title] of [["materiais","Materiais cadastrados"],["reservas","Solicitações e devoluções"],["categorias","Categorias do inventário"],["configuracoes","Configurações gerais"]]) {
+for (const [key,title] of [["materiais","Materiais cadastrados"],["reservas","Solicitações e devoluções"],["usuarios","Usuários cadastrados"],["categorias","Categorias do inventário"],["configuracoes","Configurações gerais"]]) {
   await click(tab(key));
   assert.equal(tab(key)?.classList.contains("active"),true,"Aba "+key+" não ativou");
   assert.match(panel()?.textContent||"",new RegExp(title),"Conteúdo de "+key+" não abriu");
