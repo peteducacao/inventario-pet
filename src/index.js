@@ -1,4 +1,4 @@
-import { identityAPI } from "./identity.js";
+import { identityAPI, currentIdentity } from "./identity.js";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const j = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...extra } });
 const bad = (message, status = 400) => j({ error: message }, status);
@@ -50,7 +50,9 @@ function validateItem(data) {
     mostrar_quantidade: data.mostrar_quantidade ? 1 : 0,
     mostrar_em_uso: data.mostrar_em_uso ? 1 : 0,
     mostrar_defeito: data.mostrar_defeito ? 1 : 0,
-    descricao_defeito: str(data.descricao_defeito, 1400)
+    descricao_defeito: str(data.descricao_defeito, 1400),
+    observacoes: str(data.observacoes, 1200),
+    unidade: str(data.unidade||"unidades", 40)
   };
   if (!x.nome) throw new Error("Informe o nome do material.");
   if ([x.quantidade, x.em_uso, x.com_defeito].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
@@ -58,8 +60,8 @@ function validateItem(data) {
   if (x.imagem && !(/^\/img\/[a-zA-Z0-9_.-]+\.(svg|webp|jpg|jpeg|png)$/.test(x.imagem) || /^https:\/\//.test(x.imagem) || /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(x.imagem))) throw new Error("A imagem deve ser uma foto válida.");
   return x;
 }
-const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito"];
-const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos" };
+const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade"];
+const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade" };
 function changes(before, after) {
   if (!before) return "Material cadastrado";
   const diffs = fields.filter(key => String(before[key] ?? "") !== String(after[key] ?? "")).map(key => key === "imagem" ? "Fotografia atualizada" : names[key] + ": " + str(before[key] ?? "—", 42) + " → " + str(after[key] ?? "—", 42));
@@ -67,7 +69,7 @@ function changes(before, after) {
 }
 async function catalog(db, isAdmin = false) {
   const cats = await results(db, "SELECT id,nome,ordem FROM categorias ORDER BY ordem,nome");
-  const items = await results(db, "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE");
+  const items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
   if (!isAdmin) for (const item of items) { delete item.ultimo_responsavel; delete item.detalhes_alteracao; }
   return { categorias: cats, componentes: items };
 }
@@ -76,6 +78,7 @@ async function state(db) {
   data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.solicitado_em DESC LIMIT 1500");
   const config = await results(db, "SELECT chave,valor FROM configuracoes");
   data.configuracoes = Object.fromEntries(config.map(x => [x.chave, x.valor]));
+  data.ultima_atualizacao = data.componentes.reduce((best,item)=>item.ultima_alteracao>best?item.ultima_alteracao:best,"");
   return data;
 }
 const maxReserved = async (db, id, start, end, except = -1) => {
@@ -112,7 +115,7 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id")), a = url.searchParams.get("inicio"), b = url.searchParams.get("fim");
     if (!dateOK(a) || !dateOK(b) || a > b) return bad("Período inválido.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    if (!item) return bad("Material não encontrado.", 404);
+    if (!item || item.arquivado===1) return bad("Material não encontrado.", 404);
     return j({ disponiveis:Math.max(0, baseAvailable(item) - await maxReserved(db,id,a,b)) });
   }
   if (path === "/api/reservations" && method === "POST") {
@@ -120,7 +123,8 @@ async function processRequest(req, env) {
     if (body.website) return j({ ok:true });
     const id = requireId(body.componente_id);
     const quantidade = Number(body.quantidade);
-    const nome = str(body.nome_solicitante, 100);
+    const identity = await currentIdentity(req, db);
+    const nome = identity ? identity.nome : str(body.nome_solicitante, 100);
     const contato = str(body.contato, 140);
     const email = str(body.email, 180).toLowerCase();
     if (!validEmail(email)) return bad("Informe um e-mail válido ou deixe o campo vazio.");
@@ -128,10 +132,10 @@ async function processRequest(req, env) {
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    if (!item) return bad("Material não encontrado.",404);
+    if (!item || item.arquivado===1) return bad("Material não encontrado.",404);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
-    await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em) VALUES (?,?,?,?,?,?,?,'pendente',?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now()).run();
+    await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id) VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now(),identity?.id||null).run();
     return j({ ok:true, mensagem:"Solicitação enviada. Aguarde a aprovação do PET." },201);
   }
   if (path === "/api/login" && method === "POST") {
@@ -233,6 +237,14 @@ async function processRequest(req, env) {
         db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'").bind(current,actor,str(b.observacao,500),id)
       ]);
     } else return bad("Ação não permitida para o estado atual desta reserva.",409);
+    if(r.usuario_id){
+      let titulo="",mensagem="",tipo="info";
+      if(action==="aprovar"){titulo="Reserva aprovada";mensagem="Sua solicitação de "+item.nome+" foi aprovada.";tipo="aprovada";}
+      else if(action==="recusar"){titulo="Reserva recusada";mensagem="A solicitação de "+item.nome+" não foi aprovada.";tipo="recusada";}
+      else if(action==="retirar"){titulo="Retirada registrada";mensagem="A retirada de "+item.nome+" foi registrada.";tipo="retirada";}
+      else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução de "+item.nome+" foi confirmada.";tipo="devolucao";}
+      if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
+    }
     return j({ ok:true });
   }
   if (path === "/api/admin/settings" && method === "POST") {
