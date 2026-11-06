@@ -35,8 +35,9 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,20));
 const tab=name=>d.querySelector('[data-tab="'+name+'"]');
 const panel=()=>d.querySelector("#admin-tab-body");
 const click=async el=>{assert.ok(el,"Controle não encontrado");el.click();await tick();await tick();};
-w.eval(app);
-w.eval(identityUi);
+// No navegador os scripts classicos compartilham escopo global; no jsdom eval,
+// compilamos ambos no mesmo contexto para reproduzir esse comportamento.
+w.eval(app+"\n"+identityUi);
 await tick();
 assert.ok(d.querySelector(".item-card"),"Catálogo não abriu");
 await click(d.querySelector("#admin-button"));
