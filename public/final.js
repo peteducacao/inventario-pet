@@ -256,7 +256,7 @@ function setupFinalPublic(){
   $("#stats-toggle").onclick=()=>{UI.summaryMinimized=!UI.summaryMinimized;stored("pet_public_summary_closed",UI.summaryMinimized?"1":"0");finalRender();};
   $("#profile-button").onclick=openUserMenu;
   $("#notification-button").onclick=()=>{if(!state.identity){identityLoginModal();return;}openMyNotificationPopover();};
-  $("#admin-button").onclick=enterAdmin;
+  $("#admin-button").onclick=()=>enterAdmin(false);
   $("#reserve-button").onclick=()=>{
     if(!state.identity){identityLoginModal();return;}
     if(identityIsMember())memberWithdrawModal();else reserveModal(null);
