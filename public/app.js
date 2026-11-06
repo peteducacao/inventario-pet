@@ -1,6 +1,6 @@
 /* Inventário PET Educação — interface leve, sem frameworks. */
 "use strict";
-const state = { data:{categorias:[],componentes:[],demonstracao:false}, admin:null, tab:"materiais", filter:"all", query:"", actor:localStorage.getItem("pet_inventario_nome")||"", busy:false, modal:null };
+const state = { data:{categorias:[],componentes:[],demonstracao:false}, admin:null, tab:"materiais", filter:"all", query:"", actor:localStorage.getItem("pet_inventario_nome")||"", identity:null, busy:false, modal:null };
 const $ = (s,root=document) => root.querySelector(s);
 const $$ = (s,root=document) => Array.from(root.querySelectorAll(s));
 const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -58,6 +58,9 @@ function render(){
   $("#profile-name").textContent=state.actor||"PETiane";
   $("#header-avatar").textContent=(state.actor||"P").slice(0,1).toUpperCase();
   $("#admin-button-text").textContent=state.admin?"Painel":"Administração";
+  const isMember=state.identity?.tag==="petiano";
+  $("#reserve-button").innerHTML=isMember?'✓ Registrar retirada':'◷ Solicitar reserva';
+  $("#profile-button").title=state.identity?state.identity.nome+" · "+(isMember?"PETiano":"Visitante")+" · "+state.identity.id:"Criar meu perfil";
 }
 function card(x, category){
   const img=x.imagem?'<img loading="lazy" src="'+attr(x.imagem)+'" alt="Fotografia de '+attr(x.nome)+'" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="fallback-icon" hidden>'+iconFor(category)+'</span>':'<span class="fallback-icon">'+iconFor(category)+'</span>';
@@ -68,7 +71,7 @@ function card(x, category){
     (flag(x.mostrar_defeito)?'<div class="count-pill '+(x.com_defeito?"bad":"")+'"><span>Com defeito</span><strong>'+moneyless(x.com_defeito)+'</strong></div>':"")+'</div>';
   return '<article class="item-card"><button class="item-photo" type="button" data-photo="'+x.id+'" aria-label="Ampliar fotografia de '+attr(x.nome)+'">'+img+(state.data.demonstracao?'<span class="test-tag">EXEMPLO</span>':"")+'</button><div class="item-body"><div class="item-name">'+esc(x.nome)+'</div><div class="item-meta">'+(x.identificacao?esc(x.identificacao)+' · ':"")+(x.patrimonio?'Patrimônio: '+esc(x.patrimonio):'Sem número de patrimônio cadastrado')+'</div>'+status+
     (flag(x.mostrar_defeito)&&x.com_defeito&&x.descricao_defeito?'<button class="link-button" style="text-align:left;margin-top:11px" data-defect="'+x.id+'">ⓘ Ver informações do defeito</button><div class="expand-defect" id="defect-'+x.id+'" hidden>'+esc(x.descricao_defeito)+'</div>':"")+
-    '<div class="item-footer"><span class="date-small">Atualizado: '+esc(fmt(x.ultima_alteracao))+'</span><button class="link-button" data-reserve-item="'+x.id+'" type="button">Reservar ›</button></div></div></article>';
+    '<div class="item-footer"><span class="date-small">Atualizado: '+esc(fmt(x.ultima_alteracao))+'</span><button class="link-button" data-reserve-item="'+x.id+'" type="button">'+(state.identity?.tag==='petiano'?'Retirar ›':'Reservar ›')</button></div></div></article>';
 }
 function openModal(title,subtitle,body,opts={}) {
   closeModal();
@@ -81,11 +84,7 @@ function openModal(title,subtitle,body,opts={}) {
 }
 function closeModal(){$("#modal-root").innerHTML="";document.body.style.overflow="";state.modal=null;}
 document.addEventListener("keydown",ev=>{if(ev.key==="Escape"&&state.modal)closeModal();if(ev.key==="/"&&!state.modal&&document.activeElement?.tagName!=="INPUT"){ev.preventDefault();$("#search").focus()}});
-function profileModal(first=false){
-  openModal("Quem é você, PETiane?","Seu nome identifica suas alterações no painel, sem precisar criar conta.",'<form id="profile-form" class="modal-main"><div class="field"><label for="p-name">Como podemos chamar você?</label><input id="p-name" name="name" maxlength="80" required autocomplete="name" placeholder="Seu nome" value="'+attr(state.actor)+'"></div><p class="notice">Este nome ficará lembrado apenas neste navegador. Em outro aparelho, basta informá-lo novamente. Você pode alterá-lo quando quiser.</p><div class="modal-footer" style="padding:18px 0 0;border:0"><button type="submit" class="primary-button">Salvar meu nome</button></div></form>');
-  $("#profile-form").onsubmit=e=>{e.preventDefault();const name=$("#p-name").value.trim();if(!name)return;state.actor=name;localStorage.setItem("pet_inventario_nome",name);closeModal();render();toast("Bem-vindo(a), "+name+"!")};
-  if(first)$("#p-name").focus();
-}
+function profileModal(first=false){if(state.identity)return identityProfileModal();return identityRegisterModal(first);}
 function dateInput(name,label,value,min=""){return '<div class="field"><label for="'+name+'">'+label+'</label><input type="date" id="'+name+'" value="'+attr(value||"")+'" '+(min?'min="'+attr(min)+'"':"")+' required></div>'}
 function inputField(name,label,value="",opts={}){return '<div class="field"><label for="'+name+'">'+esc(label)+'</label><input id="'+name+'" name="'+name+'" type="'+(opts.type||"text")+'" '+(opts.required?"required":"")+' maxlength="'+(opts.max||140)+'" placeholder="'+attr(opts.placeholder||"")+'" value="'+attr(value)+'"></div>'}
 function selectField(id,label,options,selected,first=false){return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><select id="'+id+'">'+(first?'<option value="">Selecione</option>':"")+options.map(x=>'<option value="'+attr(x.value)+'" '+(String(selected)===String(x.value)?"selected":"")+'>'+esc(x.label)+'</option>').join("")+'</select></div>'}
@@ -176,7 +175,7 @@ async function openAdmin(){
 }
 function adminModal(){
   if(!state.admin)return openAdmin();
-  const tabs=[["materiais","▦","Materiais"],["reservas","◷","Reservas"],["categorias","⊞","Categorias"],["configuracoes","⚙","Configurações"]];
+  const tabs=[["materiais","▦","Materiais"],["reservas","◷","Reservas"],["usuarios","♙","Usuários"],["categorias","⊞","Categorias"],["configuracoes","⚙","Configurações"]];
   const count=state.admin.reservas.filter(r=>r.status==="pendente").length;
   const content='<nav class="tabs" aria-label="Áreas do painel">'+tabs.map(([key,symbol,label])=>'<button type="button" class="tab '+(state.tab===key?"active":"")+'" data-tab="'+key+'"><span aria-hidden="true">'+symbol+'</span> '+label+(key==="reservas"&&count?' <span class="tab-count">'+count+'</span>':"")+'</button>').join("")+'</nav><div id="admin-tab-body"></div>';
   openModal("Gerenciar inventário","Administração do PET Educação · "+(state.actor||"PETiane"),content,{size:"full"});
@@ -196,6 +195,7 @@ function renderTab(){
   if(state.tab==="materiais")return renderAdminMaterials(target);
   if(state.tab==="reservas")return renderAdminReservations(target);
   if(state.tab==="categorias")return renderAdminCategories(target);
+  if(state.tab==="usuarios")return renderAdminUsers(target);
   return renderSettings(target);
 }
 function renderAdminMaterials(target){
@@ -393,14 +393,23 @@ $("#category-filters").addEventListener("click",e=>{const b=e.target.closest("[d
 $("#category-sections").addEventListener("click",e=>{
   const photo=e.target.closest("[data-photo]");if(photo){openPhoto(Number(photo.dataset.photo));return;}
   const defect=e.target.closest("[data-defect]");if(defect){const x=$("#defect-"+defect.dataset.defect);if(x)x.hidden=!x.hidden;return;}
-  const book=e.target.closest("[data-reserve-item]");if(book)reserveModal(Number(book.dataset.reserveItem));
+  const book=e.target.closest("[data-reserve-item]");if(book)(state.identity?.tag==="petiano"?memberWithdrawModal:reserveModal)(Number(book.dataset.reserveItem));
 });
-$("#reserve-button").onclick=()=>reserveModal(null);
+$("#reserve-button").onclick=()=> (state.identity?.tag==="petiano"?memberWithdrawModal:reserveModal)(null);
 $("#profile-button").onclick=()=>profileModal();
 $("#admin-button").onclick=openAdmin;
 $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda sem conexão.",true)}};
 (async()=>{
-  try{await publicReload();if(!state.actor)setTimeout(()=>profileModal(true),400)}
+  try{
+    await publicReload();
+    try{
+      const info=await api("/api/identity/me");
+      state.identity=info.usuario||null;
+      if(state.identity){state.actor=state.identity.nome;localStorage.setItem("pet_inventario_nome",state.actor);}
+    }catch(e){console.warn("Identidade temporariamente indisponível",e);}
+    render();
+    if(!state.identity)setTimeout(()=>profileModal(true),400);
+  }
   catch(error){
     console.error(error);
     $("#offline-alert").hidden=false;
