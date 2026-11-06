@@ -25,3 +25,27 @@
 .admin-reservations-shortcut button{width:100%}
 .panel-head{align-items:flex-start}
 }
+
+/* Perfis pessoais e registro de materiais pelos PETianos */
+.tabs{grid-template-columns:repeat(5,minmax(0,1fr))}
+.identity-profile-head{display:flex;align-items:center;gap:13px;margin-bottom:20px;padding-bottom:17px;border-bottom:1px solid var(--line)}
+.identity-profile-head>div:last-child{display:flex;align-items:flex-start;flex-direction:column;gap:6px}
+.identity-profile-head strong{font-size:19px;letter-spacing:-.4px}
+.identity-avatar{width:51px;height:51px;flex-shrink:0;border-radius:15px;display:grid;place-items:center;color:#fff;background:linear-gradient(150deg,#2da78d,#1b6b79);font-size:24px;font-weight:800}
+.copy-field{display:flex;align-items:stretch;gap:8px}
+.copy-field input{font-weight:750;letter-spacing:.3px;min-width:0}
+.copy-field button{min-width:82px;font-size:12px}
+.identity-actions{margin-top:20px;display:flex;gap:9px;flex-wrap:wrap}
+.identity-actions button{flex:1 1 180px}
+.identity-separator{margin:18px 0 14px;text-align:center;font-size:12px;color:#83919b;position:relative}
+.user-role-row{min-width:0}
+.user-role-row .main-info strong{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.user-role-row small{margin-top:3px}
+.user-role-row code{background:#f3f7f9;padding:2px 5px;border-radius:4px;color:#53687a;font-size:11px}
+@media(max-width:720px){
+ .tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .tabs .tab:last-child{grid-column:span 2}
+ .user-role-row{align-items:flex-start}
+ .user-role-row .actions button{white-space:nowrap}
+ .identity-actions button{flex:1 1 100%}
+}
