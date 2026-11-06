@@ -66,27 +66,48 @@ function pageButtons(info,which){
   html+='<button type="button" data-page="'+Math.min(info.pages,info.page+1)+'" '+(info.page===info.pages?"disabled":"")+' aria-label="Próxima página">›</button><span class="page-info">'+info.total+' itens</span>';
   return html;
 }
+// Fotos reais de referência (Wikimedia Commons), em resolução ajustada pelo CDN.
+// Referências ilustrativas não indicam necessariamente marca ou modelo exatos do acervo.
+const realPhoto=(name)=>{
+ const file=encodeURIComponent(name).replace(/%2F/g,"/");
+ return "https://commons.wikimedia.org/wiki/Special:FilePath/"+file+"?width=800";
+};
+const PET_PHOTOS={
+  generic:realPhoto("Electronic_components.jpg"),
+  esp32:realPhoto("ESP32_Dev_Board.jpg"),
+  arduino:realPhoto("Arduino_Uno_board.jpg"),
+  tablet:realPhoto("Samsung_galaxy_tab_a7_2020.jpg"),
+  notebook:realPhoto("Laptop_image.jpg"),
+  motor:realPhoto("Dc_motors.jpg"),
+  pen:realPhoto("BALL_PEN.jpg")
+};
 function defaultImage(name){
   const n=String(name||"").toLowerCase();
-  if(n.startsWith("tablet"))return "/img/reference-tablet.svg";
-  if(n.startsWith("notebook"))return "/img/reference-notebook.svg";
-  if(/esp\s*32|arduino|protoboard/.test(n))return "/img/reference-board.svg";
-  if(/motor dc|mini motor|motor de passo/.test(n))return "/img/reference-motor.svg";
-  return "";
+  if(/esp\s*32/.test(n))return PET_PHOTOS.esp32;
+  if(/arduino|protoboard/.test(n))return PET_PHOTOS.arduino;
+  if(/tablet/.test(n))return PET_PHOTOS.tablet;
+  if(/notebook|laptop/.test(n))return PET_PHOTOS.notebook;
+  if(/motor dc|mini motor|motor de passo|motor de posso/.test(n))return PET_PHOTOS.motor;
+  if(/caneta|esferográfica/.test(n))return PET_PHOTOS.pen;
+  return PET_PHOTOS.generic;
+}
+function itemImage(x){
+  const img=String(x.imagem||"").trim();
+  return img && !/^\/img\/reference-(?:board|electronics|motor|tablet|notebook)\.svg$/i.test(img)?img:defaultImage(x.nome);
 }
 function thumb(x,clazz="material-thumb"){
-  const img=x.imagem||defaultImage(x.nome);
-  return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.style.display=\'none\'">':"")+'</div>';
+  const img=itemImage(x);
+  return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src='/img/reference-board.svg'">':"")+'</div>';
 }
 function finalCard(x){
   const free=stock(x),status=free>0?"Disponível":"Sem estoque",type=free===0?"empty":Number(x.em_uso)>0?"busy":"";
-  const img=x.imagem||defaultImage(x.nome);
+  const img=itemImage(x);
   const canWithdraw=identityIsMember();
   const label=canWithdraw?"Retirar":"Reservar";
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   return '<article class="catalog-card"><button type="button" class="catalog-photo" '+(img?'data-photo="'+x.id+'"':'disabled')+' aria-label="Ampliar foto de '+attr(x.nome)+'">'+
-    (img?'<img src="'+attr(img)+'" alt="'+attr(x.nome)+'" loading="lazy" onerror="this.style.display=\'none\'">':'<span class="no-photo"></span>')+
+    (img?'<img src="'+attr(img)+'" alt="'+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src='/img/reference-board.svg'">':'<span class="no-photo"></span>')+
     '<span class="status-dot '+type+'">'+status+'</span></button>'+
     '<div class="catalog-body"><h3>'+esc(x.nome)+'</h3><span class="catalog-category">'+esc(category)+'</span><span class="catalog-asset" title="'+attr(asset)+'">'+(asset||' ')+'</span>'+
     '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+Number(x.quantidade)+'</strong></div><div><span>Em uso</span><strong>'+Number(x.em_uso)+'</strong></div><div><span>Defeito</span><strong class="'+(Number(x.com_defeito)?"stock-defect":"")+'">'+Number(x.com_defeito)+'</strong></div></div>'+
