@@ -4,6 +4,7 @@ const bad = (message, status = 400) => j({ error: message }, status);
 const now = () => new Date().toISOString();
 const str = (value, max = 200) => String(value ?? "").trim().slice(0, max);
 const integer = value => value === "" || value == null ? NaN : Number(value);
+const validEmail = email => !email || (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 180);
 const dateOK = value => {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const dt = new Date(value + "T12:00:00Z");
@@ -120,6 +121,8 @@ async function processRequest(req, env) {
     const quantidade = Number(body.quantidade);
     const nome = str(body.nome_solicitante, 100);
     const contato = str(body.contato, 140);
+    const email = str(body.email, 180).toLowerCase();
+    if (!validEmail(email)) return bad("Informe um e-mail válido ou deixe o campo vazio.");
     const inicio = str(body.data_inicio, 10), fim = str(body.data_devolucao, 10);
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
@@ -127,7 +130,7 @@ async function processRequest(req, env) {
     if (!item) return bad("Material não encontrado.",404);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
-    await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em) VALUES (?,?,?,?,? ,?,'pendente',?,?)").bind(id,nome,contato,quantidade,inicio,fim,str(body.observacao,500),now()).run();
+    await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em) VALUES (?,?,?,?,?,?,?,'pendente',?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now()).run();
     return j({ ok:true, mensagem:"Solicitação enviada. Aguarde a aprovação do PET." },201);
   }
   if (path === "/api/login" && method === "POST") {
@@ -234,6 +237,7 @@ async function processRequest(req, env) {
     if (days !== "nunca" && (!Number.isSafeInteger(Number(days)) || Number(days) < 1 || Number(days) > 3650)) return bad("Escolha um prazo válido.");
     await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(days).run();
     if (b.modo_demo === "sim" || b.modo_demo === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('modo_demo',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.modo_demo).run();
+    if (b.avisos_email === "sim" || b.avisos_email === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('avisos_email',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.avisos_email).run();
     return j({ ok:true });
   }
   if (path === "/api/admin/backup" && method === "GET") {
@@ -255,18 +259,49 @@ async function processRequest(req, env) {
       const v = validateItem(raw);
       ops.push(db.prepare("INSERT INTO componentes(id,"+fields.join(",")+",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES("+Array(fields.length+4).fill("?").join(",")+")").bind(raw.id,...fields.map(k=>v[k]),raw.ultima_alteracao||null,str(raw.ultimo_responsavel,100),str(raw.detalhes_alteracao,2000)));
     }
-    for (const r of b.reservas) ops.push(db.prepare("INSERT INTO reservas(id,componente_id,nome_solicitante,contato,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,aprovado_em,retirado_em,devolvido_em,responsavel_admin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(r.id,r.componente_id,str(r.nome_solicitante,100),str(r.contato,140),Number(r.quantidade)||1,r.data_inicio,r.data_devolucao,r.status,str(r.observacao,500),r.solicitado_em||now(),r.aprovado_em||null,r.retirado_em||null,r.devolvido_em||null,str(r.responsavel_admin,100)));
+    for (const r of b.reservas) ops.push(db.prepare("INSERT INTO reservas(id,componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,aprovado_em,retirado_em,devolvido_em,responsavel_admin,aviso_atraso_em) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(r.id,r.componente_id,str(r.nome_solicitante,100),str(r.contato,140),str(r.email,180),Number(r.quantidade)||1,r.data_inicio,r.data_devolucao,r.status,str(r.observacao,500),r.solicitado_em||now(),r.aprovado_em||null,r.retirado_em||null,r.devolvido_em||null,str(r.responsavel_admin,100),r.aviso_atraso_em||null));
     const cfg = b.configuracoes && typeof b.configuracoes === "object" ? b.configuracoes : {};
     for (const [key, value] of Object.entries(cfg)) if (/^[a-z_]{1,50}$/.test(key)) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,100)));
     if (!cfg.limpeza_reservas) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
     await db.batch(ops);
     return j({ ok:true });
   }
+  if (path === "/api/admin/reminder" && method === "POST") {
+    const b = await input(req,2000), id = requireId(b.id);
+    const row = await db.prepare("SELECT r.*,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.id=?").bind(id).first();
+    if (!row || row.status !== "retirada" || row.data_devolucao >= todayBR()) return bad("Somente retiradas em atraso podem receber cobrança.",409);
+    const sent = await emailReminder(env, row);
+    if (!sent) return bad("Configure o serviço de e-mail e confira o endereço do solicitante.",503);
+    await db.prepare("UPDATE reservas SET aviso_atraso_em=? WHERE id=?").bind(now(),id).run();
+    return j({ok:true});
+  }
   if (path === "/api/admin/cleanup" && method === "POST") {
     const count = await cleanup(db);
     return j({ ok:true, removidas:count });
   }
   return bad("Rota não encontrada.",404);
+}
+async function emailReminder(env, row) {
+  if (!env.BREVO_API_KEY || !env.EMAIL_FROM || !validEmail(row.email) || !row.email) return false;
+  const message = "Olá, "+row.nome_solicitante+"!\n\nO PET Educação informa que a devolução do material \""+row.componente_nome+"\" (reserva #"+row.id+") estava prevista para "+row.data_devolucao.split("-").reverse().join("/")+" e ainda não foi registrada.\n\nPedimos, por gentileza, que entre em contato com o PET para combinar a devolução. Caso já tenha devolvido, desconsidere este lembrete e avise nossa equipe.\n\nPET Educação";
+  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+    method:"POST",
+    headers:{"api-key":env.BREVO_API_KEY,"content-type":"application/json","accept":"application/json"},
+    body:JSON.stringify({sender:{email:env.EMAIL_FROM,name:"PET Educação"},to:[{email:row.email,name:row.nome_solicitante}],subject:"PET Educação: lembrete de devolução do material",textContent:message})
+  });
+  if (!response.ok) { console.error("Brevo: erro de envio",response.status); return false; }
+  return true;
+}
+async function automaticEmails(env) {
+  if (!env.DB || !env.BREVO_API_KEY || !env.EMAIL_FROM) return;
+  const setting = await env.DB.prepare("SELECT valor FROM configuracoes WHERE chave='avisos_email'").first();
+  if (setting?.valor !== "sim") return;
+  const due = await results(env.DB,"SELECT r.*,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.status='retirada' AND r.data_devolucao<? AND r.email!='' AND r.aviso_atraso_em IS NULL ORDER BY r.data_devolucao ASC LIMIT 80",[todayBR()]);
+  for (const row of due) {
+    try {
+      if (await emailReminder(env,row)) await env.DB.prepare("UPDATE reservas SET aviso_atraso_em=? WHERE id=? AND aviso_atraso_em IS NULL").bind(now(),row.id).run();
+    } catch(error) { console.error("Falha em lembrete da reserva",row.id,String(error).slice(0,100)); }
+  }
 }
 async function cleanup(db) {
   const cfg = await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_reservas'").first();
@@ -295,5 +330,5 @@ export default {
       return bad(msg.length < 180 ? msg : "Não foi possível concluir a operação.",500);
     }
   },
-  async scheduled(_event, env, ctx) { ctx.waitUntil(cleanup(env.DB)); }
+  async scheduled(_event, env, ctx) { ctx.waitUntil((async () => { await automaticEmails(env); await cleanup(env.DB); })()); }
 };
