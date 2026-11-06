@@ -15,6 +15,8 @@ const w=dom.window,d=w.document;
 w.addEventListener("error",e=>errors.push(String(e.error||e.message)));
 w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
 w.confirm=()=>true;
+// jsdom não implementa rolagem; navegadores reais implementam.
+w.HTMLElement.prototype.scrollIntoView=function(){};
 let adminAuthenticated=false;
 const material={
   id:1,categoria_id:1,nome:"ESP32 de teste",imagem:"",patrimonio:"PET-001",
