@@ -5,7 +5,7 @@ import {identityAPI} from "../src/identity.js";
 
 const db=new DatabaseSync(":memory:");
 db.exec("PRAGMA foreign_keys=ON");
-for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql"]){
+for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql"]){
   db.exec(readFileSync("migrations/"+f,"utf8"));
 }
 class Prepared {
@@ -77,7 +77,7 @@ assert.equal(list.body.usuarios.find(u=>u.login==="sergio01").tag,"petiano");
 assert.ok(!JSON.stringify(list.body).includes(senhaA));
 assert.ok(!JSON.stringify(list.body).includes(saved.password_hash));
 
-const item=db.prepare("SELECT * FROM componentes WHERE nome LIKE 'ESP32%'").get();
+const item=db.prepare("SELECT * FROM componentes WHERE nome LIKE 'Esp 32%' AND arquivado=0").get();
 assert.ok(item);
 const start=new Date().toISOString().slice(0,10),end=new Date(Date.now()+7*86400000).toISOString().slice(0,10);
 assert.equal((await post("/api/member/withdraw",{componente_id:item.id,quantidade:1,data_devolucao:end},loginB.cookie)).status,403);
