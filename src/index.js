@@ -111,6 +111,10 @@ async function processRequest(req, env) {
     const mode = await db.prepare("SELECT valor FROM configuracoes WHERE chave='modo_demo'").first();
     return j({ ...data, demonstracao:mode?.valor === "sim" });
   }
+  if(path==="/api/filaments" && method==="GET"){
+    const filamentos=await results(db,"SELECT id,cor,hexadecimal,quantidade,ordem,atualizado_em FROM filamentos ORDER BY ordem,cor COLLATE NOCASE");
+    return j({ok:true,filamentos});
+  }
   if (path === "/api/availability" && method === "GET") {
     const id = requireId(url.searchParams.get("id")), a = url.searchParams.get("inicio"), b = url.searchParams.get("fim");
     if (!dateOK(a) || !dateOK(b) || a > b) return bad("Período inválido.");
@@ -158,6 +162,34 @@ async function processRequest(req, env) {
   if (!path.startsWith("/api/admin/")) return bad("Endereço não encontrado.",404);
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
   if (path === "/api/admin/state" && method === "GET") return j(await state(db));
+  if(path==="/api/admin/filaments" && method==="POST"){
+    const b=await input(req,2500),acao=str(b.acao,20);
+    if(acao==="excluir"){
+      const id=requireId(b.id);
+      const result=await db.prepare("DELETE FROM filamentos WHERE id=?").bind(id).run();
+      if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
+      return j({ok:true});
+    }
+    if(acao==="ordenar"){
+      if(!Array.isArray(b.ordem)||b.ordem.length>500||b.ordem.some(x=>!Number.isSafeInteger(Number(x))||Number(x)<1)||new Set(b.ordem.map(Number)).size!==b.ordem.length)return bad("Ordem inválida.");
+      if(b.ordem.length){
+        await db.batch(b.ordem.map((id,i)=>db.prepare("UPDATE filamentos SET ordem=? WHERE id=?").bind(i,Number(id))));
+      }
+      return j({ok:true});
+    }
+    if(acao!=="criar" && acao!=="editar")return bad("Ação inválida.");
+    const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade);
+    if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
+    if(acao==="criar"){
+      const x=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
+      await db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em) VALUES(?,?,?,?,?)").bind(cor,hexadecimal,q,x.proximo,now()).run();
+    }else{
+      const id=requireId(b.id);
+      const result=await db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,now(),id).run();
+      if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
+    }
+    return j({ok:true});
+  }
   if (path === "/api/admin/item" && method === "POST") {
     const body = await input(req);
     const item = validateItem(body);
