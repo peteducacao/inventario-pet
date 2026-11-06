@@ -191,8 +191,9 @@ async function renderAdminUsers(target){
   }catch(error){if(document.contains(target))target.innerHTML='<section class="panel-section"><div class="alert alert-error">'+esc(error.message)+'</div></section>';}
 }
 function renderAdminUserList(target,users){
-  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Usuários cadastrados</h3><p>'+users.length+' perfil(is). Pesquise por nome ou ID, inclusive se duas pessoas tiverem o mesmo nome.</p></div></div>'+
+  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Usuários cadastrados</h3><p>'+users.length+' perfil(is). Pesquise pelo nome ou ID, mesmo se duas pessoas tiverem o mesmo nome.</p></div></div>'+
     '<div class="field"><label for="user-search">Buscar usuário</label><input id="user-search" type="search" placeholder="Nome ou ID PET-..." value="'+attr(userSearch)+'"></div>'+
+    '<p class="notice warning" style="margin-bottom:14px">O código de recuperação antigo nunca é visível, nem para o administrador. Você pode gerar outro código quando a pessoa perder o acesso.</p>'+
     '<div class="admin-list" id="users-list"></div></section>';
   const list=$("#users-list");
   function updateList(){
@@ -203,7 +204,10 @@ function renderAdminUserList(target,users){
       return '<div class="admin-list-row user-role-row"><div class="main-info"><strong>'+esc(u.nome)+' <span class="status '+(member?"picked":"done")+'">'+(member?"PETiano":"Visitante")+'</span></strong>'+
         '<small>ID: <code>'+esc(u.id)+'</code> · Desde '+esc(formatDay(u.criado_em.slice(0,10)))+'</small>'+
         '<small>'+u.retiradas_ativas+' retirada(s) em uso'+(active?"":" · CONTA BLOQUEADA")+'</small></div>'+
-        '<div class="actions"><button type="button" class="'+(member?"secondary-button":"primary-button")+' small-button" data-user-id="'+attr(u.id)+'" data-user-tag="'+(member?"visitante":"petiano")+'" '+(active?"":"disabled")+'>'+(member?"Remover tag":"Tornar PETiano")+'</button></div></div>';
+        '<div class="actions user-actions">'+
+        '<button type="button" class="'+(member?"secondary-button":"primary-button")+' small-button" data-user-id="'+attr(u.id)+'" data-user-tag="'+(member?"visitante":"petiano")+'" '+(active?"":"disabled")+'>'+(member?"Remover tag":"Tornar PETiano")+'</button>'+
+        '<button type="button" class="outline-button small-button" data-user-recovery="'+attr(u.id)+'" '+(active?"":"disabled")+'>Novo código</button>'+
+        '<button type="button" class="danger-button small-button" data-user-delete="'+attr(u.id)+'">Excluir</button></div></div>';
     }).join(""):'<div class="empty-state">Nenhum usuário encontrado.</div>';
     $$("[data-user-tag]",list).forEach(btn=>btn.onclick=async()=>{
       const u=users.find(x=>x.id===btn.dataset.userId);
@@ -217,7 +221,56 @@ function renderAdminUserList(target,users){
         await renderAdminUsers(target);
       }catch(error){toast(error.message,true);btn.disabled=false;}
     });
+    $$("[data-user-recovery]",list).forEach(btn=>btn.onclick=()=>{
+      const u=users.find(x=>x.id===btn.dataset.userRecovery);
+      if(u)adminRecoveryModal(u);
+    });
+    $$("[data-user-delete]",list).forEach(btn=>btn.onclick=()=>{
+      const u=users.find(x=>x.id===btn.dataset.userDelete);
+      if(u)adminDeleteUserModal(u);
+    });
   }
   $("#user-search").oninput=e=>{userSearch=e.target.value;updateList();};
   updateList();
+}
+function adminRecoveryModal(u){
+  openModal("Recuperar acesso de usuário","Perfil: "+u.nome+" · "+u.id,
+    '<div class="modal-main"><p class="notice warning">Confirme pessoalmente a identidade do integrante antes de gerar um código. O código anterior deixará de funcionar e o usuário precisará entrar novamente em todos os dispositivos.</p>'+
+    '<p style="font-size:13px">O sistema não permite visualizar o código privado antigo. Você poderá copiar o novo código uma única vez e entregá-lo ao integrante.</p>'+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="button" class="secondary-button" id="admin-recovery-cancel">Cancelar</button><button type="button" class="primary-button" id="admin-recovery-generate">Gerar novo código</button></div></div>');
+  $("#admin-recovery-cancel").onclick=adminModal;
+  $("#admin-recovery-generate").onclick=async()=>{
+    const btn=$("#admin-recovery-generate");
+    btn.disabled=true;btn.textContent="Gerando…";
+    try{
+      const result=await api("/api/admin/users/recovery","POST",{id:u.id});
+      adminShowRecoveryCode(result);
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Gerar novo código";}
+  };
+}
+function adminShowRecoveryCode(result){
+  openModal("Novo código gerado","Entregue estas informações somente ao titular do perfil.",
+    '<div class="modal-main">'+
+    '<p class="notice warning"><strong>Atenção:</strong> o código antigo foi invalidado, assim como as sessões anteriores. Copie o novo código agora. Por segurança ele não aparecerá novamente no painel.</p>'+
+    '<div class="field"><label for="admin-recovery-id">ID público de '+esc(result.nome)+'</label><div class="copy-field"><input id="admin-recovery-id" readonly value="'+attr(result.id)+'"><button type="button" class="outline-button" id="admin-copy-id">Copiar</button></div></div>'+
+    '<div class="field"><label for="admin-new-code">Novo código privado</label><div class="copy-field"><input id="admin-new-code" readonly value="'+attr(result.codigo_recuperacao)+'"><button type="button" class="outline-button" id="admin-copy-code">Copiar</button></div></div>'+
+    '<p class="notice">O integrante acessa <strong>Meu perfil → Usar perfil existente</strong> e informa o ID e o novo código.</p>'+
+    '<button type="button" class="primary-button" style="width:100%" id="admin-recovery-done">Concluir</button></div>');
+  $("#admin-copy-id").onclick=()=>copyValue(result.id,$("#admin-recovery-id"));
+  $("#admin-copy-code").onclick=()=>copyValue(result.codigo_recuperacao,$("#admin-new-code"));
+  $("#admin-recovery-done").onclick=adminModal;
+}
+function adminDeleteUserModal(u){
+  openModal("Excluir usuário","Confirme a exclusão de "+u.nome+" · "+u.id,
+    '<div class="modal-main"><p class="notice warning"><strong>Esta exclusão é permanente.</strong> O perfil, a tag e as sessões serão encerrados. O histórico das movimentações concluídas será preservado para controle patrimonial.</p>'+
+    '<p style="font-size:13px">Se houver uma reserva ou retirada ainda em andamento, a exclusão será bloqueada até que ela seja finalizada.</p>'+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="button" class="secondary-button" id="admin-delete-cancel">Cancelar</button><button type="button" class="danger-button" id="admin-delete-confirm">Excluir definitivamente</button></div></div>');
+  $("#admin-delete-cancel").onclick=adminModal;
+  $("#admin-delete-confirm").onclick=async()=>{
+    const btn=$("#admin-delete-confirm");btn.disabled=true;btn.textContent="Excluindo…";
+    try{
+      await api("/api/admin/users/delete","POST",{id:u.id});
+      userSearch="";adminModal();toast("Perfil excluído. Registros concluídos permanecem no histórico.");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Excluir definitivamente";}
+  };
 }
