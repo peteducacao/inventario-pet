@@ -17,6 +17,8 @@ w.confirm=()=>true;
 let authenticated=false;
 let userTag="visitante";
 let userDeleted=false;
+let identityAuthenticated=true;
+let mustChange=false;
 const component={id:1,categoria_id:1,nome:"ESP32 de teste",imagem:"",patrimonio:"DEMO",identificacao:"",quantidade:5,em_uso:0,com_defeito:0,mostrar_quantidade:1,mostrar_em_uso:1,mostrar_defeito:1,ultima_alteracao:null};
 const data={categorias:[{id:1,nome:"Eletrônica",ordem:1}],componentes:[component]};
 const pending={id:5,componente_id:1,componente_nome:"ESP32 de teste",nome_solicitante:"Visitante",contato:"",quantidade:1,data_inicio:"2026-12-01",data_devolucao:"2026-12-02",status:"pendente",solicitado_em:"2026-11-06T12:00:00Z"};
@@ -31,9 +33,13 @@ w.fetch=async (uri,init={})=>{
   if(path==="/api/catalog")value={...data,demonstracao:true};
   else if(path==="/api/admin/state")authenticated?value=adminData:(status=401,value={error:"Entre no painel administrativo."});
   else if(path==="/api/login"){authenticated=true;value={ok:true}}
-  else if(path==="/api/identity/me")value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",tag:userTag,ativo:true,criado_em:"2026-11-06T10:00:00Z"}};
-  else if(path==="/api/admin/users"){if(init.method==="POST"){userTag=JSON.parse(init.body).tag;value={ok:true}}else value={ok:true,usuarios:userDeleted?[]:[{id:"PET-123456789ABC",nome:"Tester",tag:userTag,ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};}
-  else if(path==="/api/admin/users/recovery")value={ok:true,id:"PET-123456789ABC",nome:"Tester",codigo_recuperacao:"REC-"+"A".repeat(40)};
+  else if(path==="/api/identity/me")value={ok:true,usuario:identityAuthenticated?{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:true,trocar_senha:mustChange,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}:null};
+  else if(path==="/api/identity/logout"){identityAuthenticated=false;value={ok:true};}
+  else if(path==="/api/identity/login"){identityAuthenticated=true;value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:true,trocar_senha:mustChange,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
+  else if(path==="/api/identity/register"){identityAuthenticated=true;value={ok:true,usuario:{id:"PET-23456789ABCD",nome:"Nova conta",login:"novaconta",tag:"visitante",ativo:true,trocar_senha:false,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
+  else if(path==="/api/identity/password"){mustChange=false;value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:true,trocar_senha:false,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
+  else if(path==="/api/admin/users"){if(init.method==="POST"){userTag=JSON.parse(init.body).tag;value={ok:true}}else value={ok:true,usuarios:userDeleted?[]:[{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};}
+  else if(path==="/api/admin/users/password"){identityAuthenticated=false;mustChange=true;value={ok:true,id:"PET-123456789ABC",nome:"Tester",login:"tester01",senha_temporaria:"PET-"+"A".repeat(24)};}
   else if(path==="/api/admin/users/delete"){userDeleted=true;value={ok:true};}
   else if(path==="/api/availability")value={disponiveis:5};
   else {status=404;value={error:"Rota não encontrada"};}
@@ -107,17 +113,41 @@ await click(d.querySelector("#reserve-button"));
 assert.ok(d.querySelector("#member-withdraw-form"),"Formulário de retirada direta não abriu");
 await click(d.querySelector("#admin-button"));
 await click(tab("usuarios"));
-await click(d.querySelector("[data-user-recovery]"));
-assert.ok(d.querySelector("#admin-recovery-generate"),"Faltou geracao de codigo pelo administrador");
-await click(d.querySelector("#admin-recovery-generate"));
-assert.equal(d.querySelector("#admin-new-code").value,"REC-"+"A".repeat(40));
-await click(d.querySelector("#admin-recovery-done"));
+await click(d.querySelector("[data-user-password]"));
+assert.ok(d.querySelector("#admin-reset-password-form"),"Faltou redefinicao de senha pelo administrador");
+assert.equal(d.querySelector("#admin-reset-login").value,"tester01");
+d.querySelector("#admin-reset-password-form").dispatchEvent(new w.Event("submit",{bubbles:true,cancelable:true}));
+await tick();await tick();
+assert.equal(d.querySelector("#admin-temp-password").value,"PET-"+"A".repeat(24));
+assert.equal(d.querySelector("#admin-temp-login").value,"tester01");
+await click(d.querySelector("#admin-reset-done"));
 await click(d.querySelector("[data-user-delete]"));
 assert.ok(d.querySelector("#admin-delete-confirm"),"Faltou opcao de exclusao");
 await click(d.querySelector("#admin-delete-confirm"));
 await tick();
 assert.equal(userDeleted,true,"Usuario nao foi excluido pelo painel");
 
+// A tela de autenticação não deve continuar pedindo o ID ou código antigo.
+await click(d.querySelector("#profile-button"));
+await click(d.querySelector("#identity-logout"));
+assert.ok(d.querySelector("#identity-login-form"),"Formulário de login não apareceu");
+assert.ok(d.querySelector("#identity-login"),"Campo de nome de usuário ausente");
+assert.ok(d.querySelector("#identity-login-password"),"Campo de senha ausente");
+assert.equal(d.querySelector("#identity-recovery-code"),null,"Código antigo não deve aparecer");
+await click(d.querySelector("#identity-forgot"));
+assert.ok(d.querySelector("#identity-forgot-back"),"A tela de senha esquecida não abriu");
+await click(d.querySelector("#identity-forgot-back"));
+assert.ok(d.querySelector("#identity-login-form"),"Voltar ao login não funcionou");
+d.querySelector("#identity-login").value="tester01";
+d.querySelector("#identity-login-password").value="PET-"+"A".repeat(24);
+d.querySelector("#identity-login-form").dispatchEvent(new w.Event("submit",{bubbles:true,cancelable:true}));
+await tick();await tick();
+assert.ok(d.querySelector("#identity-change-form"),"Senha temporária deve exigir troca");
+d.querySelector("#identity-new-password").value="SenhaDefinitiva123!";
+d.querySelector("#identity-new-confirm").value="SenhaDefinitiva123!";
+d.querySelector("#identity-change-form").dispatchEvent(new w.Event("submit",{bubbles:true,cancelable:true}));
+await tick();await tick();
+assert.ok(d.querySelector("#identity-profile-head")||d.querySelector("#identity-change-password"),"Perfil não abriu depois da troca");
 assert.deepEqual(errors,[],"Erros de JavaScript no painel");
-console.log("UI OK: login, reservas, cinco abas, cadastro, atribuição da tag e retirada direta.");
+console.log("UI OK: administração, filtros, tags, redefinição temporária, login e troca obrigatória de senha.");
 w.close();
