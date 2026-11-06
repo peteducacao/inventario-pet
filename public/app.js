@@ -58,7 +58,7 @@ function render(){
   $("#profile-name").textContent=state.actor||"PETiane";
   $("#header-avatar").textContent=(state.actor||"P").slice(0,1).toUpperCase();
   $("#admin-button-text").textContent=state.admin?"Painel":"Administração";
-  const isMember=state.identity?.tag==="petiano";
+  const isMember=state.identity?.tag==="petiano" && !state.identity?.precisa_criar_login && !state.identity?.trocar_senha;
   $("#reserve-button").innerHTML=isMember?'✓ Registrar retirada':'◷ Solicitar reserva';
   $("#profile-button").title=state.identity?state.identity.nome+" · "+(isMember?"PETiano":"Visitante")+" · "+state.identity.id:"Criar meu perfil";
 }
@@ -71,7 +71,7 @@ function card(x, category){
     (flag(x.mostrar_defeito)?'<div class="count-pill '+(x.com_defeito?"bad":"")+'"><span>Com defeito</span><strong>'+moneyless(x.com_defeito)+'</strong></div>':"")+'</div>';
   return '<article class="item-card"><button class="item-photo" type="button" data-photo="'+x.id+'" aria-label="Ampliar fotografia de '+attr(x.nome)+'">'+img+(state.data.demonstracao?'<span class="test-tag">EXEMPLO</span>':"")+'</button><div class="item-body"><div class="item-name">'+esc(x.nome)+'</div><div class="item-meta">'+(x.identificacao?esc(x.identificacao)+' · ':"")+(x.patrimonio?'Patrimônio: '+esc(x.patrimonio):'Sem número de patrimônio cadastrado')+'</div>'+status+
     (flag(x.mostrar_defeito)&&x.com_defeito&&x.descricao_defeito?'<button class="link-button" style="text-align:left;margin-top:11px" data-defect="'+x.id+'">ⓘ Ver informações do defeito</button><div class="expand-defect" id="defect-'+x.id+'" hidden>'+esc(x.descricao_defeito)+'</div>':"")+
-    '<div class="item-footer"><span class="date-small">Atualizado: '+esc(fmt(x.ultima_alteracao))+'</span><button class="link-button" data-reserve-item="'+x.id+'" type="button">'+(state.identity?.tag==='petiano'?'Retirar ›':'Reservar ›')+'</button></div></div></article>';
+    '<div class="item-footer"><span class="date-small">Atualizado: '+esc(fmt(x.ultima_alteracao))+'</span><button class="link-button" data-reserve-item="'+x.id+'" type="button">'+(state.identity?.tag==='petiano' && !state.identity?.precisa_criar_login && !state.identity?.trocar_senha?'Retirar ›':'Reservar ›')+'</button></div></div></article>';
 }
 function openModal(title,subtitle,body,opts={}) {
   closeModal();
@@ -84,7 +84,7 @@ function openModal(title,subtitle,body,opts={}) {
 }
 function closeModal(){$("#modal-root").innerHTML="";document.body.style.overflow="";state.modal=null;}
 document.addEventListener("keydown",ev=>{if(ev.key==="Escape"&&state.modal)closeModal();if(ev.key==="/"&&!state.modal&&document.activeElement?.tagName!=="INPUT"){ev.preventDefault();$("#search").focus()}});
-function profileModal(first=false){if(state.identity)return identityProfileModal();return identityRegisterModal(first);}
+function profileModal(first=false){if(state.identity)return identityProfileModal();return identityLoginModal(first);}
 function dateInput(name,label,value,min=""){return '<div class="field"><label for="'+name+'">'+label+'</label><input type="date" id="'+name+'" value="'+attr(value||"")+'" '+(min?'min="'+attr(min)+'"':"")+' required></div>'}
 function inputField(name,label,value="",opts={}){return '<div class="field"><label for="'+name+'">'+esc(label)+'</label><input id="'+name+'" name="'+name+'" type="'+(opts.type||"text")+'" '+(opts.required?"required":"")+' maxlength="'+(opts.max||140)+'" placeholder="'+attr(opts.placeholder||"")+'" value="'+attr(value)+'"></div>'}
 function selectField(id,label,options,selected,first=false){return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><select id="'+id+'">'+(first?'<option value="">Selecione</option>':"")+options.map(x=>'<option value="'+attr(x.value)+'" '+(String(selected)===String(x.value)?"selected":"")+'>'+esc(x.label)+'</option>').join("")+'</select></div>'}
@@ -394,9 +394,9 @@ $("#category-filters").addEventListener("click",e=>{const b=e.target.closest("[d
 $("#category-sections").addEventListener("click",e=>{
   const photo=e.target.closest("[data-photo]");if(photo){openPhoto(Number(photo.dataset.photo));return;}
   const defect=e.target.closest("[data-defect]");if(defect){const x=$("#defect-"+defect.dataset.defect);if(x)x.hidden=!x.hidden;return;}
-  const book=e.target.closest("[data-reserve-item]");if(book)(state.identity?.tag==="petiano"?memberWithdrawModal:reserveModal)(Number(book.dataset.reserveItem));
+  const book=e.target.closest("[data-reserve-item]");if(book)(state.identity?.tag==="petiano"&&!state.identity?.precisa_criar_login&&!state.identity?.trocar_senha?memberWithdrawModal:reserveModal)(Number(book.dataset.reserveItem));
 });
-$("#reserve-button").onclick=()=> (state.identity?.tag==="petiano"?memberWithdrawModal:reserveModal)(null);
+$("#reserve-button").onclick=()=> (state.identity?.tag==="petiano"&&!state.identity?.precisa_criar_login&&!state.identity?.trocar_senha?memberWithdrawModal:reserveModal)(null);
 $("#profile-button").onclick=()=>profileModal();
 $("#admin-button").onclick=openAdmin;
 $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda sem conexão.",true)}};
@@ -410,6 +410,8 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     }catch(e){console.warn("Identidade temporariamente indisponível",e);}
     render();
     if(!state.identity)setTimeout(()=>profileModal(true),400);
+    else if(state.identity.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
+    else if(state.identity.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
   }
   catch(error){
     console.error(error);
