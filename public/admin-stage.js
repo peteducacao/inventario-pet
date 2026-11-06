@@ -408,22 +408,34 @@ function adminItemEditor(id){
   itemEditor(id);
   const form=$("#item-form");
   if(!form)return;
-  let edited=false,saved=false,closing=false;
+  let edited=false,saved=false;
   const markDirty=()=>{edited=true};
   form.addEventListener("input",markDirty);
   form.addEventListener("change",markDirty);
-  const baseCancel=$("#i-cancel");
-  if(baseCancel)baseCancel.onclick=async()=>{
-    if(edited&&!await niceModalConfirm("Descartar alterações?","As mudanças deste material ainda não foram salvas.","Descartar",true))return;
-    closeModal();adminBuild();
+  const askDiscard=async()=>{
+    if(edited&&!saved&&!await confirmOverEditor())return;
+    closeModal();
   };
+  const baseCancel=$("#i-cancel");
+  if(baseCancel)baseCancel.onclick=askDiscard;
   form.addEventListener("submit",()=>{saved=true},false);
   const root=$("#modal-root");
-  // O alerta só acontece quando há campos modificados; popups de confirmação não se fecham automaticamente.
-  if(root){const close=root.querySelector("[data-close]");if(close)close.onclick=async()=>{
-    if(edited&&!saved&&!await niceModalConfirm("Descartar alterações?","As mudanças deste material ainda não foram salvas.","Descartar",true))return;
-    closeModal();
-  };}
+  if(root){const close=root.querySelector("[data-close]");if(close)close.onclick=askDiscard;}
+  function confirmOverEditor(){
+    return new Promise(resolve=>{
+      const layer=document.createElement("div");
+      layer.className="modal-overlay editor-confirm-layer";
+      layer.innerHTML='<section class="modal" role="alertdialog" aria-modal="true" aria-label="Descartar alterações"><header class="modal-header"><h2>Descartar alterações?</h2></header>'+
+        '<div class="confirm-body"><p>As mudanças deste material ainda não foram salvas.</p>'+
+        '<div class="confirm-actions"><button class="secondary-button" id="keep-editing" type="button">Continuar editando</button>'+
+        '<button class="danger-button" id="discard-edits" type="button">Descartar</button></div></div></section>';
+      root.appendChild(layer);
+      const end=value=>{layer.remove();resolve(value);};
+      layer.querySelector("#keep-editing").onclick=()=>end(false);
+      layer.querySelector("#discard-edits").onclick=()=>end(true);
+      layer.onclick=e=>{if(e.target===layer)end(false);};
+    });
+  }
 }
 function adminSettings(root){
   const cfg=state.admin.configuracoes||{};
@@ -466,3 +478,31 @@ function adminSettings(root){
     try{const result=await api("/api/admin/cleanup","POST",{});await adminReload();adminBuild();toast(result.removidas+" registro(s) removido(s).");}catch(error){toast(error.message,true);}
   };
 }
+
+/* Entrada administrativa concisa, com visibilidade da senha e sessão independente. */
+async function openAdmin(){
+  try{
+    await adminReload();
+    adminModal();
+    return;
+  }catch(error){
+    if(!/painel|401|autoriz/i.test(error.message)){toast(error.message,true);return;}
+  }
+  openModal("Administração","Acesso ao painel do inventário.",
+    '<form class="modal-main" id="v2-admin-login">'+
+    '<div class="field"><label for="v2-admin-password">Senha administrativa</label>'+
+    '<div class="password-input-wrap"><input type="password" id="v2-admin-password" autocomplete="current-password" required placeholder="Digite a senha">'+
+    '<button type="button" id="v2-admin-show-password" class="show-password" aria-pressed="false">Mostrar</button></div></div>'+
+    '<button type="submit" class="primary-button" style="width:100%;min-height:49px" id="v2-admin-submit">Entrar no painel</button></form>');
+  const pwd=$("#v2-admin-password"),toggle=$("#v2-admin-show-password");
+  toggle.onclick=()=>{const show=pwd.type==="password";pwd.type=show?"text":"password";toggle.textContent=show?"Ocultar":"Mostrar";toggle.setAttribute("aria-pressed",String(show));};
+  $("#v2-admin-login").onsubmit=async e=>{
+    e.preventDefault();const button=$("#v2-admin-submit");button.disabled=true;button.textContent="Entrando…";
+    try{
+      await api("/api/login","POST",{senha:pwd.value});
+      await adminReload();
+      adminModal();toast("Administração aberta.");
+    }catch(error){toast(error.message,true);button.disabled=false;button.textContent="Entrar no painel";}
+  };
+}
+setupFinalPublic();
