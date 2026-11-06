@@ -283,7 +283,7 @@ function renderAdminReservations(target){
   const finished=r=>["devolvida","recusada","cancelada"].includes(r.status);
   const list=reservations.filter(r=>reserveStatusFilter==="todas" || (reserveStatusFilter==="ativas"?active(r):reserveStatusFilter==="atrasadas"?lateReserve(r):reserveStatusFilter==="concluidas"?finished(r):r.status===reserveStatusFilter));
   target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Solicitações e devoluções</h3><p>As reservas enviadas por visitantes aparecem aqui para você aprovar ou recusar.</p></div><span class="status pending">'+reservations.filter(r=>r.status==="pendente").length+' pendentes</span></div>'+
-    '<div class="filter-row" style="padding:0 0 18px">'+[["pendente","Pendentes"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]].map(([key,label])=>'<button class="chip '+(reserveStatusFilter===key?"active":"")+'" data-r-filter="'+key+'">'+label+'</button>').join("")+'</div>'+
+    '<div class="filter-row reservation-filter-row" style="padding:0 0 18px">'+[["pendente","Pendentes"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]].map(([key,label])=>'<button class="chip '+(reserveStatusFilter===key?"active":"")+'" data-r-filter="'+key+'">'+label+'</button>').join("")+'</div>'+
     '<div class="admin-list">'+(list.length?list.map(r=>reservationCard(r)).join(""):'<div class="empty-state">Nenhuma reserva nesta seleção.</div>')+'</div></section>';
   $$("[data-r-filter]").forEach(b=>b.onclick=()=>{reserveStatusFilter=b.dataset.rFilter;renderTab()});
   $$("[data-action-reserve]").forEach(b=>b.onclick=()=>doReserveAction(Number(b.dataset.id),b.dataset.actionReserve));
