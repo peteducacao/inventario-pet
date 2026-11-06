@@ -145,6 +145,35 @@ async function adminUpdate(req,env){
   if(!active)await env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id).run();
   return respond({ok:true});
 }
+// O codigo antigo e mantido apenas como hash e nunca pode ser exibido.
+async function adminResetRecovery(req,env) {
+  const b=await bodyJson(req,3000),id=clean(b.id,30).toUpperCase();
+  if(!/^PET-[0-9A-F]{12}$/.test(id))return error("ID inválido.");
+  const user=await env.DB.prepare("SELECT id,public_id,nome,ativo FROM usuarios WHERE public_id=?").bind(id).first();
+  if(!user)return error("Usuário não encontrado.",404);
+  if(user.ativo!==1)return error("Usuário bloqueado. Não é possível recuperar este perfil.",409);
+  const newCode="REC-"+randomHex(20),digest=await sha256(newCode);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE usuarios SET recovery_hash=?,atualizado_em=? WHERE id=?").bind(digest,now(),user.id),
+    env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
+  ]);
+  return respond({ok:true,id:user.public_id,nome:user.nome,codigo_recuperacao:newCode});
+}
+async function adminDeleteUser(req,env){
+  const b=await bodyJson(req,3000),id=clean(b.id,30).toUpperCase();
+  if(!/^PET-[0-9A-F]{12}$/.test(id))return error("ID inválido.");
+  const user=await env.DB.prepare("SELECT id,public_id,nome FROM usuarios WHERE public_id=?").bind(id).first();
+  if(!user)return error("Usuário não encontrado.",404);
+  const pending=await env.DB.prepare("SELECT COUNT(*) AS n FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada')").bind(user.id).first();
+  if(pending?.n>0)return error("Este usuário tem reservas ou retiradas em andamento. Finalize-as antes de excluir.",409);
+  const done=await env.DB.batch([
+    env.DB.prepare("UPDATE reservas SET usuario_id=NULL WHERE usuario_id=? AND status NOT IN ('pendente','aprovada','retirada')").bind(user.id),
+    env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id),
+    env.DB.prepare("DELETE FROM usuarios WHERE id=? AND NOT EXISTS (SELECT 1 FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada'))").bind(user.id,user.id)
+  ]);
+  if(done[2].meta?.changes!==1)return error("O usuário não pôde ser excluído.",409);
+  return respond({ok:true,excluido:id});
+}
 async function adminList(env){
   const list=await rows(env.DB,"SELECT public_id AS id,nome,papel AS tag,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
   const loans=await rows(env.DB,"SELECT usuario_id,COUNT(*) AS n FROM reservas WHERE tipo='retirada_direta' AND status='retirada' AND usuario_id IS NOT NULL GROUP BY usuario_id");
@@ -165,6 +194,11 @@ export async function identityAPI(req,env,adminAuth){
     const token=cookieValue(req);
     if(token)await db.prepare("DELETE FROM usuario_sessoes WHERE hash=?").bind(await sha256(token)).run();
     return respond({ok:true},200,{"set-cookie":clearCookie()});
+  }
+  if(path==="/api/admin/users/recovery" || path==="/api/admin/users/delete"){
+    if(!await adminAuth())return error("Acesso administrativo necessário.",401);
+    if(method!=="POST")return error("Método não permitido.",405);
+    return path.endsWith("/recovery")?adminResetRecovery(req,env):adminDeleteUser(req,env);
   }
   if(path==="/api/admin/users"){
     if(!await adminAuth())return error("Acesso administrativo necessário.",401);
