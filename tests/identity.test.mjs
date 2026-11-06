@@ -105,5 +105,31 @@ try{
 assert.ok(reservationProtected,"Retirada direta nao pode consumir estoque comprometido em reservas aprovadas");
 assert.equal(sql.prepare("SELECT COUNT(*) AS n FROM reservas WHERE tipo='retirada_direta'").get().n,before);
 
-console.log("IDENTIDADE OK: dois nomes iguais, IDs distintos, cookies privados, recuperação, permissões, retirada, devolução, proteção de reserva.");
+// O admin pode gerar novo codigo, mas nao revelar o antigo.
+const unauthReset=await call("/api/admin/users/recovery","POST",{id:a.body.usuario.id});
+assert.equal(unauthReset.status,401,"Codigo nao deve ser redefinido por visitante");
+const recoveryReset=await call("/api/admin/users/recovery","POST",{id:a.body.usuario.id},"",true);
+assert.equal(recoveryReset.status,200,JSON.stringify(recoveryReset.body));
+assert.match(recoveryReset.body.codigo_recuperacao,/^REC-[A-F0-9]{40}$/);
+assert.notEqual(recoveryReset.body.codigo_recuperacao,a.body.codigo_recuperacao);
+assert.equal(await call("/api/identity/recover","POST",{id:a.body.usuario.id,codigo:a.body.codigo_recuperacao}).then(x=>x.status),401,"Codigo antigo deveria ser invalido");
+assert.equal((await call("/api/identity/me","GET",null,recovered.cookie)).body.usuario,null,"Sessoes antigas precisam ser encerradas");
+const reopened=await call("/api/identity/recover","POST",{id:a.body.usuario.id,codigo:recoveryReset.body.codigo_recuperacao});
+assert.equal(reopened.status,200,"Novo codigo deve recuperar perfil");
+
+// Excluir perfil com retirada ou reserva em aberto e proibido; preserva historico concluido.
+const subject=sql.prepare("SELECT id FROM usuarios WHERE public_id=?").get(a.body.usuario.id).id;
+const pendingLoan=sql.prepare("INSERT INTO reservas(componente_id,usuario_id,nome_solicitante,contato,quantidade,data_inicio,data_devolucao,status) VALUES (?,?,?,?,?,?,?,'pendente')").run(item.id,subject,"Sergio","",1,day,due).lastInsertRowid;
+const deniedDelete=await call("/api/admin/users/delete","POST",{id:a.body.usuario.id},"",true);
+assert.equal(deniedDelete.status,409,"Nao apagar usuario com reserva em andamento");
+sql.prepare("UPDATE reservas SET status='recusada' WHERE id=?").run(pendingLoan);
+assert.equal((await call("/api/admin/users/delete","POST",{id:a.body.usuario.id})).status,401,"Visitante nao pode apagar usuario");
+const deleted=await call("/api/admin/users/delete","POST",{id:a.body.usuario.id},"",true);
+assert.equal(deleted.status,200,JSON.stringify(deleted.body));
+assert.equal(sql.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE public_id=?").get(a.body.usuario.id).n,0);
+assert.equal((await call("/api/identity/me","GET",null,reopened.cookie)).body.usuario,null);
+assert.equal(sql.prepare("SELECT status FROM reservas WHERE id=?").get(loan.id).status,"devolvida","Historico concluido deve ser mantido");
+assert.equal(sql.prepare("SELECT usuario_id FROM reservas WHERE id=?").get(loan.id).usuario_id,null,"Historico nao deve apontar para cadastro excluido");
+
+console.log("IDENTIDADE OK: dois nomes iguais, IDs distintos, cookies privados, recuperação, permissões, retirada, devolução, proteção de reserva, redefinição e exclusão de usuário.");
 sql.close();
