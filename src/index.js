@@ -182,11 +182,14 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id"));
     const active = await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=? AND status IN ('pendente','aprovada','retirada')").bind(id).first();
     if (active.n) return bad("Existem reservas ativas deste material. Finalize-as antes de excluir.",409);
-    await db.batch([
-      db.prepare("DELETE FROM reservas WHERE componente_id=?").bind(id),
-      db.prepare("DELETE FROM componentes WHERE id=?").bind(id)
-    ]);
-    return j({ ok:true });
+    await db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(now(),"Administração","Material arquivado",id).run();
+    return j({ ok:true,arquivado:true });
+  }
+  if(path==="/api/admin/item/unarchive" && method==="POST"){
+    const b=await input(req,1500),id=requireId(b.id);
+    await db.prepare("UPDATE componentes SET arquivado=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(now(),"Administração","Material restaurado",id).run();
+    return j({ok:true});
   }
   if (path === "/api/admin/category" && method === "POST") {
     const b = await input(req,9000);
