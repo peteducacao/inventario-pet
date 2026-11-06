@@ -1,0 +1,193 @@
+/* Administração Inventário PET: painel próprio e responsivo. */
+const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["configuracoes","settings","Configurações"]];
+function adminCounts(){
+  const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
+  const reservations=state.admin?.reservas||[];
+  return {items:items.length,used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
+    defective:items.reduce((n,x)=>n+(Number(x.com_defeito)||0),0),
+    available:items.reduce((n,x)=>n+stock(x),0),
+    pending:reservations.filter(x=>x.status==="pendente").length};
+}
+function adminLastUpdate(){
+  const items=state.admin?.componentes||[];
+  const sorted=items.map(x=>x.ultima_alteracao).filter(Boolean).sort();
+  const last=sorted.at(-1),source=state.admin?.configuracoes?.inventario_fonte_atualizacao;
+  return "Atualizado: "+(last?niceDate(last):source||"—")+(source?" · Planilha-base: "+source:"");
+}
+async function enterAdmin(silent=false){
+  try{
+    if(!state.admin)await adminReload();
+    else await adminReload();
+    adminModal();
+  }catch(error){
+    state.admin=null;
+    if(silent){stored("pet_admin_open","0");$("#admin-stage").hidden=true;document.body.classList.remove("admin-mode");return;}
+    if(error.message.includes("Entre no painel")||error.message.includes("401"))return openAdmin();
+    toast(error.message,true);
+  }
+}
+function adminModal(){
+  if(!state.admin)return enterAdmin();
+  closeModal();
+  $("#admin-stage").hidden=false;
+  document.body.classList.add("admin-mode");
+  stored("pet_admin_open","1");
+  state.tab=UI.adminTab;
+  adminBuild();
+}
+function adminBuild(){
+  if(!state.admin)return;
+  const stage=$("#admin-stage"),counts=adminCounts();
+  const current=ADMIN_TABS.find(t=>t[0]===UI.adminTab)||ADMIN_TABS[0];
+  stage.innerHTML='<div class="admin-layout"><aside class="admin-sidebar" id="admin-sidebar">'+
+    '<div class="admin-brand"><span class="brand-mark">'+iconSvg("box",28)+'</span><span>Inventário PET</span></div>'+
+    '<nav class="admin-nav">'+ADMIN_TABS.map(([key,ico,label])=>'<button type="button" data-admin-tab="'+key+'" class="'+(UI.adminTab===key?"active":"")+'">'+iconSvg(ico)+' <span>'+label+'</span>'+(key==="reservas"&&counts.pending?'<span class="nav-badge">'+counts.pending+'</span>':"")+'</button>').join("")+'</nav>'+
+    '<div class="admin-side-bottom"><span class="admin-updated">'+esc(adminLastUpdate())+'</span>'+
+    '<button type="button" id="admin-back">'+iconSvg("back",16)+' Voltar ao inventário</button>'+
+    '<button type="button" id="admin-logout" style="background:#f36e6e22">'+iconSvg("logout",16)+' Sair da administração</button></div></aside>'+
+    '<div class="admin-main"><header class="admin-top"><div style="display:flex;align-items:center;gap:11px">'+
+    '<button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Abrir menu">'+iconSvg("menu")+'</button>'+
+    '<div><h1>'+esc(current[2])+'</h1><small>Inventário do PET Educação</small></div></div>'+
+    '<div class="admin-right"><button id="admin-notifications" type="button" class="nav-icon admin-bell" aria-label="Solicitações pendentes">'+iconSvg("bell")+
+    (counts.pending?'<span class="notification-count">'+counts.pending+'</span>':"")+'</button>'+
+    '<button id="admin-account" type="button" class="admin-person"><span class="avatar">'+esc((state.actor||"A")[0].toUpperCase())+'</span><span>'+esc(state.actor||"Administrador")+'</span>'+iconSvg("down",15)+'</button></div></header>'+
+    '<div id="admin-content"></div><footer class="admin-status-foot">'+esc(adminLastUpdate())+'</footer></div></div>';
+  $$("[data-admin-tab]",stage).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.adminTab));
+  $("#admin-back").onclick=leaveAdminWithoutLogout;
+  $("#admin-logout").onclick=logoutAdmin;
+  $("#admin-menu-toggle").onclick=()=>$("#admin-sidebar").classList.toggle("is-open");
+  $("#admin-notifications").onclick=()=>selectAdminTab("reservas");
+  $("#admin-account").onclick=async()=>{
+    const yes=await niceModalConfirm("Sair da administração?","Sua sessão administrativa será encerrada.","Sair",true);
+    if(yes)await performAdminLogout();
+  };
+  adminContent();
+}
+function leaveAdminWithoutLogout(){
+  stored("pet_admin_open","0");
+  $("#admin-stage").hidden=true;document.body.classList.remove("admin-mode");
+  closeModal();finalRender();
+}
+async function logoutAdmin(){
+  if(await niceModalConfirm("Sair da administração?","Você voltará ao inventário. Para administrar novamente, será necessário entrar com a senha.","Deslogar",true))await performAdminLogout();
+}
+async function performAdminLogout(){
+  try{await api("/api/logout","POST",{});}
+  catch(error){toast("Falha ao encerrar a sessão: "+error.message,true);return;}
+  state.admin=null;
+  leaveAdminWithoutLogout();
+  flashPopup("Até logo!","Você saiu da administração.");
+}
+function selectAdminTab(tab){
+  if(!ADMIN_TABS.some(x=>x[0]===tab))tab="painel";
+  UI.adminTab=tab;state.tab=tab;stored("pet_admin_tab",tab);
+  if(tab==="reservas")UI.reservationPage=1;
+  adminBuild();
+  document.querySelector(".admin-main")?.scrollIntoView({block:"start"});
+}
+function adminContent(){
+  const content=$("#admin-content");if(!content)return;
+  if(UI.adminTab==="painel")return adminDashboard(content);
+  if(UI.adminTab==="materiais")return adminMaterials(content);
+  if(UI.adminTab==="reservas")return adminReservations(content);
+  if(UI.adminTab==="usuarios")return adminUsers(content);
+  if(UI.adminTab==="categorias")return adminCategories(content);
+  return adminSettings(content);
+}
+function adminDashboard(root){
+  const c=adminCounts();
+  root.innerHTML='<div class="admin-section-head"><div><h2>Visão geral</h2></div><div class="buttons"><button class="outline-button small-button" type="button" id="admin-stats-toggle">'+(UI.adminSummaryMinimized?"Mostrar resumo":"Minimizar resumo")+' '+iconSvg(UI.adminSummaryMinimized?"down":"up",14)+'</button></div></div>'+
+    '<div class="admin-overview '+(UI.adminSummaryMinimized?"collapsed":"")+'"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div><div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div><div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div><div class="admin-stat"><strong>'+c.pending+'</strong><span>Reservas pendentes</span></div></div>'+
+    '<section class="admin-panel"><div class="admin-section-head"><div><h2>Materiais</h2><p>Acesse e atualize seu inventário.</p></div><div class="buttons"><button type="button" class="outline-button small-button" id="v2-dashboard-all">Ver todos</button><button type="button" class="primary-button small-button" id="v2-dashboard-add">'+iconSvg("plus",15)+' Novo material</button></div></div>'+
+    '<div id="dashboard-materials"></div></section>'+
+    (c.pending?'<section class="admin-panel"><div class="admin-section-head"><h2>Reservas aguardando aprovação</h2><button class="outline-button small-button" id="dashboard-reservations">Analisar</button></div><p>'+c.pending+' solicitação(ões) para conferir.</p></section>':"");
+  $("#admin-stats-toggle").onclick=()=>{UI.adminSummaryMinimized=!UI.adminSummaryMinimized;stored("pet_admin_summary_closed",UI.adminSummaryMinimized?"1":"0");adminDashboard(root)};
+  $("#v2-dashboard-all").onclick=()=>selectAdminTab("materiais");
+  $("#v2-dashboard-add").onclick=()=>adminItemEditor();
+  if(c.pending)$("#dashboard-reservations").onclick=()=>selectAdminTab("reservas");
+  const small=ordered(state.admin.componentes.filter(x=>!isArchived(x)),UI.adminSort).slice(0,6);
+  $("#dashboard-materials").innerHTML='<div class="material-list">'+small.map(adminMaterialRow).join("")+'</div>';
+  wireMaterialActions($("#dashboard-materials"));
+}
+function quantityCell(name,num,clazz=""){
+  return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
+}
+function adminMaterialRow(x){
+  const available=stock(x),isHidden=isArchived(x);
+  const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
+  return '<div class="material-row">'+thumb(x)+
+    '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+'</small>'+
+    '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small></div>'+
+    quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
+    '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
+    '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
+    '<button class="square-action" type="button" title="Editar" aria-label="Editar" data-item-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
+    '<button class="square-action '+(isHidden?"":"danger")+'" type="button" title="'+(isHidden?"Restaurar":"Arquivar")+'" data-item-archive="'+x.id+'">'+iconSvg(isHidden?"back":"trash")+'</button></div></div>';
+}
+function wireMaterialActions(root){
+  $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
+  $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
+  $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
+}
+function adminViewMaterial(id){
+  const x=state.admin.componentes.find(z=>z.id===id);if(!x)return;
+  const image=itemImage(x);
+  openModal(x.nome,"",'<div class="modal-main"><div class="photo-editor">'+
+    '<div class="photo-editor-preview">'+(image?'<img src="'+attr(image)+'" alt="'+attr(x.nome)+'">':"")+'</div>'+
+    '<div><strong>'+esc(nameCategory(x.categoria_id))+'</strong><p>'+(x.patrimonio?'Patrimônio: '+esc(x.patrimonio):'Sem patrimônio')+'</p><p>'+x.quantidade+' total · '+x.em_uso+' em uso · '+x.com_defeito+' com defeito</p></div></div>'+
+    (x.observacoes?'<p class="notice">'+esc(x.observacoes)+'</p>':"")+
+    (x.descricao_defeito?'<p class="notice warning">'+esc(x.descricao_defeito)+'</p>':"")+
+    '<p style="font-size:11px;color:#7e91a2">Última alteração: '+niceDate(x.ultima_alteracao)+'</p>'+
+    '<div class="modal-footer" style="border:0;padding:14px 0 0"><button type="button" class="secondary-button" id="v2-view-close">Fechar</button><button type="button" class="primary-button" id="v2-view-edit">Editar</button></div></div>');
+  $("#v2-view-close").onclick=closeModal;
+  $("#v2-view-edit").onclick=()=>adminItemEditor(id);
+}
+async function adminArchiveItem(id){
+  const x=state.admin.componentes.find(z=>z.id===id);if(!x)return;
+  const isHidden=isArchived(x);
+  if(!await niceModalConfirm(isHidden?"Restaurar material?":"Arquivar material?",(isHidden?"Restaurar ":"Arquivar ")+x.nome+"? O histórico de empréstimos será preservado.",isHidden?"Restaurar":"Arquivar",!isHidden))return;
+  try{
+    if(isHidden)await api("/api/admin/item/unarchive","POST",{id});
+    else await api("/api/admin/item?id="+id,"DELETE");
+    await adminReload();adminBuild();toast(isHidden?"Material restaurado.":"Material arquivado.");
+  }catch(e){toast(e.message,true);}
+}
+function adminMaterials(root){
+  const cats=state.admin.categorias;
+  const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("")+
+    '<option value="archived" '+(UI.adminCategory==="archived"?"selected":"")+'>Arquivados</option>';
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Materiais cadastrados</h2></div>'+
+    '<div class="buttons"><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
+    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
+    '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
+    '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
+    '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>';
+  $("#admin-item-new").onclick=()=>adminItemEditor();
+  $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
+  $("#admin-material-category").onchange=e=>{UI.adminCategory=e.target.value;UI.adminPage=1;stored("pet_admin_category",UI.adminCategory);paintAdminMaterials()};
+  $("#admin-material-sort").onchange=e=>{UI.adminSort=e.target.value;UI.adminPage=1;stored("pet_admin_sort",UI.adminSort);paintAdminMaterials()};
+  $("#admin-material-pages").onclick=e=>{
+    const b=e.target.closest("[data-page]");if(!b)return;
+    UI.adminPage=Number(b.dataset.page);stored("pet_admin_page",UI.adminPage);paintAdminMaterials();
+  };
+  paintAdminMaterials();
+}
+function sortOptions(value){
+  return [["az","A–Z"],["za","Z–A"],["recent","Última alteração"],["old","Mais antigo"],["available","Mais disponíveis"],["less","Menos disponíveis"]].map(([key,label])=>
+    '<option value="'+key+'" '+(value===key?"selected":"")+'>'+label+'</option>').join("");
+}
+function paintAdminMaterials(){
+  const list=$("#admin-material-list");if(!list)return;
+  const query=UI.adminSearch.toLowerCase().trim();
+  const visible=state.admin.componentes.filter(x=>{
+    if(UI.adminCategory==="archived"){if(!isArchived(x))return false;}
+    else if(isArchived(x)||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
+    return !query||[x.nome,x.patrimonio,x.identificacao].some(v=>String(v||"").toLowerCase().includes(query));
+  });
+  const p=paginate(ordered(visible,UI.adminSort),UI.adminPage);
+  UI.adminPage=p.page;stored("pet_admin_page",p.page);
+  list.innerHTML=p.total?'<div class="material-list">'+p.items.map(adminMaterialRow).join("")+'</div>':
+    '<div class="empty-state">Nenhum material encontrado.</div>';
+  $("#admin-material-pages").innerHTML=pageButtons(p,"admin");
+  wireMaterialActions(list);
+}
