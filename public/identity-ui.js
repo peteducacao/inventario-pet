@@ -66,7 +66,7 @@ function identityProfileModal(){
     '<div class="field"><label for="identity-public-id">Meu ID público</label><div class="copy-field"><input id="identity-public-id" readonly value="'+attr(u.id)+'"><button type="button" class="outline-button" id="identity-copy-id">Copiar ID</button></div><small class="hint">Passe este ID ao administrador para solicitar a tag PETiano. O ID não é uma senha.</small></div>'+
     (member?'<div class="notice"><strong>Tag PETiano ativa:</strong> você já pode retirar materiais diretamente e registrar suas devoluções, sem aguardar aprovação.</div>':'<div class="notice">Seu perfil é de visitante. Você pode solicitar reservas, que precisam de aprovação do PET.</div>')+
     '<div class="identity-actions">'+(member?'<button type="button" class="primary-button" id="identity-open-withdraw">Registrar retirada</button><button type="button" class="outline-button" id="identity-my-items">Minhas retiradas</button>':'')+
-    '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button><button type="button" class="outline-button" id="identity-new-recovery">Novo código de recuperação</button>'+
+    '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar minha tag</button><button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button><button type="button" class="outline-button" id="identity-new-recovery">Novo código de recuperação</button>'+
     '<button type="button" class="danger-button" id="identity-logout">Sair deste dispositivo</button></div></div>';
   openModal("Meu perfil","Identificação individual e permissões.",body);
   $("#identity-copy-id").onclick=()=>copyValue(u.id,$("#identity-public-id"));
@@ -74,6 +74,14 @@ function identityProfileModal(){
     $("#identity-open-withdraw").onclick=()=>memberWithdrawModal();
     $("#identity-my-items").onclick=memberHistoryModal;
   }
+  $("#identity-refresh-tag").onclick=async()=>{
+    try{
+      const r=await api("/api/identity/me");
+      if(!r.usuario){setIdentity(null);identityRecoverModal();toast("Seu acesso expirou. Use seu ID e o código privado.",true);return;}
+      const old=state.identity?.tag;setIdentity(r.usuario);identityProfileModal();
+      toast(r.usuario.tag===old?"Seu perfil já está atualizado.":"Sua tag foi atualizada!");
+    }catch(error){toast(error.message,true);}
+  };
   $("#identity-rename").onclick=identityRenameModal;
   $("#identity-new-recovery").onclick=async()=>{
     if(!confirm("Gerar outro código? O anterior deixará de funcionar. Guarde o novo código em lugar seguro."))return;
