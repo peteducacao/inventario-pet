@@ -61,6 +61,22 @@ jobs:
           if [ -z "$ADMIN_PASSWORD" ]; then echo "Falta PET_ADMIN_PASSWORD"; exit 1; fi
           printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
 
+      - name: Verificar acesso publico e bloqueios de seguranca
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://inventario-pet.pet-educacao.workers.dev";
+          const me=await fetch(root+"/api/identity/me");
+          if(!me.ok || (await me.json()).usuario!==null)throw Error("Perfil anonimo nao protegido");
+          const users=await fetch(root+"/api/admin/users");
+          if(users.status!==401)throw Error("Listagem de usuarios publica");
+          const loan=await fetch(root+"/api/member/withdraw",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({componente_id:1,quantidade:1,data_devolucao:"2027-01-01"})});
+          if(loan.status!==403)throw Error("Retirada sem tag PETiano permitida");
+          const js=await fetch(root+"/identity-ui.js");
+          if(!js.ok || !(await js.text()).includes("Registrar retirada"))throw Error("Interface de identidade nao publicada");
+          const html=await fetch(root+"/");
+          if(!html.ok || !(await html.text()).includes("identity-ui.js"))throw Error("Pagina nao carrega a identidade");
+          console.log("PUBLICO OK: identidade, autorizacoes, interface e protecao do admin.");
+          NODE
       - name: Teste funcional completo do inventário
         env:
           ADMIN_PASSWORD: ${{ secrets.PET_ADMIN_PASSWORD }}
