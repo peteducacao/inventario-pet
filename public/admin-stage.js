@@ -191,3 +191,157 @@ function paintAdminMaterials(){
   $("#admin-material-pages").innerHTML=pageButtons(p,"admin");
   wireMaterialActions(list);
 }
+
+
+/* Reservas: grupos mutuamente exclusivos. */
+function reservationGroup(r){
+  if(r.status==="pendente")return "pendente";
+  if(r.status==="retirada"&&r.data_devolucao<localDate())return "atrasadas";
+  if(r.status==="aprovada"||r.status==="retirada")return "ativas";
+  return "concluidas";
+}
+function adminReservations(root){
+  const all=state.admin.reservas||[];
+  const filter=UI.reservationFilter;
+  const filters=[["pendente","Pendentes"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]];
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Reservas e devoluções</h2></div></div>'+
+    '<div class="admin-tools" style="gap:8px">'+filters.map(([key,label])=>
+      '<button type="button" class="chip '+(filter===key?"active":"")+'" data-admin-res-filter="'+key+'">'+label+' <small>'+all.filter(r=>key==="todas"||reservationGroup(r)===key).length+'</small></button>').join("")+'</div>'+
+    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-res-search" placeholder="Buscar material ou solicitante..."></div></div>'+
+    '<div class="reservation-list" id="admin-res-list"></div><nav id="admin-res-pages" class="page-controls"></nav></section>';
+  $$("[data-admin-res-filter]",root).forEach(b=>b.onclick=()=>{
+    UI.reservationFilter=b.dataset.adminResFilter;
+    UI.reservationPage=1;stored("pet_admin_reservas",UI.reservationFilter);adminReservations(root);
+  });
+  $("#admin-res-search").oninput=()=>{UI.reservationPage=1;paintReservations();};
+  $("#admin-res-pages").onclick=e=>{const b=e.target.closest("[data-page]");if(!b)return;UI.reservationPage=Number(b.dataset.page);paintReservations();};
+  paintReservations();
+}
+function reservationRow(r){
+  const x=state.admin.componentes.find(z=>z.id===r.componente_id);
+  const group=reservationGroup(r),tag={pendente:"Pendente",ativas:r.status==="aprovada"?"Aprovada":"Retirado",atrasadas:"Atrasada",concluidas:r.status==="devolvida"?"Devolvido":"Encerrada"}[group];
+  const cls=group==="pendente"?"pending":group==="ativas"?(r.status==="retirada"?"picked":"approved"):group==="atrasadas"?"late":"";
+  const actions=r.status==="pendente"?'<button class="primary-button" type="button" data-res-do="aprovar" data-id="'+r.id+'">'+iconSvg("check",14)+' Aprovar</button><button type="button" class="danger-button" data-res-do="recusar" data-id="'+r.id+'">Recusar</button>':
+    r.status==="aprovada"?'<button type="button" class="primary-button" data-res-do="retirar" data-id="'+r.id+'">Registrar retirada</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
+    r.status==="retirada"?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>':"";
+  return '<div class="reservation-row">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb"></div>')+
+    '<div><h3>#'+r.id+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3><small>'+esc(r.nome_solicitante)+' · '+r.quantidade+' un.'+(r.tipo==="retirada_direta"?" · PETiano":"")+'</small>'+
+    (r.contato?'<small style="display:block">'+esc(r.contato)+'</small>':"")+
+    (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+'</div>'+
+    '<div class="reservation-date"><small>Retirada</small><strong>'+esc(formatDay(r.data_inicio))+'</strong></div>'+
+    '<div class="reservation-date"><small>Devolução</small><strong>'+esc(formatDay(r.data_devolucao))+'</strong></div>'+
+    '<span class="tag '+cls+'">'+tag+'</span><div class="reservation-actions">'+actions+'</div></div>';
+}
+function paintReservations(){
+  const list=$("#admin-res-list");if(!list)return;
+  const q=$("#admin-res-search")?.value?.toLowerCase().trim()||"";
+  const found=state.admin.reservas.filter(r=>
+    (UI.reservationFilter==="todas"||reservationGroup(r)===UI.reservationFilter)&&
+    (!q||[r.componente_nome,r.nome_solicitante,r.contato,String(r.id)].some(v=>String(v||"").toLowerCase().includes(q))));
+  const p=paginate(found,UI.reservationPage);
+  UI.reservationPage=p.page;
+  list.innerHTML=p.total?p.items.map(reservationRow).join(""):'<div class="empty-state">Nenhuma reserva neste filtro.</div>';
+  $("#admin-res-pages").innerHTML=pageButtons(p,"reservas");
+  $$("[data-res-do]",list).forEach(b=>b.onclick=()=>adminReservationAction(Number(b.dataset.id),b.dataset.resDo));
+}
+async function adminReservationAction(id,action){
+  const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
+  if(action==="devolver")return returnModal(r);
+  const descriptions={aprovar:"Aprovar a reserva de "+r.nome_solicitante+"?",recusar:"Recusar ou cancelar esta reserva?",retirar:"Confirmar que o material foi entregue?"};
+  if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar",action==="recusar"))return;
+  try{
+    await api("/api/admin/reservation","POST",{id,acao:action,responsavel:state.actor||"Administração"});
+    await adminReload();adminBuild();
+    toast("Reserva atualizada.");
+  }catch(e){toast(e.message,true);}
+}
+/* Usuários: tag, redefinição de senha e exclusão segura. */
+let adminUserFilter="todos";
+let adminUserQuery="";
+async function adminUsers(root){
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Usuários</h2></div></div>'+
+    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-users-search" placeholder="Buscar nome, login ou ID..." value="'+attr(adminUserQuery)+'"></div>'+
+    '<select id="admin-users-filter" aria-label="Filtro de usuários" class="admin-filter"><option value="todos">Todos</option><option value="petiano">PETianos</option><option value="visitante">Visitantes</option></select></div>'+
+    '<div id="admin-users-list" class="user-list">Carregando…</div><nav id="admin-users-pages" class="page-controls"></nav></section>';
+  $("#admin-users-filter").value=adminUserFilter;
+  $("#admin-users-filter").onchange=e=>{adminUserFilter=e.target.value;UI.usersPage=1;paintUsers();};
+  $("#admin-users-search").oninput=e=>{adminUserQuery=e.target.value;UI.usersPage=1;paintUsers();};
+  $("#admin-users-pages").onclick=e=>{const b=e.target.closest("[data-page]");if(!b)return;UI.usersPage=Number(b.dataset.page);paintUsers();};
+  try{
+    const res=await api("/api/admin/users");
+    if(!document.contains(root)||UI.adminTab!=="usuarios")return;
+    UI.users=res.usuarios||[];paintUsers();
+  }catch(e){if(document.contains(root))$("#admin-users-list").innerHTML='<div class="empty-state">'+esc(e.message)+'</div>';}
+}
+function userRow(x){
+  const member=x.tag==="petiano";
+  return '<div class="user-row"><span class="user-icon">'+esc((x.nome||"P")[0].toUpperCase())+'</span>'+
+    '<div><strong>'+esc(x.nome)+'</strong><small>'+esc(x.login||"Sem login")+' · '+esc(x.id)+'</small></div>'+
+    '<span class="tag '+(member?"picked":"")+'">'+(member?"PETiano":"Visitante")+'</span>'+
+    '<div class="user-actions"><button class="outline-button small-button" type="button" data-user-role="'+attr(x.id)+'" title="Alterar tag">'+iconSvg("edit",15)+' Tag</button>'+
+    '<button class="outline-button small-button" type="button" data-user-password="'+attr(x.id)+'" title="Redefinir senha">Senha</button>'+
+    '<button class="danger-button small-button" type="button" data-user-delete="'+attr(x.id)+'" title="Excluir usuário">'+iconSvg("trash",16)+'</button></div></div>';
+}
+function paintUsers(){
+  const list=$("#admin-users-list");if(!list)return;
+  const users=UI.users||[];
+  const query=adminUserQuery.toLowerCase().trim();
+  const found=users.filter(x=>(adminUserFilter==="todos"||x.tag===adminUserFilter)&&(!query||[x.nome,x.login,x.id].some(v=>String(v||"").toLowerCase().includes(query))));
+  const p=paginate(found,UI.usersPage||1);UI.usersPage=p.page;
+  list.innerHTML=found.length?p.items.map(userRow).join(""):'<div class="empty-state">Nenhum usuário encontrado.</div>';
+  $("#admin-users-pages").innerHTML=pageButtons(p,"users");
+  $$("[data-user-role]",list).forEach(b=>b.onclick=()=>adminToggleTag(b.dataset.userRole));
+  $$("[data-user-password]",list).forEach(b=>b.onclick=()=>{
+    const u=users.find(x=>x.id===b.dataset.userPassword);if(u)adminResetPasswordModal(u);
+  });
+  $$("[data-user-delete]",list).forEach(b=>b.onclick=()=>{
+    const u=users.find(x=>x.id===b.dataset.userDelete);if(u)adminDeleteUserModal(u);
+  });
+}
+async function adminToggleTag(id){
+  const user=(UI.users||[]).find(u=>u.id===id);if(!user)return;
+  const next=user.tag==="petiano"?"visitante":"petiano";
+  if(!await niceModalConfirm("Alterar tag de usuário?",user.nome+" passará a ser "+(next==="petiano"?"PETiano":"Visitante")+".","Confirmar"))return;
+  try{await api("/api/admin/users","POST",{id,tag:next});await adminUsers($("#admin-content"));toast("Tag atualizada.");}
+  catch(e){toast(e.message,true);}
+}
+/* Categorias: arraste no desktop, use setas no celular. */
+function adminCategories(root){
+  const cats=state.admin.categorias;
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Arraste para ordenar ou use as setas.</p></div>'+
+    '<div class="buttons"><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
+    '<div class="category-list" id="v2-category-list">'+cats.map((c,i)=>
+    '<div class="category-row" data-category-id="'+c.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
+    '<strong>'+esc(c.nome)+'</strong><small>'+state.admin.componentes.filter(x=>x.categoria_id===c.id&&!isArchived(x)).length+' itens</small>'+
+    '<div class="actions"><button type="button" class="square-action" data-cat-up="'+c.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
+    '<button type="button" class="square-action" data-cat-down="'+c.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
+    '<button type="button" class="square-action" data-cat-edit="'+c.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
+    '<button type="button" class="square-action danger" data-cat-delete="'+c.id+'" aria-label="Excluir">'+iconSvg("trash")+'</button></div></div>').join("")+'</div></section>';
+  $("#v2-new-category").onclick=()=>editCategory();
+  $$("[data-cat-up]").forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
+  $$("[data-cat-down]").forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
+  $$("[data-cat-edit]").forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
+  $$("[data-cat-delete]").forEach(b=>b.onclick=()=>adminDeleteCategory(Number(b.dataset.catDelete)));
+  let dragged=null;
+  $$(".category-row").forEach(el=>{
+    el.ondragstart=e=>{dragged=Number(el.dataset.categoryId);el.classList.add("dragging");e.dataTransfer.effectAllowed="move";};
+    el.ondragend=()=>{el.classList.remove("dragging");dragged=null;};
+    el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect="move";};
+    el.ondrop=async e=>{
+      e.preventDefault();const target=Number(el.dataset.categoryId);if(!dragged||target===dragged)return;
+      const ids=state.admin.categorias.map(c=>c.id),a=ids.indexOf(dragged),b=ids.indexOf(target);
+      if(a<0||b<0)return;ids.splice(b,0,...ids.splice(a,1));
+      await commitCategoryOrder(ids);
+    };
+  });
+}
+async function commitCategoryOrder(ids){
+  try{await api("/api/admin/category","POST",{acao:"ordenar",ordem:ids});await adminReload();adminBuild();toast("Ordem salva.");}
+  catch(e){toast(e.message,true);}
+}
+async function adminDeleteCategory(id){
+  const c=state.admin.categorias.find(x=>x.id===id);if(!c)return;
+  if(!await niceModalConfirm("Excluir categoria?",c.nome+" deve estar vazia para ser excluída.","Excluir",true))return;
+  try{await api("/api/admin/category","POST",{acao:"excluir",id});await adminReload();adminBuild();toast("Categoria excluída.");}
+  catch(e){toast(e.message,true);}
+}
