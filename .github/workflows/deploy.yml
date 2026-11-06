@@ -3,6 +3,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+concurrency:
+  group: inventario-pet-deploy
+  cancel-in-progress: false
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -17,6 +20,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 23d809e1e820e30b3f95c24ea771f579
         run: npx wrangler d1 migrations apply DB --remote
+      - name: Conferir estrutura das reservas
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 23d809e1e820e30b3f95c24ea771f579
+        run: npx wrangler d1 execute DB --remote --command "PRAGMA table_info(reservas)"
       - name: Publicar site
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
