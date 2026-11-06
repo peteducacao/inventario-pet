@@ -51,7 +51,7 @@ const panel=()=>d.querySelector("#admin-tab-body");
 const click=async el=>{assert.ok(el,"Controle não encontrado");el.click();await tick();await tick();};
 // No navegador os scripts classicos compartilham escopo global; no jsdom eval,
 // compilamos ambos no mesmo contexto para reproduzir esse comportamento.
-w.eval(app+"\n"+identityUi);
+w.eval(app+"\n"+identityUi+"\nwindow.__identity_test_state=state;");
 await tick();
 assert.ok(d.querySelector(".item-card"),"Catálogo não abriu");
 await click(d.querySelector("#admin-button"));
@@ -106,7 +106,7 @@ await click(d.querySelector("#i-cancel"));
 await click(tab("usuarios"));
 await click(d.querySelector('[data-user-tag="petiano"]'));
 assert.equal(userTag,"petiano","O administrador não conseguiu dar a tag PETiano");
-assert.equal(w.eval("state.identity?.login"),"tester01","Mock de perfil autenticado deve estar carregado");
+assert.equal(w.__identity_test_state.identity?.login,"tester01","Mock de perfil autenticado deve estar carregado");
 await click(d.querySelector("#profile-button"));
 assert.ok(d.querySelector("#identity-refresh-tag"),"Perfil carregado incorreto: "+(d.querySelector("#modal-root")?.textContent||"sem modal").slice(0,350));
 await click(d.querySelector("#identity-refresh-tag"));
