@@ -47,7 +47,7 @@ async function rate(db,req,tag,max,windowH=24) {
   return true;
 }
 // PBKDF2 com sal unico. Nunca guardar senha ou credencial temporaria em texto puro.
-const ITERATIONS=120000;
+const ITERATIONS=100000;
 const username = value => clean(value,30).toLowerCase();
 const validUsername = value => /^[a-z0-9][a-z0-9._-]{3,23}$/.test(value);
 const validPassword = value => typeof value==="string" && value.length>=10 && value.length<=128;
