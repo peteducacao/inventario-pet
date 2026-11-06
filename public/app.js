@@ -152,20 +152,30 @@ function stepNumber(id,delta,onChange){
 async function openAdmin(){
   if(state.admin){adminModal();return;}
   try{
-    state.admin=await api("/api/admin/state");adminModal();return;
+    state.admin=await api("/api/admin/state");
+    state.tab=state.admin.reservas.some(r=>r.status==="pendente")?"reservas":"materiais";
+    adminModal();return;
   }catch(error){if(!error.message.includes("Entre no painel")){toast(error.message,true);return;}}
-  openModal("Painel administrativo","Acesso restrito aos integrantes responsáveis pelo inventário.",'<form class="modal-main" id="login-form"><div class="field"><label for="admin-password">Senha administrativa</label><input type="password" id="admin-password" required autocomplete="current-password" placeholder="Informe a senha compartilhada"></div><p class="notice">O nome do PETiane é usado apenas para identificar as alterações. Não substitui a senha administrativa.</p><div class="modal-footer" style="padding:18px 0 0;border:0"><button class="primary-button" type="submit">Entrar no painel</button></div></form>');
+  openModal("Painel administrativo","Acesso restrito aos integrantes responsáveis pelo inventário.",'<form class="modal-main" id="login-form"><div class="field"><label for="admin-password">Senha administrativa</label><div class="password-input-wrap"><input type="password" id="admin-password" required autocomplete="current-password" placeholder="Informe a senha compartilhada"><button type="button" class="show-password" id="password-toggle" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button></div></div><p class="notice">O nome do PETiane é usado apenas para identificar as alterações. Não substitui a senha administrativa.</p><div class="modal-footer" style="padding:18px 0 0;border:0"><button class="primary-button" type="submit">Entrar no painel</button></div></form>');
+  $("#password-toggle").onclick=()=>{
+    const input=$("#admin-password"), btn=$("#password-toggle");
+    const show=input.type==="password";
+    input.type=show?"text":"password";
+    btn.textContent=show?"Ocultar":"Mostrar";
+    btn.setAttribute("aria-label",show?"Ocultar senha":"Mostrar senha");
+    btn.setAttribute("aria-pressed",String(show));
+  };
   $("#login-form").onsubmit=async e=>{
     e.preventDefault();const btn=$("#login-form button[type=submit]");btn.disabled=true;btn.textContent="Entrando…";
-    try{await api("/api/login","POST",{senha:$("#admin-password").value});await adminReload();adminModal();toast("Acesso autorizado!");}
+    try{await api("/api/login","POST",{senha:$("#admin-password").value});await adminReload();state.tab=state.admin.reservas.some(r=>r.status==="pendente")?"reservas":"materiais";adminModal();toast("Acesso autorizado!");}
     catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Entrar no painel";}
   };
 }
 function adminModal(){
   if(!state.admin)return openAdmin();
-  const tabs=[["materiais","Materiais"],["reservas","Reservas"],["categorias","Categorias"],["configuracoes","Configurações"]];
+  const tabs=[["materiais","▦","Materiais"],["reservas","◷","Reservas"],["categorias","⊞","Categorias"],["configuracoes","⚙","Configurações"]];
   const count=state.admin.reservas.filter(r=>r.status==="pendente").length;
-  const content='<nav class="tabs" aria-label="Áreas do painel">'+tabs.map(([key,label])=>'<button type="button" class="tab '+(state.tab===key?"active":"")+'" data-tab="'+key+'">'+label+(key==="reservas"&&count?' ('+count+')':"")+'</button>').join("")+'</nav><div id="admin-tab-body"></div>';
+  const content='<nav class="tabs" aria-label="Áreas do painel">'+tabs.map(([key,symbol,label])=>'<button type="button" class="tab '+(state.tab===key?"active":"")+'" data-tab="'+key+'"><span aria-hidden="true">'+symbol+'</span> '+label+(key==="reservas"&&count?' <span class="tab-count">'+count+'</span>':"")+'</button>').join("")+'</nav><div id="admin-tab-body"></div>';
   openModal("Gerenciar inventário","Administração do PET Educação · "+(state.actor||"PETiane"),content,{size:"full"});
   $$(".tab").forEach(b=>b.onclick=()=>{state.tab=b.dataset.tab;adminModal()});
   renderTab();
@@ -179,7 +189,9 @@ function renderTab(){
   return renderSettings(target);
 }
 function renderAdminMaterials(target){
-  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Materiais cadastrados</h3><p>Alterações só são gravadas quando você clicar em salvar.</p></div><button class="primary-button small-button" id="add-item">+ Novo material</button></div><div class="admin-list">'+state.admin.componentes.map(x=>'<div class="admin-list-row"><div class="main-info"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+' · Total: '+moneyless(x.quantidade)+' · Disponível: '+moneyless(available(x))+'</small></div><div class="actions"><button type="button" class="outline-button small-button" data-edit-item="'+x.id+'">Editar</button><button type="button" class="danger-button small-button" data-remove-item="'+x.id+'">Excluir</button></div></div>').join("")+'</div></section>';
+  const pending=state.admin.reservas.filter(r=>r.status==="pendente").length;
+  target.innerHTML='<section class="panel-section"><div class="admin-reservations-shortcut"><div><strong>Solicitações e devoluções</strong><small>'+pending+' reserva(s) aguardando análise. As solicitações feitas pelo site aparecem aqui no painel.</small></div><button type="button" class="primary-button small-button" id="go-reservations">Abrir reservas'+(pending?' ('+pending+')':'')+'</button></div><div class="panel-head"><div><h3>Materiais cadastrados</h3><p>Alterações só são gravadas quando você clicar em salvar.</p></div><button class="primary-button small-button" id="add-item">+ Novo material</button></div><div class="admin-list">'+state.admin.componentes.map(x=>'<div class="admin-list-row"><div class="main-info"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+' · Total: '+moneyless(x.quantidade)+' · Disponível: '+moneyless(available(x))+'</small></div><div class="actions"><button type="button" class="outline-button small-button" data-edit-item="'+x.id+'">Editar</button><button type="button" class="danger-button small-button" data-remove-item="'+x.id+'">Excluir</button></div></div>').join("")+'</div></section>';
+  $("#go-reservations").onclick=()=>{state.tab="reservas";adminModal()};
   $("#add-item").onclick=()=>itemEditor();
   $$("[data-edit-item]").forEach(b=>b.onclick=()=>itemEditor(Number(b.dataset.editItem)));
   $$("[data-remove-item]").forEach(b=>b.onclick=()=>removeItem(Number(b.dataset.removeItem)));
@@ -259,7 +271,7 @@ function renderAdminReservations(target){
   const reservations=state.admin.reservas;
   const active=r=>["pendente","aprovada","retirada"].includes(r.status);
   const list=reservations.filter(r=>reserveStatusFilter==="todas" || (reserveStatusFilter==="ativas"?active(r):reserveStatusFilter==="atrasadas"?lateReserve(r):reserveStatusFilter==="concluidas"?!active(r):r.status===reserveStatusFilter));
-  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Solicitações e devoluções</h3><p>Pedidos dos visitantes, controle de retiradas e prazos.</p></div><span class="status pending">'+reservations.filter(r=>r.status==="pendente").length+' pendentes</span></div>'+
+  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Solicitações e devoluções</h3><p>As reservas enviadas por visitantes aparecem aqui para você aprovar ou recusar.</p></div><span class="status pending">'+reservations.filter(r=>r.status==="pendente").length+' pendentes</span></div>'+
     '<div class="filter-row" style="padding:0 0 18px">'+[["ativas","Ativas"],["pendente","Pendentes"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]].map(([key,label])=>'<button class="chip '+(reserveStatusFilter===key?"active":"")+'" data-r-filter="'+key+'">'+label+'</button>').join("")+'</div>'+
     '<div class="admin-list">'+(list.length?list.map(r=>reservationCard(r)).join(""):'<div class="empty-state">Nenhuma reserva nesta seleção.</div>')+'</div></section>';
   $$("[data-r-filter]").forEach(b=>b.onclick=()=>{reserveStatusFilter=b.dataset.rFilter;renderTab()});
