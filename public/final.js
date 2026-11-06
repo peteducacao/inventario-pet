@@ -1,6 +1,7 @@
 /* Inventário PET — experiência final leve e responsiva, sem frameworks. */
 const UI = {
   page:Math.max(1,Number(localStorage.getItem("pet_public_page")||1)),
+  filaments:[],
   category:localStorage.getItem("pet_public_category")||"all",
   sort:localStorage.getItem("pet_public_sort")||"az",
   adminTab:localStorage.getItem("pet_admin_tab")||"painel",
@@ -100,6 +101,12 @@ function thumb(x,clazz="material-thumb"){
   return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src='/img/reference-board.svg'">':"")+'</div>';
 }
 function finalCard(x){
+  if(x._filament){
+    return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
+      '<div class="filament-art" style="--filament-color:'+attr(x.hexadecimal)+'"><div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div></div>'+
+      '<div class="catalog-body"><span class="catalog-category">Filamentos</span><h3>'+esc(x.cor)+'</h3>'+
+      '<div class="filament-quantity">Quantidade <strong>'+Number(x.quantidade)+'</strong></div></div></article>';
+  }
   const free=stock(x),status=free>0?"Disponível":"Sem estoque",type=free===0?"empty":Number(x.em_uso)>0?"busy":"";
   const img=itemImage(x);
   const canWithdraw=identityIsMember();
@@ -117,12 +124,14 @@ function finalRender(){
   if(!$("#category-sections"))return;
   state.filter=UI.category;
   $("#demo-notice").hidden=!state.data.demonstracao;
-  const items=(state.data.componentes||[]).filter(x=>!isArchived(x));
+  const ordinary=(state.data.componentes||[]).filter(x=>!isArchived(x));
+  const colorItems=(UI.filaments||[]).map(x=>({...x,_filament:true,nome:x.cor,categoria_id:"filaments",em_uso:0,com_defeito:0,mostrar_quantidade:1}));
+  const items=[...ordinary,...colorItems];
   $("#stat-items").textContent=moneyless(items.length);
-  $("#stat-stock").textContent=moneyless(items.reduce((s,x)=>s+stock(x),0));
-  $("#stat-used").textContent=moneyless(items.reduce((s,x)=>s+Number(x.em_uso||0),0));
-  $("#stat-broken").textContent=moneyless(items.reduce((s,x)=>s+Number(x.com_defeito||0),0));
-  $("#category-filters").innerHTML=[{id:"all",nome:"Todos"},...(state.data.categorias||[]).filter(c=>items.some(x=>x.categoria_id===c.id))].map(c=>
+  $("#stat-stock").textContent=moneyless(ordinary.reduce((s,x)=>s+stock(x),0)+colorItems.reduce((s,x)=>s+Number(x.quantidade),0));
+  $("#stat-used").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.em_uso||0),0));
+  $("#stat-broken").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.com_defeito||0),0));
+  $("#category-filters").innerHTML=[{id:"all",nome:"Todos"},...(state.data.categorias||[]).filter(c=>ordinary.some(x=>x.categoria_id===c.id)),{id:"filaments",nome:"Filamentos"}].map(c=>
     '<button type="button" class="chip '+(String(UI.category)===String(c.id)?"active":"")+'" data-category="'+attr(c.id)+'">'+esc(c.nome)+'</button>').join("");
   const q=(state.query||"").toLocaleLowerCase("pt-BR").trim();
   const filtered=items.filter(x=>(UI.category==="all"||String(x.categoria_id)===String(UI.category))&&
@@ -140,7 +149,7 @@ function finalRender(){
   $("#summary").classList.toggle("collapsed",UI.summaryMinimized);
   $("#stats-toggle").setAttribute("aria-expanded",String(!UI.summaryMinimized));
   $("#stats-toggle-text").textContent=UI.summaryMinimized?"Mostrar":"Minimizar";
-  const updated=items.map(x=>x.ultima_alteracao).filter(Boolean).sort().at(-1);
+  const updated=[...ordinary.map(x=>x.ultima_alteracao),...colorItems.map(x=>x.atualizado_em)].filter(Boolean).sort().at(-1);
   $("#last-updated").textContent=updated?"Última atualização: "+niceDate(updated):"";
 }
 function niceModalConfirm(title,message,confirmText="Confirmar",danger=false){
@@ -261,6 +270,7 @@ function setupFinalPublic(){
     if(!event.target.closest("#notification-button,#notification-popover"))$("#notification-popover").hidden=true;
   });
   try{finalRender()}catch(e){console.warn("Aguardando catálogo",e.message);}
+  refreshFilaments().catch(error=>console.warn("Filamentos:",error.message));
   api("/api/identity/me").then(r=>{
     if(r.usuario&&!state.identity){setIdentity(r.usuario);refreshNotifications();}
   }).catch(()=>{});
@@ -268,3 +278,5 @@ function setupFinalPublic(){
   setInterval(()=>{if(state.identity)refreshNotifications()},90000);
   if(localStorage.getItem("pet_admin_open")==="1")setTimeout(()=>enterAdmin(true),200);
 }
+
+async function refreshFilaments(){const data=await api("/api/filaments");UI.filaments=data.filamentos||[];finalRender();}
