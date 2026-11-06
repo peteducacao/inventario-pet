@@ -1,5 +1,5 @@
 /* Administração Inventário PET: painel próprio e responsivo. */
-const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["configuracoes","settings","Configurações"]];
+const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["filamentos","layers","Filamentos"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["configuracoes","settings","Configurações"]];
 function adminCounts(){
   const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
   const reservations=state.admin?.reservas||[];
@@ -10,7 +10,7 @@ function adminCounts(){
 }
 function adminLastUpdate(){
   const items=state.admin?.componentes||[];
-  const sorted=items.map(x=>x.ultima_alteracao).filter(Boolean).sort();
+  const sorted=[...items.map(x=>x.ultima_alteracao),...(UI.filaments||[]).map(x=>x.atualizado_em)].filter(Boolean).sort();
   const last=sorted.at(-1),source=state.admin?.configuracoes?.inventario_fonte_atualizacao;
   return "Atualizado: "+(last?niceDate(last):source||"—")+(source?" · Planilha-base: "+source:"");
 }
@@ -89,6 +89,7 @@ function adminContent(){
   const content=$("#admin-content");if(!content)return;
   if(UI.adminTab==="painel")return adminDashboard(content);
   if(UI.adminTab==="materiais")return adminMaterials(content);
+  if(UI.adminTab==="filamentos")return adminFilaments(content);
   if(UI.adminTab==="reservas")return adminReservations(content);
   if(UI.adminTab==="usuarios")return adminUsers(content);
   if(UI.adminTab==="categorias")return adminCategories(content);
@@ -343,5 +344,60 @@ async function adminDeleteCategory(id){
   const c=state.admin.categorias.find(x=>x.id===id);if(!c)return;
   if(!await niceModalConfirm("Excluir categoria?",c.nome+" deve estar vazia para ser excluída.","Excluir",true))return;
   try{await api("/api/admin/category","POST",{acao:"excluir",id});await adminReload();adminBuild();toast("Categoria excluída.");}
+  catch(e){toast(e.message,true);}
+}
+
+
+/* Filamentos: só cor e quantidade, sem patrimônio nem empréstimo. */
+const FILAMENT_PALETTE=[
+  ["Preto","#24272C"],["Branco","#F4F5F1"],["Vermelho","#D83741"],
+  ["Azul","#2A69D6"],["Verde","#2EAC6C"],["Amarelo","#F5D442"],
+  ["Laranja","#F28C28"],["Rosa","#F18BC0"],["Roxo","#854CBF"],
+  ["Cinza","#959CA6"],["Marrom","#895F47"],["Dourado","#CDA84B"]
+];
+function adminFilaments(root){
+  const list=UI.filaments||[];
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Filamentos</h2><p>Organize as cores e quantidades do PET.</p></div>'+
+    '<div class="buttons"><button class="primary-button" id="filament-add" type="button">'+iconSvg("plus",16)+' Adicionar cor</button></div></div>'+
+    '<div class="filament-admin-grid">'+(list.length?list.map(x=>
+    '<div class="filament-admin-card">'+
+      '<span class="filament-color-dot" style="background:'+attr(x.hexadecimal)+'" aria-hidden="true"></span>'+
+      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Quantidade: <b>'+Number(x.quantidade)+'</b></small></div>'+
+      '<div class="filament-admin-buttons"><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
+      '<button type="button" class="square-action danger" aria-label="Excluir '+attr(x.cor)+'" title="Excluir" data-filament-delete="'+x.id+'">'+iconSvg("trash")+'</button></div></div>').join(""):
+      '<div class="empty-state">Nenhuma cor cadastrada. Adicione a primeira cor de filamento.</div>')+'</div></section>';
+  $("#filament-add").onclick=()=>filamentEditor();
+  $$("[data-filament-edit]",root).forEach(b=>b.onclick=()=>filamentEditor(Number(b.dataset.filamentEdit)));
+  $$("[data-filament-delete]",root).forEach(b=>b.onclick=()=>deleteFilament(Number(b.dataset.filamentDelete)));
+}
+function filamentEditor(id){
+  const color=(UI.filaments||[]).find(x=>x.id===id);
+  const selected=color?.hexadecimal||"#2A69D6";
+  openModal(color?"Editar filamento":"Adicionar cor de filamento","Apenas cor e quantidade.",
+    '<form id="filament-form" class="modal-main">'+
+    '<div class="filament-palette">'+FILAMENT_PALETTE.map(([name,hex])=>
+      '<button type="button" class="filament-preset" style="--sample:'+hex+'" data-filament-choice="'+attr(name)+'" data-hex="'+hex+'" aria-label="Escolher '+attr(name)+'" title="'+attr(name)+'"><span></span></button>').join("")+'</div>'+
+    '<div class="field-grid"><div class="field"><label for="filament-name">Cor</label><input id="filament-name" maxlength="55" required value="'+attr(color?.cor||"")+'" placeholder="Ex.: Azul royal"></div>'+
+    '<div class="field"><label for="filament-hex">Escolher tonalidade</label><input type="color" id="filament-hex" value="'+selected+'"></div></div>'+
+    '<div class="field"><label for="filament-quantity">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+
+    '<div class="modal-footer" style="border:0;padding:16px 0 0"><button class="secondary-button" id="filament-cancel" type="button">Cancelar</button><button class="primary-button" type="submit" id="filament-save">Salvar</button></div></form>');
+  $$("[data-filament-choice]").forEach(b=>b.onclick=()=>{
+    $("#filament-name").value=b.dataset.filamentChoice;$("#filament-hex").value=b.dataset.hex;
+  });
+  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
+  $("#filament-cancel").onclick=()=>{closeModal();adminBuild();};
+  $("#filament-form").onsubmit=async e=>{
+    e.preventDefault();
+    const btn=$("#filament-save");btn.disabled=true;btn.textContent="Salvando…";
+    try{
+      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value)});
+      await refreshFilaments();closeModal();adminBuild();toast("Filamento salvo.");
+    }catch(e){toast(e.message,true);btn.disabled=false;btn.textContent="Salvar";}
+  };
+}
+async function deleteFilament(id){
+  const x=(UI.filaments||[]).find(x=>x.id===id);if(!x)return;
+  if(!await niceModalConfirm("Excluir esta cor?","Excluir "+x.cor+" do inventário de filamentos?","Excluir",true))return;
+  try{await api("/api/admin/filaments","POST",{acao:"excluir",id});await refreshFilaments();adminBuild();toast("Cor excluída.");}
   catch(e){toast(e.message,true);}
 }
