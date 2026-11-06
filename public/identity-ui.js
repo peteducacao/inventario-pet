@@ -10,65 +10,140 @@ async function copyValue(value,field){
   try{await navigator.clipboard.writeText(value);toast("Copiado!");}
   catch{if(field){field.focus();field.select();}toast("Selecione o texto para copiar.");}
 }
-function identityRegisterModal(first=false){
-  const html='<form class="modal-main" id="register-user-form">'+
-    '<div class="field"><label for="identity-name">Seu nome</label><input id="identity-name" autocomplete="name" maxlength="80" required placeholder="Como podemos chamar você?" value="'+attr(state.actor)+'"></div>'+
-    '<p class="notice">Todo perfil começa como <strong>Visitante</strong>. O site gera seu ID automaticamente. Somente um administrador pode dar a tag <strong>PETiano</strong>.</p>'+
-    '<div class="modal-footer" style="border:0;padding:17px 0 0"><button type="submit" class="primary-button" id="identity-register-submit">Criar meu perfil</button></div>'+
-    '<div class="identity-separator">Já tem um ID e um código de recuperação?</div><button type="button" class="outline-button" id="identity-recover-button" style="width:100%">Usar perfil existente</button>'+
-    '</form>';
-  openModal("Quem é você, PETiane?","Seu perfil será identificado no inventário, sem senhas complicadas.",html);
-  $("#identity-recover-button").onclick=identityRecoverModal;
-  $("#register-user-form").onsubmit=async e=>{
-    e.preventDefault();const btn=$("#identity-register-submit");btn.disabled=true;btn.textContent="Criando perfil…";
+function passwordField(id,label,autocomplete="current-password"){
+  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" minlength="10" maxlength="128" required placeholder="Mínimo de 10 caracteres"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>';
+}
+function wirePasswordVisibility(){
+  $$("[data-password-show]").forEach(btn=>btn.onclick=()=>{
+    const input=$("#"+btn.dataset.passwordShow);
+    if(!input)return;
+    const show=input.type==="password";
+    input.type=show?"text":"password";
+    btn.textContent=show?"Ocultar":"Mostrar";
+    btn.setAttribute("aria-label",show?"Ocultar senha":"Mostrar senha");
+  });
+}
+function accountFields(prefix,nome=""){
+  return '<div class="field"><label for="'+prefix+'-name">Nome completo</label><input id="'+prefix+'-name" maxlength="80" required autocomplete="name" placeholder="Como podemos chamar você?" value="'+attr(nome)+'"></div>'+
+    '<div class="field"><label for="'+prefix+'-login">Nome de usuário</label><input id="'+prefix+'-login" maxlength="24" minlength="4" autocapitalize="none" spellcheck="false" required autocomplete="username" placeholder="Ex.: sergio01"></div>'+
+    '<p class="hint" style="margin:-8px 0 15px">De 4 a 24 caracteres, sem espaços ou acentos. Pode usar letras, números, ponto, traço e _.</p>'+
+    passwordField(prefix+"-password","Criar senha","new-password")+
+    passwordField(prefix+"-confirm","Repetir senha","new-password");
+}
+function identityLoginModal(first=false){
+  openModal("Entrar no inventário","Use seu nome de usuário e sua senha. A tag Visitante ou PETiano continua vinculada à sua conta.",
+    '<form class="modal-main" id="identity-login-form">'+
+    '<div class="field"><label for="identity-login">Nome de usuário</label><input id="identity-login" maxlength="24" autocapitalize="none" spellcheck="false" autocomplete="username" required placeholder="Ex.: sergio01"></div>'+
+    passwordField("identity-login-password","Senha")+
+    '<button type="button" class="link-button" id="identity-forgot" style="margin-bottom:16px">Esqueci minha senha</button>'+
+    '<div class="modal-footer" style="border:0;padding:12px 0 0"><button type="submit" class="primary-button" id="identity-login-submit" style="width:100%">Entrar</button></div>'+
+    '<div class="identity-separator">Primeiro acesso?</div><button type="button" class="outline-button" id="identity-open-register" style="width:100%">Criar minha conta</button></form>');
+  wirePasswordVisibility();
+  $("#identity-forgot").onclick=()=>openModal("Esqueci minha senha","Recuperação de acesso pelo PET.",
+    '<div class="modal-main"><p>Peça a um administrador do PET para encontrar seu cadastro na aba <strong>Usuários</strong> e clicar em <strong>Redefinir senha</strong>.</p><p class="notice">O administrador vai gerar uma senha temporária e informar seu nome de usuário. Você deverá escolher uma senha definitiva ao entrar.</p><button type="button" class="primary-button" id="identity-forgot-back" style="width:100%">Voltar ao login</button></div>');
+  const forgotBack=$("#identity-forgot-back");
+  if(forgotBack)forgotBack.onclick=identityLoginModal;
+  $("#identity-open-register").onclick=()=>identityRegisterModal(true);
+  $("#identity-login-form").onsubmit=async e=>{
+    e.preventDefault();
+    const btn=$("#identity-login-submit");btn.disabled=true;btn.textContent="Entrando…";
     try{
-      const result=await api("/api/identity/register","POST",{nome:$("#identity-name").value});
-      setIdentity(result.usuario);
-      if(result.codigo_recuperacao)identityShowRecovery(result.codigo_recuperacao,true);
+      const r=await api("/api/identity/login","POST",{login:$("#identity-login").value,senha:$("#identity-login-password").value});
+      setIdentity(r.usuario);
+      if(r.usuario.trocar_senha)identityChangePasswordModal(true);
       else identityProfileModal();
-      toast("Perfil criado e identificado!");
-    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Criar meu perfil";}
+      toast("Você entrou no seu perfil!");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Entrar";}
   };
-  if(first)$("#identity-name")?.focus();
+  if(first)$("#identity-login")?.focus();
 }
-function identityShowRecovery(code,newAccount=false){
-  const id=state.identity?.id||"";
-  openModal(newAccount?"Seu perfil foi criado!":"Novo código gerado",
-    "Guarde o código privado para recuperar seu perfil caso troque de aparelho.",
-    '<div class="modal-main"><p class="notice warning"><strong>Importante:</strong> este código aparece apenas agora. O ID pode ser compartilhado com o administrador, mas o código de recuperação é secreto.</p>'+
-    '<div class="field"><label for="recovery-public-id">Seu ID público</label><div class="copy-field"><input id="recovery-public-id" readonly value="'+attr(id)+'"><button type="button" class="outline-button" id="copy-identity-id">Copiar</button></div></div>'+
-    '<div class="field"><label for="secret-recovery-code">Código privado de recuperação</label><div class="copy-field"><input id="secret-recovery-code" readonly value="'+attr(code)+'"><button type="button" class="outline-button" id="copy-identity-secret">Copiar</button></div></div>'+
-    '<button type="button" class="primary-button" id="recovery-done" style="width:100%">Entendi, continuar</button></div>');
-  $("#copy-identity-id").onclick=()=>copyValue(id,$("#recovery-public-id"));
-  $("#copy-identity-secret").onclick=()=>copyValue(code,$("#secret-recovery-code"));
-  $("#recovery-done").onclick=identityProfileModal;
-}
-function identityRecoverModal(){
-  const body='<form class="modal-main" id="identity-recover-form">'+
-    '<p class="notice">Seu ID é público, mas o código de recuperação é privado. Use os dois para acessar seu perfil em outro navegador.</p>'+
-    '<div class="field"><label for="identity-recovery-id">ID do perfil</label><input id="identity-recovery-id" placeholder="PET-XXXXXXXXXXXX" maxlength="20" autocomplete="off" required></div>'+
-    '<div class="field"><label for="identity-recovery-code">Código privado de recuperação</label><input id="identity-recovery-code" placeholder="REC-..." maxlength="60" autocomplete="off" required></div>'+
-    '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="button" class="secondary-button" id="identity-create-new">Criar novo perfil</button><button type="submit" class="primary-button" id="identity-recover-submit">Entrar no meu perfil</button></div></form>';
-  openModal("Recuperar perfil","Acesse suas permissões mesmo em outro aparelho.",body);
-  $("#identity-create-new").onclick=identityRegisterModal;
-  $("#identity-recover-form").onsubmit=async e=>{
-    e.preventDefault();const btn=$("#identity-recover-submit");btn.disabled=true;
+function identityRegisterModal(first=false){
+  if(state.identity?.precisa_criar_login)return identityUpgradeModal();
+  openModal("Criar minha conta","Cada integrante tem seu próprio login. Toda conta nova começa como Visitante.",
+    '<form class="modal-main" id="register-user-form">'+accountFields("reg",state.actor)+
+    '<p class="notice">A tag <strong>PETiano</strong> é liberada apenas por um administrador. Não é necessário anotar códigos de recuperação.</p>'+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="submit" class="primary-button" id="identity-register-submit" style="width:100%">Criar conta</button></div>'+
+    '<div class="identity-separator">Já tem uma conta?</div><button type="button" class="outline-button" id="identity-register-login" style="width:100%">Entrar com login e senha</button></form>');
+  wirePasswordVisibility();
+  $("#identity-register-login").onclick=identityLoginModal;
+  $("#register-user-form").onsubmit=async e=>{
+    e.preventDefault();
+    const senha=$("#reg-password").value;
+    if(senha!==$("#reg-confirm").value){toast("As senhas não coincidem.",true);return;}
+    const btn=$("#identity-register-submit");btn.disabled=true;btn.textContent="Criando conta…";
     try{
-      const result=await api("/api/identity/recover","POST",{id:$("#identity-recovery-id").value,codigo:$("#identity-recovery-code").value});
-      setIdentity(result.usuario);identityProfileModal();toast("Perfil recuperado!");
+      const r=await api("/api/identity/register","POST",{nome:$("#reg-name").value,login:$("#reg-login").value,senha});
+      setIdentity(r.usuario);identityProfileModal();toast("Conta criada com sucesso!");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Criar conta";}
+  };
+  if(first)$("#reg-name")?.focus();
+}
+function identityUpgradeModal(){
+  const u=state.identity;if(!u)return identityLoginModal();
+  if(!u.precisa_criar_login)return identityProfileModal();
+  openModal("Atualizar meu cadastro","Seu perfil antigo e sua tag serão preservados. Só precisamos configurar um login e senha.",
+    '<form class="modal-main" id="identity-upgrade-form"><p class="notice">Encontramos seu perfil de <strong>'+esc(u.nome)+'</strong> ('+esc(u.id)+'). Sua tag e suas movimentações não serão alteradas.</p>'+
+    '<div class="field"><label for="upgrade-login">Escolha um nome de usuário</label><input id="upgrade-login" maxlength="24" minlength="4" autocapitalize="none" autocomplete="username" required placeholder="Ex.: sergio01"></div>'+
+    '<p class="hint" style="margin:-9px 0 14px">De 4 a 24 caracteres, sem espaços nem acentos.</p>'+
+    passwordField("upgrade-password","Criar senha","new-password")+
+    passwordField("upgrade-confirm","Repetir senha","new-password")+
+    '<button type="submit" class="primary-button" style="width:100%">Salvar login e senha</button></form>');
+  wirePasswordVisibility();
+  $("#identity-upgrade-form").onsubmit=async e=>{
+    e.preventDefault();if($("#upgrade-password").value!==$("#upgrade-confirm").value){toast("As senhas não coincidem.",true);return;}
+    const btn=$("#identity-upgrade-form button[type=submit]");btn.disabled=true;
+    try{
+      const r=await api("/api/identity/upgrade","POST",{login:$("#upgrade-login").value,senha:$("#upgrade-password").value});
+      setIdentity(r.usuario);identityProfileModal();toast("Sua conta antiga foi atualizada!");
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }
+function identityChangePasswordModal(force=false){
+  const u=state.identity;if(!u)return identityLoginModal();
+  if(u.precisa_criar_login)return identityUpgradeModal();
+  const must=force||u.trocar_senha;
+  const form='<form class="modal-main" id="identity-change-form">'+
+    (must?'<p class="notice warning">Você entrou com uma senha temporária. Para continuar, escolha uma nova senha particular.</p>':passwordField("identity-old-password","Senha atual"))+
+    passwordField("identity-new-password","Nova senha","new-password")+
+    passwordField("identity-new-confirm","Repetir nova senha","new-password")+
+    '<div class="modal-footer" style="padding:15px 0 0;border:0"><button type="button" class="secondary-button" id="identity-change-cancel">'+(must?"Sair":"Cancelar")+'</button><button type="submit" class="primary-button" id="identity-change-submit">Salvar senha</button></div></form>';
+  openModal(must?"Criar senha definitiva":"Alterar minha senha","Sua senha é pessoal e não fica visível para o administrador.",form);
+  wirePasswordVisibility();
+  $("#identity-change-cancel").onclick=async()=>{
+    if(!must)return identityProfileModal();
+    await identityLogout();
+  };
+  $("#identity-change-form").onsubmit=async e=>{
+    e.preventDefault();const password=$("#identity-new-password").value;
+    if(password!==$("#identity-new-confirm").value){toast("As senhas não coincidem.",true);return;}
+    const btn=$("#identity-change-submit");btn.disabled=true;
+    try{
+      const r=await api("/api/identity/password","POST",{nova_senha:password,senha_atual:must?"":$("#identity-old-password").value});
+      setIdentity(r.usuario);identityProfileModal();toast("Senha atualizada com sucesso!");
+    }catch(error){toast(error.message,true);btn.disabled=false;}
+  };
+}
+async function identityLogout(){
+  try{
+    await api("/api/identity/logout","POST",{});
+    setIdentity(null);identityLoginModal();toast("Você saiu deste dispositivo.");
+  }catch(error){toast(error.message,true);}
+}
 function identityProfileModal(){
-  const u=state.identity;if(!u)return identityRegisterModal();
+  const u=state.identity;if(!u)return identityLoginModal();
+  if(u.precisa_criar_login)return identityUpgradeModal();
+  if(u.trocar_senha)return identityChangePasswordModal(true);
   const member=u.tag==="petiano";
   const body='<div class="modal-main"><div class="identity-profile-head"><div class="identity-avatar">'+esc(u.nome.slice(0,1).toUpperCase())+'</div><div><strong>'+esc(u.nome)+'</strong><span class="status '+(member?"picked":"done")+'">'+(member?"✓ PETiano":"Visitante")+'</span></div></div>'+
-    '<div class="field"><label for="identity-public-id">Meu ID público</label><div class="copy-field"><input id="identity-public-id" readonly value="'+attr(u.id)+'"><button type="button" class="outline-button" id="identity-copy-id">Copiar ID</button></div><small class="hint">Passe este ID ao administrador para solicitar a tag PETiano. O ID não é uma senha.</small></div>'+
-    (member?'<div class="notice"><strong>Tag PETiano ativa:</strong> você já pode retirar materiais diretamente e registrar suas devoluções, sem aguardar aprovação.</div>':'<div class="notice">Seu perfil é de visitante. Você pode solicitar reservas, que precisam de aprovação do PET.</div>')+
+    '<div class="field"><label for="identity-my-login">Meu nome de usuário</label><input id="identity-my-login" readonly value="'+attr(u.login||"")+'"></div>'+
+    '<div class="field"><label for="identity-public-id">Meu ID público</label><div class="copy-field"><input id="identity-public-id" readonly value="'+attr(u.id)+'"><button type="button" class="outline-button" id="identity-copy-id">Copiar ID</button></div><small class="hint">O administrador pode encontrar você pelo nome de usuário ou ID.</small></div>'+
+    (member?'<div class="notice"><strong>Tag PETiano ativa:</strong> você pode registrar retiradas e devoluções sem aprovação.</div>':'<div class="notice">Sua tag é Visitante. Solicitações de reserva aguardam aprovação do PET.</div>')+
     '<div class="identity-actions">'+(member?'<button type="button" class="primary-button" id="identity-open-withdraw">Registrar retirada</button><button type="button" class="outline-button" id="identity-my-items">Minhas retiradas</button>':'')+
-    '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar minha tag</button><button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button><button type="button" class="outline-button" id="identity-new-recovery">Novo código de recuperação</button>'+
+    '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar minha tag</button>'+
+    '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button>'+
+    '<button type="button" class="outline-button" id="identity-change-password">Alterar minha senha</button>'+
     '<button type="button" class="danger-button" id="identity-logout">Sair deste dispositivo</button></div></div>';
-  openModal("Meu perfil","Identificação individual e permissões.",body);
+  openModal("Meu perfil","Login individual e permissões.",body);
   $("#identity-copy-id").onclick=()=>copyValue(u.id,$("#identity-public-id"));
   if(member){
     $("#identity-open-withdraw").onclick=()=>memberWithdrawModal();
@@ -77,21 +152,14 @@ function identityProfileModal(){
   $("#identity-refresh-tag").onclick=async()=>{
     try{
       const r=await api("/api/identity/me");
-      if(!r.usuario){setIdentity(null);identityRecoverModal();toast("Seu acesso expirou. Use seu ID e o código privado.",true);return;}
+      if(!r.usuario){setIdentity(null);identityLoginModal();toast("Sua sessão expirou. Entre novamente.",true);return;}
       const old=state.identity?.tag;setIdentity(r.usuario);identityProfileModal();
       toast(r.usuario.tag===old?"Seu perfil já está atualizado.":"Sua tag foi atualizada!");
     }catch(error){toast(error.message,true);}
   };
+  $("#identity-change-password").onclick=()=>identityChangePasswordModal(false);
   $("#identity-rename").onclick=identityRenameModal;
-  $("#identity-new-recovery").onclick=async()=>{
-    if(!confirm("Gerar outro código? O anterior deixará de funcionar. Guarde o novo código em lugar seguro."))return;
-    try{const result=await api("/api/identity/recovery-code","POST",{});identityShowRecovery(result.codigo_recuperacao);}catch(error){toast(error.message,true);}
-  };
-  $("#identity-logout").onclick=async()=>{
-    if(!confirm("Sair deste dispositivo? Para voltar a este perfil, você precisará do ID e do código de recuperação."))return;
-    try{await api("/api/identity/logout","POST",{});setIdentity(null);identityRegisterModal();toast("Você saiu deste perfil.");}
-    catch(error){toast(error.message,true);}
-  };
+  $("#identity-logout").onclick=()=>{if(confirm("Deseja sair deste dispositivo?"))identityLogout();};
 }
 function identityRenameModal(){
   openModal("Alterar meu nome","O ID permanece o mesmo mesmo se você mudar o nome.",
