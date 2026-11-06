@@ -13,7 +13,7 @@
     {
       "binding": "DB",
       "database_name": "inventario-pet",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "af1f45ca-16eb-457c-98b1-7841ef777570",
       "migrations_dir": "migrations"
     }
   ],
