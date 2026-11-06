@@ -16,10 +16,15 @@ w.localStorage.setItem("pet_inventario_nome","Tester");
 w.confirm=()=>true;
 let authenticated=false;
 let userTag="visitante";
+let userDeleted=false;
 const component={id:1,categoria_id:1,nome:"ESP32 de teste",imagem:"",patrimonio:"DEMO",identificacao:"",quantidade:5,em_uso:0,com_defeito:0,mostrar_quantidade:1,mostrar_em_uso:1,mostrar_defeito:1,ultima_alteracao:null};
 const data={categorias:[{id:1,nome:"Eletrônica",ordem:1}],componentes:[component]};
 const pending={id:5,componente_id:1,componente_nome:"ESP32 de teste",nome_solicitante:"Visitante",contato:"",quantidade:1,data_inicio:"2026-12-01",data_devolucao:"2026-12-02",status:"pendente",solicitado_em:"2026-11-06T12:00:00Z"};
-const adminData={...data,reservas:[pending],configuracoes:{limpeza_reservas:"nunca",modo_demo:"sim"}};
+const approved={...pending,id:6,nome_solicitante:"Reserva aprovada",status:"aprovada"};
+const picked={...pending,id:7,nome_solicitante:"Reserva em uso",status:"retirada"};
+const late={...pending,id:8,nome_solicitante:"Reserva atrasada",status:"retirada",data_devolucao:"2026-10-01"};
+const finished={...pending,id:9,nome_solicitante:"Reserva concluida",status:"devolvida"};
+const adminData={...data,reservas:[pending,approved,picked,late,finished],configuracoes:{limpeza_reservas:"nunca",modo_demo:"sim"}};
 w.fetch=async (uri,init={})=>{
   const url=new URL(uri,w.location.href), path=url.pathname;
   let status=200,value={};
@@ -27,7 +32,9 @@ w.fetch=async (uri,init={})=>{
   else if(path==="/api/admin/state")authenticated?value=adminData:(status=401,value={error:"Entre no painel administrativo."});
   else if(path==="/api/login"){authenticated=true;value={ok:true}}
   else if(path==="/api/identity/me")value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",tag:userTag,ativo:true,criado_em:"2026-11-06T10:00:00Z"}};
-  else if(path==="/api/admin/users"){if(init.method==="POST"){userTag=JSON.parse(init.body).tag;value={ok:true}}else value={ok:true,usuarios:[{id:"PET-123456789ABC",nome:"Tester",tag:userTag,ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};}
+  else if(path==="/api/admin/users"){if(init.method==="POST"){userTag=JSON.parse(init.body).tag;value={ok:true}}else value={ok:true,usuarios:userDeleted?[]:[{id:"PET-123456789ABC",nome:"Tester",tag:userTag,ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};}
+  else if(path==="/api/admin/users/recovery")value={ok:true,id:"PET-123456789ABC",nome:"Tester",codigo_recuperacao:"REC-"+"A".repeat(40)};
+  else if(path==="/api/admin/users/delete"){userDeleted=true;value={ok:true};}
   else if(path==="/api/availability")value={disponiveis:5};
   else {status=404;value={error:"Rota não encontrada"};}
   return {ok:status<400,status,json:async()=>value};
@@ -67,6 +74,25 @@ for (const [key,title] of [["materiais","Materiais cadastrados"],["reservas","So
     assert.equal(d.querySelector("#custom-days")?.hidden,true,"A opção de 1 minuto não deve pedir quantidade de dias");
   }
 }
+// Grupos de reservas sem sobreposicao: pendente nao e ativo.
+await click(tab("reservas"));
+const shown=()=>Array.from(panel().querySelectorAll(".admin-list .admin-list-row")).map(x=>x.textContent).join(" ");
+const choose=async key=>click(panel().querySelector('[data-r-filter="'+key+'"]'));
+await choose("pendente");
+assert.match(shown(),/Visitante/);
+assert.doesNotMatch(shown(),/Reserva aprovada|Reserva em uso|Reserva atrasada|Reserva concluida/);
+await choose("ativas");
+assert.match(shown(),/Reserva aprovada/);
+assert.match(shown(),/Reserva em uso/);
+assert.doesNotMatch(shown(),/Visitante|Reserva atrasada|Reserva concluida/);
+await choose("atrasadas");
+assert.match(shown(),/Reserva atrasada/);
+assert.doesNotMatch(shown(),/Visitante|Reserva aprovada|Reserva em uso/);
+await choose("concluidas");
+assert.match(shown(),/Reserva concluida/);
+assert.doesNotMatch(shown(),/Visitante|Reserva aprovada|Reserva em uso|Reserva atrasada/);
+await choose("todas");
+assert.equal(panel().querySelectorAll(".admin-list .admin-list-row").length,5);
 await click(tab("materiais"));
 await click(d.querySelector("#add-item"));
 assert.ok(d.querySelector("#item-form"),"Formulário de cadastro de materiais não abriu");
@@ -79,6 +105,19 @@ await click(d.querySelector("#identity-refresh-tag"));
 assert.match(d.querySelector("#reserve-button").textContent,/Registrar retirada/,"PETiano deve receber o acesso direto");
 await click(d.querySelector("#reserve-button"));
 assert.ok(d.querySelector("#member-withdraw-form"),"Formulário de retirada direta não abriu");
+await click(d.querySelector("#admin-button"));
+await click(tab("usuarios"));
+await click(d.querySelector("[data-user-recovery]"));
+assert.ok(d.querySelector("#admin-recovery-generate"),"Faltou geracao de codigo pelo administrador");
+await click(d.querySelector("#admin-recovery-generate"));
+assert.equal(d.querySelector("#admin-new-code").value,"REC-"+"A".repeat(40));
+await click(d.querySelector("#admin-recovery-done"));
+await click(d.querySelector("[data-user-delete]"));
+assert.ok(d.querySelector("#admin-delete-confirm"),"Faltou opcao de exclusao");
+await click(d.querySelector("#admin-delete-confirm"));
+await tick();
+assert.equal(userDeleted,true,"Usuario nao foi excluido pelo painel");
+
 assert.deepEqual(errors,[],"Erros de JavaScript no painel");
 console.log("UI OK: login, reservas, cinco abas, cadastro, atribuição da tag e retirada direta.");
 w.close();
