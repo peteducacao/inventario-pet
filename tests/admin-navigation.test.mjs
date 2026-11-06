@@ -51,7 +51,7 @@ const panel=()=>d.querySelector("#admin-tab-body");
 const click=async el=>{assert.ok(el,"Controle não encontrado");el.click();await tick();await tick();};
 // No navegador os scripts classicos compartilham escopo global; no jsdom eval,
 // compilamos ambos no mesmo contexto para reproduzir esse comportamento.
-w.eval(app+"\n"+identityUi+"\nwindow.__identity_test_state=state;");
+// A interface legada usa agora os helpers de fotografia do módulo visual novo.\n// Neste teste isolado, use substitutos sem rede; o teste final-ui cobre os módulos reais.\nw.eval(app+"\n"+identityUi+"\nfunction itemImage(x){return x.imagem||\'/img/reference-board.svg\';} function defaultImage(){return \'/img/reference-board.svg\';}\nwindow.__identity_test_state=state;");
 await tick();
 assert.ok(d.querySelector(".item-card"),"Catálogo não abriu");
 await click(d.querySelector("#admin-button"));
