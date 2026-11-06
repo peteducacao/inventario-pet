@@ -77,6 +77,10 @@ jobs:
           if(!html.ok || !(await html.text()).includes("identity-ui.js"))throw Error("Pagina nao carrega a identidade");
           console.log("PUBLICO OK: identidade, autorizacoes, interface e protecao do admin.");
           NODE
+      - name: Teste real de cadastro e login com exclusao automatica do teste
+        env:
+          ADMIN_PASSWORD: ${{ secrets.PET_ADMIN_PASSWORD }}
+        run: node tests/live-login.mjs
       - name: Teste funcional completo do inventário
         env:
           ADMIN_PASSWORD: ${{ secrets.PET_ADMIN_PASSWORD }}
