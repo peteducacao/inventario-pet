@@ -1,3 +1,4 @@
+import { identityAPI } from "./identity.js";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const j = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...extra } });
 const bad = (message, status = 400) => j({ error: message }, status);
@@ -148,6 +149,8 @@ async function processRequest(req, env) {
     if (token) await db.prepare("DELETE FROM admin_sessions WHERE hash=?").bind(await toHash(token)).run();
     return j({ ok:true },200,{ "set-cookie":"__Host_pet_session=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0" });
   }
+  const identityResponse=await identityAPI(req,env,()=>auth(req,db));
+  if(identityResponse)return identityResponse;
   if (!path.startsWith("/api/admin/")) return bad("Endereço não encontrado.",404);
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
   if (path === "/api/admin/state" && method === "GET") return j(await state(db));
@@ -313,6 +316,7 @@ async function cleanup(db) {
     removed = done.meta?.changes || 0;
   }
   await db.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").bind(now()).run();
+  await db.prepare("DELETE FROM usuario_sessoes WHERE expira_em < ?").bind(now()).run();
   await db.prepare("DELETE FROM reserva_limites WHERE criado_em < ?").bind(new Date(Date.now()-2*86400000).toISOString()).run();
   return removed;
 }
