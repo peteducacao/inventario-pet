@@ -71,7 +71,7 @@ function card(x, category){
     (flag(x.mostrar_defeito)?'<div class="count-pill '+(x.com_defeito?"bad":"")+'"><span>Com defeito</span><strong>'+moneyless(x.com_defeito)+'</strong></div>':"")+'</div>';
   return '<article class="item-card"><button class="item-photo" type="button" data-photo="'+x.id+'" aria-label="Ampliar fotografia de '+attr(x.nome)+'">'+img+(state.data.demonstracao?'<span class="test-tag">EXEMPLO</span>':"")+'</button><div class="item-body"><div class="item-name">'+esc(x.nome)+'</div><div class="item-meta">'+(x.identificacao?esc(x.identificacao)+' · ':"")+(x.patrimonio?'Patrimônio: '+esc(x.patrimonio):'Sem número de patrimônio cadastrado')+'</div>'+status+
     (flag(x.mostrar_defeito)&&x.com_defeito&&x.descricao_defeito?'<button class="link-button" style="text-align:left;margin-top:11px" data-defect="'+x.id+'">ⓘ Ver informações do defeito</button><div class="expand-defect" id="defect-'+x.id+'" hidden>'+esc(x.descricao_defeito)+'</div>':"")+
-    '<div class="item-footer"><span class="date-small">Atualizado: '+esc(fmt(x.ultima_alteracao))+'</span><button class="link-button" data-reserve-item="'+x.id+'" type="button">'+(state.identity?.tag==='petiano'?'Retirar ›':'Reservar ›')</button></div></div></article>';
+    '<div class="item-footer"><span class="date-small">Atualizado: '+esc(fmt(x.ultima_alteracao))+'</span><button class="link-button" data-reserve-item="'+x.id+'" type="button">'+(state.identity?.tag==='petiano'?'Retirar ›':'Reservar ›')+'</button></div></div></article>';
 }
 function openModal(title,subtitle,body,opts={}) {
   closeModal();
