@@ -7,7 +7,7 @@ const now = () => new Date().toISOString();
 const clean = (v,max=120)=>String(v??"").trim().slice(0,max);
 const sha256 = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,"0")).join("");
 const randomHex = size => [...crypto.getRandomValues(new Uint8Array(size))].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();
-const publicUser = u => ({id:u.public_id,nome:u.nome,tag:u.papel,criado_em:u.criado_em,ativo:u.ativo===1});
+const publicUser = u => ({id:u.public_id,nome:u.nome,tag:u.papel,criado_em:u.criado_em,ativo:u.ativo===1,login:u.login||null,precisa_criar_login:!u.login,trocar_senha:!!u.must_change_password});
 const expiry = () => new Date(Date.now()+180*86400000).toISOString();
 const authCookie = "__Host_pet_identity";
 const cookieValue = req => (req.headers.get("cookie")||"").split(";").map(x=>x.trim()).find(x=>x.startsWith(authCookie+"="))?.slice(authCookie.length+1)||"";
@@ -29,7 +29,7 @@ const rows = async(db,sql,args=[]) => (await db.prepare(sql).bind(...args).all()
 async function loggedIn(req,db){
   const token=cookieValue(req);
   if(!/^[0-9a-f-]{60,90}$/.test(token))return null;
-  const user=await db.prepare("SELECT u.id,u.public_id,u.nome,u.papel,u.ativo,u.criado_em,u.ultimo_acesso FROM usuario_sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.hash=? AND s.expira_em>? AND u.ativo=1").bind(await sha256(token),now()).first();
+  const user=await db.prepare("SELECT u.id,u.public_id,u.nome,u.papel,u.ativo,u.criado_em,u.ultimo_acesso,u.login,u.password_hash,u.password_salt,u.password_iterations,u.must_change_password FROM usuario_sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.hash=? AND s.expira_em>? AND u.ativo=1").bind(await sha256(token),now()).first();
   return user||null;
 }
 async function addSession(db,id){
@@ -46,38 +46,105 @@ async function rate(db,req,tag,max,windowH=24) {
   await db.prepare("INSERT INTO reserva_limites(hash,criado_em) VALUES(?,?)").bind(marker,now()).run();
   return true;
 }
+// PBKDF2 com sal unico. Nunca guardar senha ou credencial temporaria em texto puro.
+const ITERATIONS=120000;
+const username = value => clean(value,30).toLowerCase();
+const validUsername = value => /^[a-z0-9][a-z0-9._-]{3,23}$/.test(value);
+const validPassword = value => typeof value==="string" && value.length>=10 && value.length<=128;
+const secureEquals = (a,b) => {
+  if(typeof a!=="string"||typeof b!=="string"||a.length!==b.length)return false;
+  let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;
+};
+async function hashPassword(password,salt,iterations=ITERATIONS) {
+  const key=await crypto.subtle.importKey("raw",new TextEncoder().encode(password),"PBKDF2",false,["deriveBits"]);
+  const saltBytes=new Uint8Array((salt.match(/.{2}/g)||[]).map(x=>parseInt(x,16)));
+  const bits=await crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:saltBytes,iterations},key,256);
+  return [...new Uint8Array(bits)].map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+async function verifyPassword(value,user) {
+  if(!user.password_salt||!user.password_hash||!user.password_iterations||typeof value!=="string")return false;
+  const digest=await hashPassword(value,user.password_salt,user.password_iterations);
+  return secureEquals(digest,user.password_hash);
+}
+const securityFields=async secret => {
+  const salt=randomHex(16),hash=await hashPassword(secret,salt);
+  return {salt,hash};
+};
+const maybeDuplicate=e=>String(e?.message||e).includes("UNIQUE")||String(e?.message||e).includes("constraint failed");
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
-  const b=await bodyJson(req,3000);
-  const nome=clean(b.nome,80);
-  if(nome.length<2)return error("Informe seu nome (ao menos duas letras).");
-  if(!await rate(db,req,"cadastro",30))return error("Muitos cadastros neste dispositivo ou rede. Tente novamente mais tarde.",429);
-  const recovery="REC-"+randomHex(20);
-  let row=null;
-  const time=now();
-  for(let t=0;t<3;t++){
+  const b=await bodyJson(req,4000),nome=clean(b.nome,80),login=username(b.login),password=b.senha;
+  if(nome.length<2)return error("Informe seu nome.");
+  if(!validUsername(login))return error("O login deve ter de 4 a 24 caracteres: letras sem acentos, números, ponto, traço ou _.");
+  if(!validPassword(password))return error("A senha precisa ter entre 10 e 128 caracteres.");
+  if(!await rate(db,req,"cadastro",20))return error("Limite de cadastros atingido. Tente mais tarde.",429);
+  const taken=await db.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first();
+  if(taken)return error("Este nome de usuário já está em uso.",409);
+  const {hash,salt}=await securityFields(password),time=now(),recoveryHash=await sha256(crypto.randomUUID());
+  let user;
+  for(let attempt=0;attempt<4;attempt++){
     const publicId="PET-"+randomHex(6);
     try{
-      const result=await db.prepare("INSERT INTO usuarios(public_id,nome,papel,ativo,recovery_hash,criado_em,atualizado_em) VALUES(?,?,'visitante',1,?,?,?)").bind(publicId,nome,await sha256(recovery),time,time).run();
-      row=await db.prepare("SELECT id,public_id,nome,papel,ativo,criado_em FROM usuarios WHERE id=?").bind(result.meta.last_row_id).first();
+      const result=await db.prepare("INSERT INTO usuarios(public_id,nome,papel,ativo,recovery_hash,criado_em,atualizado_em,login,password_hash,password_salt,password_iterations,must_change_password) VALUES (?,?,'visitante',1,?,?,?,?,?,?,?,0)").bind(publicId,nome,recoveryHash,time,time,login,hash,salt,ITERATIONS).run();
+      user=await db.prepare("SELECT * FROM usuarios WHERE id=?").bind(result.meta.last_row_id).first();
       break;
-    }catch(e){if(!String(e).includes("UNIQUE"))throw e;}
+    }catch(e){
+      if(!maybeDuplicate(e))throw e;
+      const clash=await db.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first();
+      if(clash)return error("Este nome de usuário já está em uso.",409);
+    }
   }
-  if(!row)return error("Não foi possível gerar seu ID. Tente novamente.",503);
-  const session=await addSession(db,row.id);
-  return respond({ok:true,usuario:publicUser(row),codigo_recuperacao:recovery},201,{"set-cookie":session});
+  if(!user)return error("Não foi possível criar a conta.",503);
+  const session=await addSession(db,user.id);
+  return respond({ok:true,usuario:publicUser(user)},201,{"set-cookie":session});
 }
-async function recover(req,env){
-  const db=env.DB,b=await bodyJson(req,3000);
-  const id=clean(b.id,30).toUpperCase(),code=clean(b.codigo,80).toUpperCase();
-  if(!/^PET-[0-9A-F]{12}$/.test(id)||!/^REC-[0-9A-F]{40}$/.test(code))return error("ID ou código de recuperação inválido.",401);
-  if(!await rate(db,req,"recuperacao",15,1))return error("Muitas tentativas. Tente mais tarde.",429);
-  const u=await db.prepare("SELECT * FROM usuarios WHERE public_id=? AND ativo=1").bind(id).first();
-  if(!u || await sha256(code)!==u.recovery_hash)return error("ID ou código de recuperação inválido.",401);
+async function loginUser(req,env){
+  const db=env.DB,b=await bodyJson(req,4000),login=username(b.login);
+  if(!validUsername(login)||typeof b.senha!=="string"||b.senha.length>128)return error("Login ou senha incorretos.",401);
+  if(!await rate(db,req,"login:"+login,12,1))return error("Muitas tentativas de login. Tente mais tarde.",429);
+  const u=await db.prepare("SELECT * FROM usuarios WHERE login=? AND ativo=1").bind(login).first();
+  if(!u||!await verifyPassword(b.senha,u))return error("Login ou senha incorretos.",401);
   const session=await addSession(db,u.id);
   await db.prepare("UPDATE usuarios SET ultimo_acesso=? WHERE id=?").bind(now(),u.id).run();
   return respond({ok:true,usuario:publicUser(u)},200,{"set-cookie":session});
+}
+// Conversao de perfis antigos: requer a sessao privada ja existente, nunca apenas o ID.
+async function upgradeLegacy(req,env){
+  const user=await loggedIn(req,env.DB);
+  if(!user)return error("Entre no perfil antigo neste aparelho ou peça redefinição ao administrador.",401);
+  if(user.login)return error("Esta conta já usa login e senha.",409);
+  const b=await bodyJson(req,4000),login=username(b.login),password=b.senha;
+  if(!validUsername(login))return error("Escolha um login de 4 a 24 caracteres (letras, números, ponto, _ ou traço).");
+  if(!validPassword(password))return error("A senha precisa ter entre 10 e 128 caracteres.");
+  if(await env.DB.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first())return error("Este login já está em uso.",409);
+  const {hash,salt}=await securityFields(password);
+  try {
+    const applied=await env.DB.batch([
+      env.DB.prepare("UPDATE usuarios SET login=?,password_hash=?,password_salt=?,password_iterations=?,must_change_password=0,atualizado_em=? WHERE id=? AND login IS NULL").bind(login,hash,salt,ITERATIONS,now(),user.id),
+      env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
+    ]);
+    if(applied[0].meta?.changes!==1)return error("Conta já atualizada. Entre com login e senha.",409);
+  }catch(e){if(maybeDuplicate(e))return error("Este login já está em uso.",409);throw e;}
+  const session=await addSession(env.DB,user.id);
+  const updated=await env.DB.prepare("SELECT * FROM usuarios WHERE id=?").bind(user.id).first();
+  return respond({ok:true,usuario:publicUser(updated)},200,{"set-cookie":session});
+}
+async function changePassword(req,env){
+  const u=await loggedIn(req,env.DB);
+  if(!u)return error("Entre no seu perfil antes de alterar a senha.",401);
+  if(!u.login)return error("Primeiro configure login e senha para o perfil antigo.",409);
+  const b=await bodyJson(req,4000),newPassword=b.nova_senha;
+  if(!validPassword(newPassword))return error("A nova senha precisa ter entre 10 e 128 caracteres.");
+  if(!u.must_change_password&&!await verifyPassword(b.senha_atual,u))return error("Senha atual incorreta.",401);
+  if(await verifyPassword(newPassword,u))return error("Escolha uma senha diferente da anterior.");
+  const {hash,salt}=await securityFields(newPassword);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE usuarios SET password_hash=?,password_salt=?,password_iterations=?,must_change_password=0,atualizado_em=? WHERE id=?").bind(hash,salt,ITERATIONS,now(),u.id),
+    env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(u.id)
+  ]);
+  const session=await addSession(env.DB,u.id);
+  return respond({ok:true,usuario:{...publicUser(u),trocar_senha:false}},200,{"set-cookie":session});
 }
 async function rename(req,env,user){
   if(!user)return error("Cadastre seu perfil antes de editar o nome.",401);
@@ -85,12 +152,6 @@ async function rename(req,env,user){
   if(name.length<2)return error("Informe seu nome.");
   await env.DB.prepare("UPDATE usuarios SET nome=?,atualizado_em=? WHERE id=?").bind(name,now(),user.id).run();
   return respond({ok:true,usuario:{...publicUser(user),nome:name}});
-}
-async function rotateRecovery(env,user){
-  if(!user)return error("Identificação necessária.",401);
-  const code="REC-"+randomHex(20);
-  await env.DB.prepare("UPDATE usuarios SET recovery_hash=?,atualizado_em=? WHERE id=?").bind(await sha256(code),now(),user.id).run();
-  return respond({ok:true,codigo_recuperacao:code});
 }
 async function listMine(db,user){
   const list=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.observacao,r.solicitado_em,r.retirado_em,r.devolvido_em,r.tipo,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 300",[user.id]);
@@ -145,19 +206,25 @@ async function adminUpdate(req,env){
   if(!active)await env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id).run();
   return respond({ok:true});
 }
-// O codigo antigo e mantido apenas como hash e nunca pode ser exibido.
-async function adminResetRecovery(req,env) {
-  const b=await bodyJson(req,3000),id=clean(b.id,30).toUpperCase();
+// A senha temporaria so aparece na resposta do reset; os valores armazenados sao hash+sal.
+async function adminResetPassword(req,env){
+  const b=await bodyJson(req,3000),id=clean(b.id,30).toUpperCase(),login=username(b.login);
   if(!/^PET-[0-9A-F]{12}$/.test(id))return error("ID inválido.");
-  const user=await env.DB.prepare("SELECT id,public_id,nome,ativo FROM usuarios WHERE public_id=?").bind(id).first();
+  if(!validUsername(login))return error("Informe um login válido, de 4 a 24 caracteres.");
+  const user=await env.DB.prepare("SELECT id,public_id,nome,ativo,login FROM usuarios WHERE public_id=?").bind(id).first();
   if(!user)return error("Usuário não encontrado.",404);
-  if(user.ativo!==1)return error("Usuário bloqueado. Não é possível recuperar este perfil.",409);
-  const newCode="REC-"+randomHex(20),digest=await sha256(newCode);
-  await env.DB.batch([
-    env.DB.prepare("UPDATE usuarios SET recovery_hash=?,atualizado_em=? WHERE id=?").bind(digest,now(),user.id),
-    env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
-  ]);
-  return respond({ok:true,id:user.public_id,nome:user.nome,codigo_recuperacao:newCode});
+  if(user.ativo!==1)return error("Usuário bloqueado.",409);
+  const owner=await env.DB.prepare("SELECT id FROM usuarios WHERE login=? AND id!=?").bind(login,user.id).first();
+  if(owner)return error("Esse login já está em uso.",409);
+  const temporary="PET-"+randomHex(12);
+  const {hash,salt}=await securityFields(temporary);
+  try {
+    await env.DB.batch([
+      env.DB.prepare("UPDATE usuarios SET login=?,password_hash=?,password_salt=?,password_iterations=?,must_change_password=1,atualizado_em=? WHERE id=?").bind(login,hash,salt,ITERATIONS,now(),user.id),
+      env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
+    ]);
+  }catch(e){if(maybeDuplicate(e))return error("Esse login já está em uso.",409);throw e;}
+  return respond({ok:true,id:user.public_id,nome:user.nome,login,senha_temporaria:temporary});
 }
 async function adminDeleteUser(req,env){
   const b=await bodyJson(req,3000),id=clean(b.id,30).toUpperCase();
@@ -175,7 +242,7 @@ async function adminDeleteUser(req,env){
   return respond({ok:true,excluido:id});
 }
 async function adminList(env){
-  const list=await rows(env.DB,"SELECT public_id AS id,nome,papel AS tag,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
+  const list=await rows(env.DB,"SELECT public_id AS id,nome,login,must_change_password,papel AS tag,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
   const loans=await rows(env.DB,"SELECT usuario_id,COUNT(*) AS n FROM reservas WHERE tipo='retirada_direta' AND status='retirada' AND usuario_id IS NOT NULL GROUP BY usuario_id");
   const usersIds=await rows(env.DB,"SELECT id,public_id FROM usuarios WHERE id IN (SELECT DISTINCT usuario_id FROM reservas WHERE tipo='retirada_direta' AND status='retirada')");
   const map=new Map(usersIds.map(x=>[x.id,x.public_id])),counts=new Map(loans.map(x=>[map.get(x.usuario_id),x.n]));
@@ -185,7 +252,10 @@ export async function identityAPI(req,env,adminAuth){
   const url=new URL(req.url),path=url.pathname,method=req.method,db=env.DB;
   if(!path.startsWith("/api/identity/")&&!path.startsWith("/api/member/")&&!path.startsWith("/api/admin/users"))return null;
   if(path==="/api/identity/register"&&method==="POST")return register(req,env);
-  if(path==="/api/identity/recover"&&method==="POST")return recover(req,env);
+  if(path==="/api/identity/login"&&method==="POST")return loginUser(req,env);
+  if(path==="/api/identity/upgrade"&&method==="POST")return upgradeLegacy(req,env);
+  if(path==="/api/identity/password"&&method==="POST")return changePassword(req,env);
+  if(path==="/api/identity/recover" || path==="/api/identity/recovery-code")return error("Recuperação antiga encerrada. Use login e senha ou solicite redefinição ao administrador.",410);
   if(path==="/api/identity/me"&&method==="GET"){
     const u=await loggedIn(req,db);
     return respond({ok:true,usuario:u?publicUser(u):null});
@@ -195,10 +265,10 @@ export async function identityAPI(req,env,adminAuth){
     if(token)await db.prepare("DELETE FROM usuario_sessoes WHERE hash=?").bind(await sha256(token)).run();
     return respond({ok:true},200,{"set-cookie":clearCookie()});
   }
-  if(path==="/api/admin/users/recovery" || path==="/api/admin/users/delete"){
+  if(path==="/api/admin/users/password" || path==="/api/admin/users/delete"){
     if(!await adminAuth())return error("Acesso administrativo necessário.",401);
     if(method!=="POST")return error("Método não permitido.",405);
-    return path.endsWith("/recovery")?adminResetRecovery(req,env):adminDeleteUser(req,env);
+    return path.endsWith("/password")?adminResetPassword(req,env):adminDeleteUser(req,env);
   }
   if(path==="/api/admin/users"){
     if(!await adminAuth())return error("Acesso administrativo necessário.",401);
@@ -208,7 +278,8 @@ export async function identityAPI(req,env,adminAuth){
   }
   const u=await loggedIn(req,db);
   if(path==="/api/identity/name"&&method==="POST")return rename(req,env,u);
-  if(path==="/api/identity/recovery-code"&&method==="POST")return rotateRecovery(env,u);
+  if(path==="/api/identity/name"&&method==="POST"&&(u?.must_change_password||!u?.login))return error("Configure sua senha antes de continuar.",403);
+  if(path.startsWith("/api/member/")&&u&&(u.must_change_password||!u.login))return error("Crie sua senha definitiva antes de usar as retiradas.",403);
   if(path==="/api/member/withdraw"&&method==="POST")return withdraw(req,env,u);
   if(path==="/api/member/return"&&method==="POST")return memberReturn(req,env,u);
   if(path==="/api/member/history"&&method==="GET"){
