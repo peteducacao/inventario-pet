@@ -15,6 +15,7 @@ w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
 w.localStorage.setItem("pet_inventario_nome","Tester");
 w.confirm=()=>true;
 let authenticated=false;
+let userTag="visitante";
 const component={id:1,categoria_id:1,nome:"ESP32 de teste",imagem:"",patrimonio:"DEMO",identificacao:"",quantidade:5,em_uso:0,com_defeito:0,mostrar_quantidade:1,mostrar_em_uso:1,mostrar_defeito:1,ultima_alteracao:null};
 const data={categorias:[{id:1,nome:"Eletrônica",ordem:1}],componentes:[component]};
 const pending={id:5,componente_id:1,componente_nome:"ESP32 de teste",nome_solicitante:"Visitante",contato:"",quantidade:1,data_inicio:"2026-12-01",data_devolucao:"2026-12-02",status:"pendente",solicitado_em:"2026-11-06T12:00:00Z"};
@@ -25,8 +26,8 @@ w.fetch=async (uri,init={})=>{
   if(path==="/api/catalog")value={...data,demonstracao:true};
   else if(path==="/api/admin/state")authenticated?value=adminData:(status=401,value={error:"Entre no painel administrativo."});
   else if(path==="/api/login"){authenticated=true;value={ok:true}}
-  else if(path==="/api/identity/me")value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",tag:"visitante",ativo:true,criado_em:"2026-11-06T10:00:00Z"}};
-  else if(path==="/api/admin/users")value={ok:true,usuarios:[{id:"PET-123456789ABC",nome:"Tester",tag:"visitante",ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};
+  else if(path==="/api/identity/me")value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",tag:userTag,ativo:true,criado_em:"2026-11-06T10:00:00Z"}};
+  else if(path==="/api/admin/users"){if(init.method==="POST"){userTag=JSON.parse(init.body).tag;value={ok:true}}else value={ok:true,usuarios:[{id:"PET-123456789ABC",nome:"Tester",tag:userTag,ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};}
   else if(path==="/api/availability")value={disponiveis:5};
   else {status=404;value={error:"Rota não encontrada"};}
   return {ok:status<400,status,json:async()=>value};
@@ -69,6 +70,15 @@ for (const [key,title] of [["materiais","Materiais cadastrados"],["reservas","So
 await click(tab("materiais"));
 await click(d.querySelector("#add-item"));
 assert.ok(d.querySelector("#item-form"),"Formulário de cadastro de materiais não abriu");
+await click(d.querySelector("#i-cancel"));
+await click(tab("usuarios"));
+await click(d.querySelector('[data-user-tag="petiano"]'));
+assert.equal(userTag,"petiano","O administrador não conseguiu dar a tag PETiano");
+await click(d.querySelector("#profile-button"));
+await click(d.querySelector("#identity-refresh-tag"));
+assert.match(d.querySelector("#reserve-button").textContent,/Registrar retirada/,"PETiano deve receber o acesso direto");
+await click(d.querySelector("#reserve-button"));
+assert.ok(d.querySelector("#member-withdraw-form"),"Formulário de retirada direta não abriu");
 assert.deepEqual(errors,[],"Erros de JavaScript no painel");
-console.log("UI OK: login, Mostrar/Ocultar, reserva pendente, quatro abas e cadastro.");
+console.log("UI OK: login, reservas, cinco abas, cadastro, atribuição da tag e retirada direta.");
 w.close();
