@@ -401,3 +401,68 @@ async function deleteFilament(id){
   try{await api("/api/admin/filaments","POST",{acao:"excluir",id});await refreshFilaments();adminBuild();toast("Cor excluída.");}
   catch(e){toast(e.message,true);}
 }
+
+
+/* Editor de materiais e configurações do painel renovado. */
+function adminItemEditor(id){
+  itemEditor(id);
+  const form=$("#item-form");
+  if(!form)return;
+  let edited=false,saved=false,closing=false;
+  const markDirty=()=>{edited=true};
+  form.addEventListener("input",markDirty);
+  form.addEventListener("change",markDirty);
+  const baseCancel=$("#i-cancel");
+  if(baseCancel)baseCancel.onclick=async()=>{
+    if(edited&&!await niceModalConfirm("Descartar alterações?","As mudanças deste material ainda não foram salvas.","Descartar",true))return;
+    closeModal();adminBuild();
+  };
+  form.addEventListener("submit",()=>{saved=true},false);
+  const root=$("#modal-root");
+  // O alerta só acontece quando há campos modificados; popups de confirmação não se fecham automaticamente.
+  if(root){const close=root.querySelector("[data-close]");if(close)close.onclick=async()=>{
+    if(edited&&!saved&&!await niceModalConfirm("Descartar alterações?","As mudanças deste material ainda não foram salvas.","Descartar",true))return;
+    closeModal();
+  };}
+}
+function adminSettings(root){
+  const cfg=state.admin.configuracoes||{};
+  const current=String(cfg.limpeza_reservas||"nunca");
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Configurações</h2></div></div>'+
+    '<form id="admin-settings-form" class="settings-grid">'+
+    '<div class="settings-block"><div class="field"><label for="v2-cleanup">Excluir empréstimos devolvidos após</label>'+
+    '<select id="v2-cleanup"><option value="nunca">Nunca apagar</option><option value="1min">1 minuto (teste)</option><option value="7">7 dias</option><option value="15">15 dias</option><option value="30">30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option><option value="personalizado">Outro prazo</option></select></div>'+
+    '<div id="v2-custom-wrap" class="field" hidden><label for="v2-custom-days">Dias</label><input id="v2-custom-days" type="number" min="1" max="3650" value="'+attr(/^\d+$/.test(current)?current:"45")+'"></div>'+
+    '<p>Somente reservas devolvidas são apagadas. Reservas pendentes e materiais em uso permanecem.</p></div>'+
+    '<div class="settings-block"><strong>Dados do inventário</strong><p>'+esc(adminLastUpdate())+'</p><div class="field"><label><input type="checkbox" id="v2-demo" '+(cfg.modo_demo==="sim"?"checked":"")+'> Exibir modo de demonstração</label></div></div>'+
+    '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
+    '<section class="admin-panel"><div class="admin-section-head"><h2>Backup</h2></div>'+
+    '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
+    '<button type="button" class="outline-button" id="v2-backup-import">Importar backup</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
+    '<button type="button" class="outline-button" id="v2-run-cleanup">Executar limpeza</button></div></section>';
+  const select=$("#v2-cleanup");select.value=["nunca","1min","7","15","30","60","90"].includes(current)?current:"personalizado";
+  const update=()=>{$("#v2-custom-wrap").hidden=select.value!=="personalizado";};select.onchange=update;update();
+  $("#admin-settings-form").onsubmit=async e=>{
+    e.preventDefault();const btn=e.target.querySelector('button[type="submit"]'),days=select.value==="personalizado"?String($("#v2-custom-days").value):select.value;
+    btn.disabled=true;
+    try{
+      await api("/api/admin/settings","POST",{limpeza_reservas:days,modo_demo:$("#v2-demo").checked?"sim":"nao"});
+      await adminReload();adminBuild();toast("Configurações salvas.");
+    }catch(error){toast(error.message,true);btn.disabled=false;}
+  };
+  $("#v2-backup-download").onclick=async()=>{try{const result=await api("/api/admin/backup");saveDownload("backup-inventario-pet-"+localDate()+".json",JSON.stringify(result,null,2));toast("Backup preparado.");}catch(e){toast(e.message,true);}};
+  $("#v2-backup-import").onclick=()=>$("#v2-backup-file").click();
+  $("#v2-backup-file").onchange=async e=>{
+    const file=e.target.files?.[0];if(!file)return;
+    if(file.size>1500000){toast("Arquivo acima do limite de 1,5 MB.",true);return;}
+    if(!await niceModalConfirm("Restaurar backup?","Esta operação substituirá dados e pode afetar reservas e usuários. Faça um backup antes de continuar.","Restaurar",true))return;
+    try{
+      const result=JSON.parse(await file.text());
+      await api("/api/admin/restore","POST",result);await adminReload();await refreshFilaments();adminBuild();toast("Backup restaurado.");
+    }catch(error){toast(error.message,true);}
+  };
+  $("#v2-run-cleanup").onclick=async()=>{
+    if(!await niceModalConfirm("Executar limpeza?","Excluir apenas os registros devolvidos cujo prazo de retenção terminou?","Executar",true))return;
+    try{const result=await api("/api/admin/cleanup","POST",{});await adminReload();adminBuild();toast(result.removidas+" registro(s) removido(s).");}catch(error){toast(error.message,true);}
+  };
+}
