@@ -467,6 +467,10 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     if(state.identity)localStorage.setItem("pet_inventario_nome",state.actor);
     $("#offline-alert").hidden=true;
     render();
+    // Exibir o estado real da conta pessoal após sair do Admin: sessão Admin não serve como login de usuário.
+    const returnedFromAdmin=sessionStorage.getItem("pet_check_identity_after_admin")==="1";
+    if(returnedFromAdmin)sessionStorage.removeItem("pet_check_identity_after_admin");
+    if(returnedFromAdmin&&!state.identity&&typeof showReturnFromAdminIdentityNotice==="function")showReturnFromAdminIdentityNotice();
     if(document.body.dataset.loansRoute==="true")openMyLoans();
     if(state.identity?.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
     else if(state.identity?.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
