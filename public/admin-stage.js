@@ -334,22 +334,28 @@ function adminMaterials(root){
   }
   const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("");
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head admin-materials-heading"><div><h2>Materiais cadastrados</h2></div>'+
-    '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
-    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais ou grupos..." value="'+attr(UI.adminSearch)+'"></div>'+
+    '<div class="buttons"><button class="outline-button" type="button" id="admin-links-hub">Vínculos</button><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
+    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
-    '<section class="admin-groups-area" id="admin-groups-area" aria-label="Grupos de variações">'+
-      '<details class="admin-groups-wrapper" id="admin-groups-section" open>'+
-        '<summary><span>Grupos de variações <span id="admin-group-count" class="admin-groups-count"></span></span><small>Um grupo por família · edite o título e os vínculos aqui</small></summary>'+
-        '<div class="admin-group-create"><button type="button" class="outline-button small-button" id="admin-group-new">'+iconSvg("plus",14)+' Criar grupo de variações</button></div>'+
-        '<div class="admin-groups-grid" id="admin-group-list"></div>'+
-      '</details></section>'+
+    '<section class="admin-groups-area" id="admin-groups-area" aria-label="Materiais vinculados">'+
+      '<div class="admin-groups-grid" id="admin-group-list"></div></section>'+
     '<section class="admin-individual-area" aria-label="Materiais individuais">'+
       '<div class="admin-section-head admin-individual-heading"><div><h3 id="admin-individual-title">Materiais individuais</h3><p id="admin-individual-count"></p></div></div>'+
-      '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section></section>';
+      '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>'+
+    '<div class="admin-excel-bar"><button type="button" class="outline-button" id="admin-download-excel">⬇ Baixar inventário em Excel (.xlsx)</button></div></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
   $("#admin-bulk-visibility").onclick=()=>openBulkVisibility();
-  $("#admin-group-new").onclick=()=>openVariantLinker();
+  $("#admin-links-hub").onclick=openLinksHub;
+  $("#admin-download-excel").onclick=async()=>{
+    const button=$("#admin-download-excel");button.disabled=true;button.textContent="Preparando Excel…";
+    try {
+      const content=await api("/api/admin/export");
+      const file=window.exportPETInventoryXLSX(content);
+      toast("Planilha Excel gerada com "+file.sheets+" abas.");
+    }catch(error){toast("Falha ao exportar Excel: "+error.message,true);}
+    finally{button.disabled=false;button.textContent="⬇ Baixar inventário em Excel (.xlsx)";}
+  };
   $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
   $("#admin-material-category").onchange=e=>{UI.adminCategory=e.target.value;UI.adminPage=1;stored("pet_admin_category",UI.adminCategory);paintAdminMaterials()};
   $("#admin-material-sort").onchange=e=>{UI.adminSort=e.target.value;UI.adminPage=1;stored("pet_admin_sort",UI.adminSort);paintAdminMaterials()};
@@ -384,18 +390,14 @@ function adminFamilyModelRow(x){
 }
 function adminFamilyCard(group){
   const items=group.members,quantity=items.reduce((v,x)=>v+Number(x.quantidade||0),0),
-    inUse=items.reduce((v,x)=>v+Number(x.em_uso||0),0);
+    inUse=items.reduce((v,x)=>v+Number(x.em_uso||0),0),broken=items.reduce((v,x)=>v+Number(x.com_defeito||0),0);
   const sample=items[0],names=[...new Set(items.map(x=>nameCategory(x.categoria_id)))];
   return '<article class="admin-family-card" data-admin-group="'+attr(group.name)+'">'+
     '<div class="admin-family-head"><div class="admin-family-thumb">'+thumb(sample)+'</div>'+
       '<div class="admin-family-title"><h4>'+esc(group.name)+'</h4>'+
-        '<small>'+items.length+' '+(items.length===1?'material vinculado':'materiais vinculados')+' · '+esc(names.join(", "))+'</small></div></div>'+
-    '<div class="admin-family-stat">Total: <strong>'+quantity+'</strong> · Em uso: <strong>'+inUse+'</strong>'+
-      (items.length===1?'<small class="admin-family-warning">Este grupo tem só um material. Vincule outro modelo para formar uma família.</small>':'')+'</div>'+
-    '<div class="admin-family-actions">'+
-      '<button type="button" class="outline-button small-button" data-rename-group="'+attr(group.name)+'">'+iconSvg("edit",14)+' Renomear grupo</button>'+
-      '<button type="button" class="primary-button small-button" data-group-links="'+attr(group.name)+'">'+iconSvg("box",14)+' Organizar vínculos</button></div>'+
-    '<details class="admin-family-models"><summary>Ver '+items.length+' '+(items.length===1?'material':'modelos')+'</summary>'+
+        '<small>'+items.length+' '+(items.length===1?'variação':'variações')+' · '+esc(names.join(", "))+'</small></div></div>'+
+    '<div class="admin-family-stat">Total: <strong>'+quantity+'</strong> · Em uso: <strong>'+inUse+'</strong> · Defeito: <strong>'+broken+'</strong></div>'+
+    '<details class="admin-family-models"><summary>Ver variações</summary>'+
       '<div class="admin-family-model-list">'+items.map(adminFamilyModelRow).join("")+'</div></details></article>';
 }
 function paintAdminMaterials(){
@@ -413,9 +415,9 @@ function paintAdminMaterials(){
     !groupKeys.has(adminGroupKey(x.grupo_variacoes))&&
     (UI.adminCategory==="all"||String(x.categoria_id)===UI.adminCategory)&&matches(x));
   const groupsArea=$("#admin-groups-area"),groupsList=$("#admin-group-list");
-  groupsArea.hidden=false;
+  groupsArea.hidden=groups.length===0;
   groupsList.innerHTML=groups.map(adminFamilyCard).join("");
-  $("#admin-group-count").textContent=String(groups.length);
+
   const p=paginate(ordered(individuals,UI.adminSort),UI.adminPage);
   UI.adminPage=p.page;stored("pet_admin_page",p.page);
   $("#admin-individual-title").textContent="Materiais individuais";
@@ -879,8 +881,7 @@ function adminMaterialPickerConfig(mode,currentId,requestedGroup=""){
 function openBulkVisibility(currentId){
   const model=adminMaterialPickerConfig("visibility",currentId);
   const initial=model.current?.nome.split(/\s+/)[0]||"";
-  const categories=state.admin.categorias.filter(c=>!c.arquivada &&
-    model.all.some(x=>String(x.categoria_id)===String(c.id)))
+  const categories=state.admin.categorias.filter(c=>!c.arquivada)
     .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
   const options=categories.map(c=>{
     const count=model.all.filter(x=>String(x.categoria_id)===String(c.id)).length;
@@ -889,9 +890,8 @@ function openBulkVisibility(currentId){
   openModal("Visibilidade dos materiais","Confira a visibilidade já salva e selecione apenas os itens que deseja alterar.",
     '<div class="modal-main">'+
     '<div class="field"><label for="bulk-search">Buscar materiais</label><input id="bulk-search" placeholder="Ex.: Resistor, Arduino..." value="'+attr(initial)+'"></div>'+
-    '<div class="bulk-category-picker"><div class="field"><label for="bulk-category">Categoria</label>'+
+    '<div class="field"><label for="bulk-category">Filtrar por categoria</label>'+
     '<select id="bulk-category"><option value="all">Todas as categorias</option>'+options+'</select></div>'+
-    '<button class="outline-button small-button" type="button" id="bulk-select-category" disabled>Selecionar categoria</button></div>'+
     '<div id="bulk-category-status" class="bulk-category-status" role="status"></div>'+
     '<div class="admin-bulk-actions">'+
     '<button class="outline-button small-button" id="bulk-similar" type="button" hidden title="Seleciona outros materiais da mesma família dos itens marcados.">Selecionar semelhantes</button>'+
@@ -957,16 +957,7 @@ function openBulkVisibility(currentId){
     countSelected();
   };
   $("#bulk-search").oninput=draw;
-  $("#bulk-category").onchange=()=>{
-    $("#bulk-select-category").disabled=$("#bulk-category").value==="all";
-    draw();
-  };
-  $("#bulk-select-category").onclick=()=>{
-    const category=$("#bulk-category").value;
-    if(category==="all")return;
-    for(const x of model.all)if(String(x.categoria_id)===category)model.selected.add(x.id);
-    draw();
-  };
+  $("#bulk-category").onchange=draw;
   $("#bulk-similar").onclick=()=>{for(const x of similarItems())model.selected.add(x.id);draw();};
   $("#bulk-select-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
   $("#bulk-clear").onclick=()=>{model.selected.clear();draw();};
