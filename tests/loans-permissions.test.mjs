@@ -18,6 +18,7 @@ for(const name of migrations)sqlite.exec(readFileSync("migrations/"+name,"utf8")
 sqlite.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES('Azul teste','#3366DD',6,0,CURRENT_TIMESTAMP,1)").run();
 sqlite.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES('Vermelho teste','#CC3344',3,1,CURRENT_TIMESTAMP,1)").run();
 sqlite.exec(readFileSync("migrations/0015_autorizacao_emprestimos.sql","utf8"));
+sqlite.exec(readFileSync("migrations/0016_permissoes_por_perfil.sql","utf8"));
 class Statement{
  constructor(sql){this.sql=sql;this.args=[];}
  bind(...args){this.args=args;return this;}
