@@ -400,31 +400,102 @@ async function processRequest(req, env) {
     return j({ ok:true });
   }
   if (path === "/api/admin/backup" && method === "GET") {
-    const data = await state(db);
-    return j({ formato:"inventario-pet-v1", gerado_em:now(), ...data },200,{ "content-disposition":'attachment; filename="backup-inventario-pet.json"' });
+    const data=await state(db);
+    const [historico,conciliacao_experimentos_vinculos,conciliacao_experimentos_backup]=await Promise.all([
+      results(db,"SELECT * FROM historico_admin ORDER BY id ASC LIMIT 30000"),
+      results(db,"SELECT * FROM conciliacao_experimentos_vinculos ORDER BY origem_id"),
+      results(db,"SELECT * FROM conciliacao_experimentos_backup ORDER BY material_id")
+    ]);
+    return j({formato:"inventario-pet-v2",gerado_em:now(),...data,
+      historico,conciliacao_experimentos_vinculos,conciliacao_experimentos_backup},
+      200,{"content-disposition":'attachment; filename="backup-inventario-pet.json"'});
   }
   if (path === "/api/admin/restore" && method === "POST") {
-    const b = await input(req,1700000);
-    if (b.formato !== "inventario-pet-v1" || !Array.isArray(b.categorias) || !Array.isArray(b.componentes) || !Array.isArray(b.reservas) || b.categorias.length > 150 || b.componentes.length > 1800 || b.reservas.length > 8000) return bad("Backup inválido ou grande demais.");
-    if (!b.categorias.every(x=>Number.isSafeInteger(x.id) && !!str(x.nome,80)) || !b.componentes.every(x=>Number.isSafeInteger(x.id) && Number.isSafeInteger(x.categoria_id)) || !b.reservas.every(x=>Number.isSafeInteger(x.id) && Number.isSafeInteger(x.componente_id))) return bad("O backup tem registros inválidos.");
-    const ops = [
+    const b=await input(req,30000000);
+    const v2=b.formato==="inventario-pet-v2";
+    if (!["inventario-pet-v1","inventario-pet-v2"].includes(b.formato)
+      ||!Array.isArray(b.categorias)||!Array.isArray(b.componentes)||!Array.isArray(b.reservas)
+      ||b.categorias.length>150||b.componentes.length>1800||b.reservas.length>8000
+      ||(b.filamentos && (!Array.isArray(b.filamentos)||b.filamentos.length>1000))
+      ||(b.historico && (!Array.isArray(b.historico)||b.historico.length>30000)))
+      return bad("Backup inválido ou grande demais.");
+    if (!b.categorias.every(x=>Number.isSafeInteger(x.id)&&!!str(x.nome,80))
+      ||!b.componentes.every(x=>Number.isSafeInteger(x.id)&&Number.isSafeInteger(x.categoria_id))
+      ||!b.reservas.every(x=>Number.isSafeInteger(x.id)&&Number.isSafeInteger(x.componente_id)))
+      return bad("O backup tem registros inválidos.");
+    const activeUsers=new Set((await results(db,"SELECT id FROM usuarios")).map(x=>Number(x.id)));
+    // Reposição única e atômica das tabelas do inventário. Contas/senhas de
+    // usuários não são exportadas nem apagadas nesta operação.
+    const ops=[
       db.prepare("DELETE FROM reservas"),
       db.prepare("DELETE FROM componentes"),
       db.prepare("DELETE FROM categorias"),
       db.prepare("DELETE FROM configuracoes")
     ];
-    for (const c of b.categorias) ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem) VALUES(?,?,?)").bind(c.id,str(c.nome,80),Number(c.ordem)||0));
-    for (const raw of b.componentes) {
-      const v = validateItem(raw);
-      ops.push(db.prepare("INSERT INTO componentes(id,"+fields.join(",")+",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES("+Array(fields.length+4).fill("?").join(",")+")").bind(raw.id,...fields.map(k=>v[k]),raw.ultima_alteracao||null,str(raw.ultimo_responsavel,100),str(raw.detalhes_alteracao,2000)));
+    for (const c of b.categorias){
+      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada) VALUES(?,?,?,?,?)")
+        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0));
     }
-    for (const r of b.reservas) ops.push(db.prepare("INSERT INTO reservas(id,componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,aprovado_em,retirado_em,devolvido_em,responsavel_admin,aviso_atraso_em) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(r.id,r.componente_id,str(r.nome_solicitante,100),str(r.contato,140),str(r.email,180),Number(r.quantidade)||1,r.data_inicio,r.data_devolucao,r.status,str(r.observacao,500),r.solicitado_em||now(),r.aprovado_em||null,r.retirado_em||null,r.devolvido_em||null,str(r.responsavel_admin,100),r.aviso_atraso_em||null));
-    const cfg = b.configuracoes && typeof b.configuracoes === "object" ? b.configuracoes : {};
-    for (const [key, value] of Object.entries(cfg)) if (/^[a-z_]{1,50}$/.test(key)) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,100)));
-    if (!cfg.limpeza_reservas) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
+    const materialFields=[...fields,"arquivado","import_key"];
+    for (const raw of b.componentes){
+      const v=validateItem({...raw,mostrar_quantidade:raw.mostrar_quantidade??1,
+        mostrar_em_uso:raw.mostrar_em_uso??1,mostrar_defeito:raw.mostrar_defeito??0});
+      const vals=[...fields.map(k=>v[k]),raw.arquivado?1:0,str(raw.import_key,120)||null];
+      ops.push(db.prepare("INSERT INTO componentes(id,"+materialFields.join(",")+
+        ",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES("+
+        Array(materialFields.length+4).fill("?").join(",")+")")
+        .bind(raw.id,...vals,raw.ultima_alteracao||null,str(raw.ultimo_responsavel,100),
+          str(raw.detalhes_alteracao,2000)));
+    }
+    for (const r of b.reservas){
+      const uid=activeUsers.has(Number(r.usuario_id))?Number(r.usuario_id):null;
+      // Tipo 'reserva' é temporário apenas durante INSERT para não disparar a
+      // proteção de *nova* retirada direta ao reconstruir um histórico antigo.
+      ops.push(db.prepare("INSERT INTO reservas(id,componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,aprovado_em,retirado_em,devolvido_em,responsavel_admin,aviso_atraso_em,usuario_id,tipo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        .bind(r.id,r.componente_id,str(r.nome_solicitante,100),str(r.contato,140),
+          str(r.email,180),Number(r.quantidade)||1,r.data_inicio,r.data_devolucao,r.status,
+          str(r.observacao,500),r.solicitado_em||now(),r.aprovado_em||null,
+          r.retirado_em||null,r.devolvido_em||null,str(r.responsavel_admin,100),
+          r.aviso_atraso_em||null,uid,"reserva"));
+    }
+    for(const r of b.reservas)if(r.tipo==="retirada_direta")
+      ops.push(db.prepare("UPDATE reservas SET tipo='retirada_direta' WHERE id=?").bind(r.id));
+    const cfg=b.configuracoes&&typeof b.configuracoes==="object"?b.configuracoes:{};
+    for (const [key,value] of Object.entries(cfg))
+      if(/^[a-z_]{1,50}$/.test(key))ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,100)));
+    if (!cfg.limpeza_reservas)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
+    if (!cfg.limpeza_historico)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_historico','nunca')"));
+    if(v2&&Array.isArray(b.filamentos)){
+      ops.push(db.prepare("DELETE FROM filamentos"));
+      for(const color of b.filamentos)ops.push(db.prepare(
+        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES(?,?,?,?,?,?,?)"
+      ).bind(color.id,str(color.cor,55),str(color.hexadecimal,7),Number(color.quantidade)||0,
+        Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1));
+    }
+    if(v2&&Array.isArray(b.historico)){
+      ops.push(db.prepare("DELETE FROM historico_admin"));
+      for(const event of b.historico)ops.push(db.prepare(
+        "INSERT INTO historico_admin(id,criado_em,responsavel,acao,tipo,registro_id,descricao) VALUES(?,?,?,?,?,?,?)"
+      ).bind(event.id,event.criado_em||now(),str(event.responsavel,100),
+        str(event.acao,50),str(event.tipo,40),event.registro_id||null,str(event.descricao,1400)));
+    }
+    if(v2&&Array.isArray(b.conciliacao_experimentos_vinculos)){
+      ops.push(db.prepare("DELETE FROM conciliacao_experimentos_vinculos"));
+      for(const link of b.conciliacao_experimentos_vinculos)ops.push(db.prepare(
+        "INSERT INTO conciliacao_experimentos_vinculos(origem_id,destino_id,quantidade_transferida,defeitos_transferidos,operacao,registrado_em) VALUES(?,?,?,?,?,?)"
+      ).bind(link.origem_id,link.destino_id,link.quantidade_transferida,link.defeitos_transferidos,link.operacao,link.registrado_em||now()));
+    }
+    if(v2&&Array.isArray(b.conciliacao_experimentos_backup)){
+      ops.push(db.prepare("DELETE FROM conciliacao_experimentos_backup"));
+      for(const snapshot of b.conciliacao_experimentos_backup)ops.push(db.prepare(
+        "INSERT INTO conciliacao_experimentos_backup(material_id,snapshot,registrado_em) VALUES(?,?,?)"
+      ).bind(snapshot.material_id,snapshot.snapshot,snapshot.registrado_em||now()));
+    }
     await db.batch(ops);
-    await auditLog(db,"Restaurou backup","sistema",null,"Backup restaurado com "+b.componentes.length+" materiais e "+b.categorias.length+" categorias");
-    return j({ ok:true });
+    await auditLog(db,"Restaurou backup","sistema",null,
+      "Backup "+b.formato+" restaurado: "+b.componentes.length+" materiais, "+
+      b.categorias.length+" categorias e "+(b.filamentos?.length||0)+" filamentos.");
+    return j({ok:true});
   }
   if (path === "/api/admin/reminder" && method === "POST") {
     const b = await input(req,2000), id = requireId(b.id);
