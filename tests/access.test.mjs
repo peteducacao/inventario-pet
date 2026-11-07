@@ -64,7 +64,7 @@ const loginUser=await post("/api/identity/login",{login:"pessoa123",senha:"Senha
 assert.equal(loginUser.status,200);
 const verifiedReserve=await post("/api/reservations",{...payload,email:"teste.reserva@example.com"},loginUser.cookie);
 assert.equal(verifiedReserve.status,201,JSON.stringify(verifiedReserve.body));
-assert.equal(db.prepare("SELECT usuario_id FROM reservas ORDER BY id DESC LIMIT 1").get().usuario_id,user.body.usuario.id,"Reserva deve pertencer à conta pessoal verificada.");
+assert.equal(db.prepare("SELECT usuario_id FROM reservas ORDER BY id DESC LIMIT 1").get().usuario_id,db.prepare("SELECT id FROM usuarios WHERE public_id=?").get(user.body.usuario.id).id,"Reserva deve pertencer à conta pessoal verificada.");
 const memberCatalog=(await call("/api/catalog","GET",null,loginUser.cookie)).body;
 assert.ok(memberCatalog.componentes.some(x=>x.id===one.id),"PETiano não vê item restrito.");
 assert.equal((await call("/api/availability?id="+one.id+"&inicio="+start+"&fim="+end,"GET",null,loginUser.cookie)).status,200);
