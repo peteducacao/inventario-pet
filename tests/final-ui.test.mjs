@@ -84,7 +84,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     return {ok:status<400,status,json:async()=>body};
   };
   if(returningFromAdmin)w.sessionStorage.setItem("pet_check_identity_after_admin","1");
-  w.eval(scripts+"\nwindow.__pageButtons=pageButtons;window.__adminTestState=state;");
+  w.eval(scripts+"\nwindow.__pageButtons=pageButtons;window.__adminTestState=state;window.__publicTestUI=UI;window.__finalRender=finalRender;");
   const click=async(sel)=>{
     const el=d.querySelector(sel);
     assert.ok(el,"Controle ausente: "+sel);
@@ -103,6 +103,11 @@ assert.match(p,/title="Ir para a última página"/,"Atalho para última página 
 assert.doesNotMatch(p,/216 itens/,"Contagem de itens não deve aparecer no catálogo.");
 assert.match(w.__pageButtons({page:18,pages:18,total:216},"public"),/aria-current="page"/);
 assert.equal(d.body.classList.contains("catalog-loading"),false,"Catálogo ficou preso no carregamento.");
+// Filtros persistidos de categorias arquivadas não podem deixar o catálogo vazio.
+w.__publicTestUI.category="99999";w.__finalRender();
+assert.equal(w.localStorage.getItem("pet_public_category"),"all","Filtro de categoria excluída ou arquivada deve voltar para Todos.");
+assert.ok(d.querySelector('[data-category="all"]').classList.contains("active"));
+assert.ok(d.querySelectorAll(".catalog-card").length>0,"Ao trocar o filtro antigo, o catálogo deve voltar a exibir materiais.");
 assert.ok(publicUI.noticeRequestCount()>=1,"Sino deve consultar notificações logo após restaurar login.");
 publicUI.addNotice({id:44,titulo:"Reserva recusada",mensagem:"Sua reserva #31 foi recusada por Ana Maria (PET).",criada_em:"2026-11-07T12:10:00Z",lida_em:null});
 await click("#notification-button");
