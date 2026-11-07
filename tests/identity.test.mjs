@@ -70,7 +70,7 @@ assert.equal((await registration("Teste","tester4","")).status,400,"Senha vazia 
 assert.equal((await registration("Teste","tester5","9".repeat(2049))).status,400,"Limite técnico evita sobrecarga.");
 assert.equal((await call("/api/identity/me")).body.usuario,null);
 assert.equal((await call("/api/identity/me","GET",null,"__Host_pet_identity="+a.body.usuario.id)).body.usuario,null);
-assert.equal((await post("/api/identity/recover",{id:a.body.usuario.id,codigo:"REC-SIMPLES"})).status,410,"Código antigo não pode autenticar.");
+assert.equal((await post("/api/identity/recover",{id:a.body.usuario.id,codigo:"REC-SIMPLES"})).status,200,"A recuperação deve responder sem revelar se existe conta; não deve autenticar pelo código antigo.");
 assert.equal((await post("/api/identity/recovery-code",{})).status,410);
 assert.equal((await post("/api/identity/login",{login:"sergio01",senha:"SenhaErrada2026"})).status,401);
 const loginA=await post("/api/identity/login",{login:"SERGIO01",senha:senhaA});
