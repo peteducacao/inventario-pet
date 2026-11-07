@@ -238,8 +238,7 @@ function adminMaterialRow(x){
   const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small>'+
-    (x.grupo_variacoes?'<div class="admin-group-inline"><span>Grupo: <strong>'+esc(x.grupo_variacoes)+'</strong></span>'+
-      '<button type="button" class="admin-group-rename" data-rename-group="'+attr(x.grupo_variacoes)+'" aria-label="Renomear grupo '+attr(x.grupo_variacoes)+'" title="Editar o nome exibido no card de todas as variações">'+iconSvg("edit",13)+' Renomear grupo</button></div>':"")+
+    (isHidden&&x.grupo_variacoes?'<small class="admin-archived-group">Grupo anterior: '+esc(x.grupo_variacoes)+'</small>':"")+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
     loanAudienceSelect("item",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
     (Number(cat?.permitir_petianos)!==1||Number(cat?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A liberação também depende da categoria</small>':'')+'</div>'+
@@ -262,7 +261,8 @@ function wireMaterialActions(root){
   });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
-  $$("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
+  $("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
+  $("[data-group-links]",root).forEach(b=>b.onclick=()=>openVariantLinker(null,b.dataset.groupLinks));
   $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
 }
 function adminRenameVariationGroup(name){
@@ -330,7 +330,14 @@ function adminMaterials(root){
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais ou grupos..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
-    '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>';
+    '<section class="admin-groups-area" id="admin-groups-area" aria-label="Grupos de variações">'+
+      '<details class="admin-groups-wrapper" id="admin-groups-section" open>'+
+        '<summary><span>Grupos de variações <span id="admin-group-count" class="admin-groups-count"></span></span><small>Um grupo por família · edite o título e os vínculos aqui</small></summary>'+
+        '<div class="admin-groups-grid" id="admin-group-list"></div>'+
+      '</details></section>'+
+    '<section class="admin-individual-area" aria-label="Materiais individuais">'+
+      '<div class="admin-section-head admin-individual-heading"><div><h3 id="admin-individual-title">Materiais individuais</h3><p id="admin-individual-count"></p></div></div>'+
+      '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
   $("#admin-bulk-visibility").onclick=()=>openBulkVisibility();
   $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
@@ -346,22 +353,65 @@ function sortOptions(value){
   return [["az","A–Z"],["za","Z–A"],["recent","Última alteração"],["old","Mais antigo"],["available","Mais disponíveis"],["less","Menos disponíveis"]].map(([key,label])=>
     '<option value="'+key+'" '+(value===key?"selected":"")+'>'+label+'</option>').join("");
 }
+function adminGroupKey(value){
+  return String(value||"").trim().toLocaleLowerCase("pt-BR");
+}
+function adminGroupedFamilies(items){
+  const groups=new Map();
+  for(const item of items){
+    const key=adminGroupKey(item.grupo_variacoes);
+    if(!key)continue;
+    if(!groups.has(key))groups.set(key,{name:String(item.grupo_variacoes).trim(),members:[]});
+    groups.get(key).members.push(item);
+  }
+  return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"}));
+}
+function adminFamilyCard(group){
+  const items=group.members,quantity=items.reduce((v,x)=>v+Number(x.quantidade||0),0),
+    inUse=items.reduce((v,x)=>v+Number(x.em_uso||0),0);
+  const sample=items[0],names=[...new Set(items.map(x=>nameCategory(x.categoria_id)))];
+  return '<article class="admin-family-card" data-admin-group="'+attr(group.name)+'">'+
+    '<div class="admin-family-head"><div class="admin-family-thumb">'+thumb(sample)+'</div>'+
+      '<div class="admin-family-title"><h4>'+esc(group.name)+'</h4>'+
+        '<small>'+items.length+' '+(items.length===1?'material vinculado':'materiais vinculados')+' · '+esc(names.join(", "))+'</small></div></div>'+
+    '<div class="admin-family-stat">Total: <strong>'+quantity+'</strong> · Em uso: <strong>'+inUse+'</strong>'+
+      (items.length===1?'<small class="admin-family-warning">Este grupo tem só um material. Vincule outro modelo para formar uma família.</small>':'')+'</div>'+
+    '<div class="admin-family-actions">'+
+      '<button type="button" class="outline-button small-button" data-rename-group="'+attr(group.name)+'">'+iconSvg("edit",14)+' Renomear grupo</button>'+
+      '<button type="button" class="primary-button small-button" data-group-links="'+attr(group.name)+'">'+iconSvg("box",14)+' Organizar vínculos</button></div>'+
+    '<details class="admin-family-models"><summary>Ver '+items.length+' '+(items.length===1?'material':'modelos')+'</summary>'+
+      '<div class="material-list">'+items.map(adminMaterialRow).join("")+'</div></details></article>';
+}
 function paintAdminMaterials(){
   const list=$("#admin-material-list");if(!list)return;
-  const query=UI.adminSearch.toLowerCase().trim();
-  const visible=state.admin.componentes.filter(x=>{
-    if(UI.adminCategory==="archived"){if(!isArchived(x))return false;}
-    else if(isArchived(x)||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
-    return !query||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes].some(v=>String(v||"").toLowerCase().includes(query));
+  const search=String(UI.adminSearch||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+  const matches=x=>!search||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes]
+    .some(value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").includes(search));
+  const archived=UI.adminCategory==="archived";
+  const active=state.admin.componentes.filter(x=>!isArchived(x));
+  const families=adminGroupedFamilies(active);
+  const groupKeys=new Set(families.map(g=>adminGroupKey(g.name)));
+  const groups=archived?[]:families.filter(g=>
+    (UI.adminCategory==="all"||g.members.some(x=>String(x.categoria_id)===UI.adminCategory))&&
+    (!search||adminGroupKey(g.name).normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(search)||g.members.some(matches)));
+  const individuals=state.admin.componentes.filter(x=>{
+    if(archived){if(!isArchived(x))return false;}
+    else if(isArchived(x)||groupKeys.has(adminGroupKey(x.grupo_variacoes))||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
+    return matches(x);
   });
-  const p=paginate(ordered(visible,UI.adminSort),UI.adminPage);
+  const groupsArea=$("#admin-groups-area"),groupsList=$("#admin-group-list");
+  groupsArea.hidden=archived||!groups.length;
+  groupsList.innerHTML=groups.map(adminFamilyCard).join("");
+  $("#admin-group-count").textContent=String(groups.length);
+  const p=paginate(ordered(individuals,UI.adminSort),UI.adminPage);
   UI.adminPage=p.page;stored("pet_admin_page",p.page);
+  $("#admin-individual-title").textContent=archived?"Materiais arquivados":"Materiais individuais";
+  $("#admin-individual-count").textContent=p.total+" "+(p.total===1?"material":"materiais")+" nesta seleção";
   list.innerHTML=p.total?'<div class="material-list">'+p.items.map(adminMaterialRow).join("")+'</div>':
-    '<div class="empty-state">Nenhum material encontrado.</div>';
+    '<div class="empty-state">'+(groups.length?"Os modelos vinculados estão dentro dos grupos acima.":"Nenhum material encontrado.")+'</div>';
   $("#admin-material-pages").innerHTML=pageButtons(p,"admin");
-  wireMaterialActions(list);
+  wireMaterialActions($("#admin-content")||list);
 }
-
 
 /* Reservas: grupos mutuamente exclusivos. */
 function reservationGroup(r){
