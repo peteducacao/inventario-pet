@@ -118,6 +118,50 @@ function adminDashboard(root){
     el.innerHTML=(data.eventos||[]).slice(0,4).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração registrada ainda.</div>';
   }).catch(error=>{const el=$("#dashboard-recent-log");if(el)el.textContent=error.message;});
 }
+function adminLogRow(log){
+  return '<article class="admin-log-row"><strong>'+esc(log.acao)+' · '+esc(log.tipo)+'</strong>'+
+    '<small>'+esc(niceDate(log.criado_em))+' · '+esc(log.responsavel||"Admin")+'</small>'+
+    '<p>'+esc(log.descricao||"Sem detalhes adicionais")+'</p></article>';
+}
+async function adminHistory(root){
+  const selected=UI.logType||"all",page=UI.logPage||1;
+  root.innerHTML='<section class="admin-panel">'+
+    '<div class="admin-section-head"><div><h2>Histórico de alterações</h2><p>Registra cadastros, edições, exclusões, reservas, devoluções e alterações de acesso a partir desta atualização.</p></div></div>'+
+    '<div class="admin-log-controls"><label>Tipo de atividade<select id="admin-log-type">'+
+    [["all","Todas"],["material","Materiais"],["categoria","Categorias"],["filamento","Filamentos"],["reserva","Reservas"],["usuario","Usuários"],["sistema","Sistema"]].map(([k,name])=>'<option value="'+k+'" '+(k===selected?'selected':'')+'>'+name+'</option>').join("")+
+    '</select></label><label>Limpar automaticamente após<select id="admin-log-retention">'+
+    [["nunca","Nunca"],["1","24 horas"],["3","3 dias"],["5","5 dias"],["7","7 dias"],["15","15 dias"],["30","1 mês"]].map(([k,name])=>'<option value="'+k+'">'+name+'</option>').join("")+
+    '</select></label>'+
+    '<button type="button" class="outline-button small-button" id="admin-log-save-period">Salvar prazo</button>'+
+    '<button type="button" class="danger-button small-button" id="admin-log-clear">Limpar manualmente</button></div>'+
+    '<p id="admin-log-count" style="font-size:11px;color:#6e8394"></p>'+
+    '<div id="admin-log-list" class="admin-log-list"><div class="loading-placeholder">Carregando histórico…</div></div>'+
+    '<nav id="admin-log-pages" class="page-controls"></nav></section>';
+  $("#admin-log-type").onchange=e=>{UI.logType=e.target.value;UI.logPage=1;adminHistory(root);};
+  $("#admin-log-save-period").onclick=async()=>{
+    const value=$("#admin-log-retention").value;
+    try{await api("/api/admin/log","POST",{acao:"configurar",prazo:value,responsavel:state.actor||"Admin"});toast("Prazo do histórico salvo.");await adminHistory(root);}
+    catch(error){toast(error.message,true);}
+  };
+  $("#admin-log-clear").onclick=async()=>{
+    const ok=await niceModalConfirm("Limpar todo o histórico?","Esta ação apaga definitivamente os eventos já registrados. Os materiais, categorias, reservas e usuários NÃO serão apagados.","Apagar histórico",true);
+    if(!ok)return;
+    try{const result=await api("/api/admin/log","POST",{acao:"limpar",confirmar:"LIMPAR HISTÓRICO"});UI.logPage=1;await adminHistory(root);toast(result.removidos+" eventos excluídos.");}
+    catch(error){toast(error.message,true);}
+  };
+  $("#admin-log-pages").onclick=e=>{
+    const b=e.target.closest("[data-page]");if(!b)return;
+    UI.logPage=Number(b.dataset.page);adminHistory(root);
+  };
+  try{
+    const data=await api("/api/admin/log?pagina="+page+"&tipo="+encodeURIComponent(selected));
+    if(!document.contains(root)||UI.adminTab!=="historico")return;
+    $("#admin-log-retention").value=data.limpeza_historico||"nunca";
+    $("#admin-log-count").textContent=Number(data.total||0)+" evento(s) registrados.";
+    $("#admin-log-list").innerHTML=(data.eventos||[]).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração neste filtro.</div>';
+    $("#admin-log-pages").innerHTML=pageButtons({page:data.pagina||1,pages:Math.max(1,Math.ceil((data.total||0)/35)),total:data.total||0},"history");
+  }catch(error){const el=$("#admin-log-list");if(el)el.textContent=error.message;}
+}
 function quantityCell(name,num,clazz=""){
   return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
 }
