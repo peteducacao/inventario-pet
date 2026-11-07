@@ -115,6 +115,16 @@ function groupPublicMaterials(items){
 // A ordenação alfabética deve considerar o título visível de CADA CARD,
 // e não o nome do primeiro componente usado para formar uma família.
 // Os outros modos preservam sua ordenação original por material.
+// Busca flexível: ESP32, ESP 32 e ESP-32 representam o mesmo nome.
+function normalizedCatalogSearch(value){
+  return String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+}
+function matchesCatalogSearch(value,query){
+  const needle=normalizedCatalogSearch(query),haystack=normalizedCatalogSearch(value);
+  if(!needle||haystack.includes(needle))return true;
+  const compactNeedle=needle.replace(/[^a-z0-9]/g,"");
+  return compactNeedle.length>=2&&haystack.replace(/[^a-z0-9]/g,"").includes(compactNeedle);
+}
 function orderedCatalogGroups(groups,sort){
   if(sort!=="az"&&sort!=="za")return groups;
   const title=group=>{
@@ -228,7 +238,7 @@ function finalRender(){
   const q=String(state.query||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
   const inCategory=items.filter(x=>UI.category==="all"||String(x.categoria_id)===String(UI.category));
   const normalize=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR");
-  const matches=x=>[x.nome,x.identificacao,x.patrimonio,x.grupo_variacoes].some(v=>normalize(v).includes(q));
+  const matches=x=>[x.nome,x.identificacao,x.patrimonio,x.grupo_variacoes].some(v=>matchesCatalogSearch(v,q));
   // Buscar pelo grupo ou por qualquer modelo deve manter todos os modelos
   // vinculados no mesmo card (não transformar um grupo num item solto).
   const matchingGroups=new Set(inCategory.filter(x=>q&&matches(x)&&x.grupo_variacoes)
