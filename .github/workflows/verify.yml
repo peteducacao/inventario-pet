@@ -38,6 +38,8 @@ jobs:
         run: node tests/admin-navigation.test.mjs
       - name: Testar catálogo e painel novos, sem tocar na produção
         run: node tests/final-ui.test.mjs
+      - name: Testar fotos individuais e cores dos LEDs
+        run: node tests/led-colors.test.mjs
       - name: Auditar desenhos e correspondências dos 213 materiais
         run: node tests/component-art.test.mjs
 
