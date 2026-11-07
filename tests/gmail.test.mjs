@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {DatabaseSync} from "node:sqlite";
-import {queueManual,generateDailyEmails,mailBridgeAPI} from "../src/mail-bridge.js";
+import {queueManual,generateDailyEmails,mailBridgeAPI,mailAdminAPI} from "../src/mail-bridge.js";
 const sqlite=new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0011_conciliar_experimentos.sql","0012_linkar_variacoes_iniciais.sql","0013_gmail_queue.sql","0014_email_usuarios.sql"]){
@@ -58,4 +58,31 @@ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_
 sqlite.prepare("UPDATE reservas SET status='devolvida' WHERE id=?").run(rid);
 ret=await(await call("/api/mail/next")).json();
 assert.equal(ret.item,null,"Não enviar notificação depois da devolução");
+// Editar um modelo não pode enviar mensagens automaticamente.
+const adminCall=(path,body)=>{
+  const opt=body===undefined?{method:"GET"}:{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)};
+  return mailAdminAPI(new Request("https://inventario-pet.pet-educacao.workers.dev"+path,opt),env);
+};
+const listed=await(await adminCall("/api/admin/mail/templates")).json();
+assert.equal(listed.templates.length,5,"Cinco modelos personalizáveis devem aparecer no painel.");
+const saveModel=await adminCall("/api/admin/mail/templates",{evento:"manual",assunto:"PET: devolução de {material}",mensagem:"Olá, {nome}! A devolução de {material} está prevista para {prazo}. Registro #{registro}. {link}"});
+assert.equal(saveModel.status,200,"Administrador deve conseguir editar o modelo.");
+const stored=await(await adminCall("/api/admin/mail/templates")).json();
+assert.match(stored.templates.find(x=>x.evento==="manual").assunto,/devolução de/);
+const invalid=await adminCall("/api/admin/mail/templates",{evento:"manual",assunto:"\nInjeção",mensagem:"Mensagem longa o suficiente"});
+assert.equal(invalid.status,400,"Assuntos com quebra de linha devem ser rejeitados.");
+const testId=insert("modelo@example.com",dayAdd(4));
+const preview=await(await adminCall("/api/admin/mail/preview?id="+testId)).json();
+assert.equal(preview.assunto,"PET: devolução de "+sqlite.prepare("SELECT nome FROM componentes WHERE id=?").get(item.id).nome);
+assert.match(preview.mensagem,/Olá, Visitante de Teste!/);
+assert.doesNotMatch(preview.mensagem,/\{material\}|\{prazo\}/,"A prévia deve preencher os dados reais.");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_id=?").get(testId).n,0,"A prévia não pode enviar cobrança.");
+const edited=await adminCall("/api/admin/mail/queue",{id:testId,assunto:"Cobrança revisada de teste",mensagem:"Olá! Este texto foi alterado diretamente no painel antes do envio."});
+assert.equal(edited.status,200);
+const queued=sqlite.prepare("SELECT assunto,mensagem FROM mail_queue WHERE reserva_id=?").get(testId);
+assert.equal(queued.assunto,"Cobrança revisada de teste");
+assert.match(queued.mensagem,/alterado diretamente no painel/);
+const repeated=await(await adminCall("/api/admin/mail/queue",{id:testId,assunto:"Cobrança repetida de teste",mensagem:"Esta mensagem duplicada não deve substituir a primeira."})).json();
+assert.equal(repeated.queued,false,"Não repetir cobrança no mesmo dia.");
+console.log("MODELOS GMAIL OK: salvar, prévia, validação, edição manual e não duplicação.");
 console.log("GMAIL OK: segurança, fila, preferência por tag, prazos, duplicação e devolução.");

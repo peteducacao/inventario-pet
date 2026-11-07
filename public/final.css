@@ -567,3 +567,38 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .bulk-visibility-badge{font-size:11px;padding:4px 7px}
  .bulk-selection-footer small{font-size:10.5px}
 }
+
+
+/* Configurações do Gmail — controles compactos, responsivos e acessíveis */
+#admin-settings-form .settings-block{align-self:start;padding:18px 20px;}
+#admin-settings-form .settings-block>strong{display:block;font-size:15px;font-weight:800;color:#183c54;margin-bottom:4px;}
+#admin-settings-form .settings-block>p{margin:4px 0 12px;line-height:1.6;}
+#admin-settings-form .settings-gmail-block{grid-column:1/-1;}
+.settings-toggle-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 12px;}
+.settings-toggle{position:relative;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;background:#fff;border:1px solid #e0e9ee;border-radius:12px;cursor:pointer;min-width:0;}
+.settings-block>.settings-toggle{margin-top:14px;}
+.settings-toggle-label{display:flex;flex-direction:column;gap:3px;min-width:0;}
+.settings-toggle-label strong{font-size:12px;font-weight:750;color:#285168;line-height:1.4;}
+.settings-toggle-label small{font-size:11px;font-weight:400;color:#778b9b;line-height:1.4;}
+.settings-toggle input[type="checkbox"]{position:absolute!important;opacity:0!important;width:1px!important;height:1px!important;min-height:0!important;min-width:0!important;margin:0!important;padding:0!important;border:0!important;}
+.settings-switch{width:38px;height:22px;flex:0 0 38px;border-radius:999px;background:#cbd6df;position:relative;transition:background .2s ease;}
+.settings-switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;background:#fff;border-radius:50%;box-shadow:0 1px 3px #10283c25;transition:transform .2s ease;}
+.settings-toggle input[type="checkbox"]:checked+.settings-switch{background:#098b73;}
+.settings-toggle input[type="checkbox"]:checked+.settings-switch::after{transform:translateX(16px);}
+.settings-toggle input[type="checkbox"]:focus-visible+.settings-switch{outline:3px solid #82c9bf;outline-offset:3px;}
+.settings-toggle:hover{border-color:#b0ccc8;}
+.settings-gmail-block #v2-mail-history{margin-top:3px;font-size:12px;}
+.mail-template-panel{max-width:100%;}
+.mail-template-panel .admin-section-head p{margin:5px 0 0;font-size:12px;line-height:1.6;}
+.mail-template-panel .field{margin:14px 0 0;max-width:900px;}
+.mail-template-panel .field input,.mail-template-panel .field select,.mail-template-panel .field textarea{width:100%;box-sizing:border-box;}
+.mail-template-panel .field textarea{min-height:185px;resize:vertical;line-height:1.55;font:13px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;}
+.mail-template-help{font-size:12px!important;color:#52718a!important;line-height:1.8!important;margin:12px 0!important;}
+.mail-template-help code{font-size:11px;background:#e9f2f5;color:#145e70;border-radius:5px;padding:2px 5px;}
+.mail-template-preview{max-width:900px;margin-top:14px;padding:15px 18px;border-radius:12px;border:1px solid #dce8ef;background:#f7fafc;}
+.mail-template-preview>strong{font-size:12px;color:#28516a;}
+.mail-template-preview>p{font-size:13px!important;font-weight:750;color:#173d56!important;margin:10px 0!important;}
+.mail-template-preview pre{white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;margin:0;color:#3f5b6d;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;}
+.mail-template-actions{margin-top:15px;}
+@media(max-width:1000px){.settings-toggle-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:700px){.settings-toggle-grid{grid-template-columns:1fr;gap:8px;}.settings-toggle{padding:12px;}.settings-block{min-width:0;}.mail-template-panel .field textarea{min-height:230px;}.mail-template-preview{padding:12px;}}

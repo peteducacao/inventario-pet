@@ -11,18 +11,30 @@ const rows=async(db,sql,args=[])=>((await db.prepare(sql).bind(...args).all()).r
 const pref=async(db,key,fallback)=>((await db.prepare("SELECT valor FROM configuracoes WHERE chave=?").bind(key).first())?.valor??fallback);
 const digest=async x=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(x)))).map(v=>v.toString(16).padStart(2,"0")).join("");
 const formatDate=s=>s&&/^\d{4}-\d\d-\d\d$/.test(s)?s.split("-").reverse().join("/"):"sem prazo";
-function content(row,event){
-  const who=clean(row.nome_solicitante,100);
-  const item=clean(row.componente_nome,150);
-  const due=formatDate(row.data_devolucao);
-  const intro=event==="antes"?"A devolução do material abaixo está prevista para amanhã.":
-    event==="hoje"?"A data prevista para devolução do material é hoje.":
-    event==="atraso2"||event==="atraso7"?"Nossa equipe identificou que a devolução do material abaixo está em atraso.":
-    "Este é um lembrete da equipe do PET Educação sobre o material ainda em empréstimo.";
-  const subject=(event==="atraso2"||event==="atraso7"||event==="manual")?"Inventário PET Educação - Lembrete de devolução":"Inventário PET Educação - Prazo de devolução";
-  const body="Olá, "+who+"!\n\n"+intro+"\n\nMaterial: "+item+"\nQuantidade: "+row.quantidade+"\nDevolução prevista: "+due+"\nRegistro: #"+row.id+
-    "\n\nPedimos que organize a devolução ou entre em contato com a equipe do PET Educação. Se já devolveu, avise a equipe para atualizar o registro.\n\nPET Educação - UFS\nhttps://inventario-pet.pet-educacao.workers.dev";
-  return {subject,body};
+const TEMPLATE_TYPES={antes:"Um dia antes do prazo",hoje:"No dia da devolução",atraso2:"Dois dias de atraso",atraso7:"Sete dias de atraso",manual:"Cobrança manual"};
+const TEMPLATE_EVENTS=Object.keys(TEMPLATE_TYPES);
+const BASE_END="\n\nMaterial: {material}\nQuantidade: {quantidade}\nDevolução prevista: {prazo}\nRegistro: #{registro}\n\nPedimos que organize a devolução ou entre em contato com a equipe do PET Educação. Se já devolveu, avise a equipe para atualizar o registro.\n\nPET Educação - UFS\n{link}";
+function defaultTemplate(event){
+  const intro={antes:"A devolução do material abaixo está prevista para amanhã.",hoje:"A data prevista para devolução do material é hoje.",atraso2:"Nossa equipe identificou que a devolução do material abaixo está em atraso.",atraso7:"Nossa equipe identificou que a devolução do material abaixo está em atraso há alguns dias.",manual:"Este é um lembrete da equipe do PET Educação sobre o material ainda em empréstimo."}[event];
+  return {assunto:["atraso2","atraso7","manual"].includes(event)?"Inventário PET Educação - Lembrete de devolução":"Inventário PET Educação - Prazo de devolução",mensagem:"Olá, {nome}!\n\n"+intro+BASE_END};
+}
+function validateTemplate(assunto,mensagem){
+  if(typeof assunto!=="string"||assunto.trim().length<5||assunto.trim().length>180||/[\r\n]/.test(assunto))throw Error("Assunto inválido. Use de 5 a 180 caracteres em uma linha.");
+  if(typeof mensagem!=="string"||mensagem.trim().length<15||mensagem.length>5000)throw Error("O texto precisa ter de 15 a 5.000 caracteres.");
+  return {assunto:assunto.trim(),mensagem:mensagem.trim()};
+}
+async function templateFor(db,event){
+  if(!Object.hasOwn(TEMPLATE_TYPES,event))throw Error("Tipo de e-mail inválido.");
+  const model=defaultTemplate(event);
+  return {assunto:await pref(db,"mail_template_"+event+"_subject",model.assunto),mensagem:await pref(db,"mail_template_"+event+"_body",model.mensagem)};
+}
+function renderTemplate(model,row){
+  const fields={nome:clean(row.nome_solicitante,100),material:clean(row.componente_nome,150),quantidade:String(row.quantidade),prazo:formatDate(row.data_devolucao),registro:String(row.id),link:"https://inventario-pet.pet-educacao.workers.dev"};
+  const render=value=>value.replace(/\{(nome|material|quantidade|prazo|registro|link)\}/g,(_,key)=>fields[key]);
+  return {subject:render(model.assunto),body:render(model.mensagem)};
+}
+async function content(db,row,event,custom=null){
+  return renderTemplate(custom?validateTemplate(custom.assunto,custom.mensagem):await templateFor(db,event),row);
 }
 async function current(db,id){
   const row=await db.prepare("SELECT r.*,c.nome AS componente_nome,COALESCE(u.papel, CASE WHEN r.tipo='retirada_direta' THEN 'petiano' ELSE 'visitante' END) AS tag, COALESCE(u.notificar_email,1) AS permite_usuario,u.email AS email_conta FROM reservas r JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE r.id=?").bind(id).first();
@@ -38,19 +50,19 @@ async function allowed(db,row){
   const flag=row.tag==="petiano"?"notificacoes_petianos":"notificacoes_visitantes";
   return await pref(db,flag,row.tag==="petiano"?"nao":"sim")==="sim";
 }
-async function queue(db,row,event,origin="automatica"){
+async function queue(db,row,event,origin="automatica",custom=null){
   if(!await allowed(db,row))return {ok:false,reason:"Sem e-mail, devolução pendente ou notificações desativadas para essa pessoa/tag."};
   if(Number(row.sem_prazo)===1||!row.data_devolucao)return {ok:false,reason:"Empréstimo sem prazo definido."};
-  const msg=content(row,event);
+  const msg=await content(db,row,event,custom);
   const key=origin==="manual"?"manual:"+row.id+":"+dayBR()+":"+row.data_devolucao:"auto:"+row.id+":"+event+":"+row.data_devolucao;
   const result=await db.prepare("INSERT OR IGNORE INTO mail_queue(reserva_id,evento,chave_unica,destinatario,assunto,mensagem,prazo_referencia,origem,criado_em) VALUES(?,?,?,?,?,?,?,?,?)")
     .bind(row.id,event,key,row.email,msg.subject,msg.body,row.data_devolucao,origin,iso()).run();
   return {ok:true,queued:result.meta?.changes===1};
 }
-export async function queueManual(db,id){
+export async function queueManual(db,id,custom=null){
   const row=await current(db,id);
   if(!row)return {ok:false,reason:"Empréstimo não encontrado."};
-  return queue(db,row,"manual","manual");
+  return queue(db,row,"manual","manual",custom);
 }
 export async function generateDailyEmails(env){
   if(!env.DB||await pref(env.DB,"avisos_email","nao")!=="sim")return;
@@ -68,6 +80,33 @@ export async function generateDailyEmails(env){
 }
 export async function mailAdminAPI(req,env){
   const path=new URL(req.url).pathname, db=env.DB;
+  if(path==="/api/admin/mail/templates"&&req.method==="GET"){
+    const templates=[];
+    for(const event of TEMPLATE_EVENTS)templates.push({evento:event,nome:TEMPLATE_TYPES[event],...await templateFor(db,event)});
+    return reply({ok:true,templates,variaveis:["nome","material","quantidade","prazo","registro","link"]});
+  }
+  if(path==="/api/admin/mail/templates"&&req.method==="POST"){
+    let data;
+    try{const raw=await req.text();if(raw.length>11000)return fail("Mensagem muito grande.");data=JSON.parse(raw);}
+    catch{return fail("Dados inválidos.");}
+    if(!Object.hasOwn(TEMPLATE_TYPES,data?.evento))return fail("Modelo de e-mail inválido.");
+    let model;try{model=validateTemplate(data.assunto,data.mensagem);}catch(e){return fail(e.message);}
+    await db.batch([
+      db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind("mail_template_"+data.evento+"_subject",model.assunto),
+      db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind("mail_template_"+data.evento+"_body",model.mensagem)
+    ]);
+    return reply({ok:true,mensagem:"Modelo salvo para os próximos e-mails."});
+  }
+  if(path==="/api/admin/mail/preview"&&req.method==="GET"){
+    const id=Number(new URL(req.url).searchParams.get("id"));
+    if(!Number.isSafeInteger(id)||id<1)return fail("Empréstimo inválido.");
+    const row=await current(db,id);
+    if(!row)return fail("Empréstimo não encontrado.",404);
+    if(!await allowed(db,row))return fail("A cobrança não está permitida para esta pessoa ou tag.",409);
+    if(Number(row.sem_prazo)===1||!row.data_devolucao)return fail("Empréstimo sem prazo definido.",409);
+    const msg=await content(db,row,"manual");
+    return reply({ok:true,id,destinatario:row.email,assunto:msg.subject,mensagem:msg.body});
+  }
   if(path==="/api/admin/mail/log"&&req.method==="GET"){
     const items=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,origem,situacao,criado_em,enviado_em,ultimo_erro FROM mail_queue ORDER BY id DESC LIMIT 150");
     return reply({ok:true,items,configurado:!!env.MAIL_BRIDGE_TOKEN&&env.MAIL_BRIDGE_TOKEN.length>=32});
@@ -77,7 +116,12 @@ export async function mailAdminAPI(req,env){
     try{payload=await req.json();}catch{return fail("Dados inválidos.");}
     const id=Number(payload?.id);
     if(!Number.isSafeInteger(id)||id<1)return fail("Empréstimo inválido.");
-    const result=await queueManual(db,id);
+    let custom=null;
+    if(payload?.assunto!==undefined||payload?.mensagem!==undefined){
+      try{custom=validateTemplate(payload.assunto,payload.mensagem);}
+      catch(e){return fail(e.message);}
+    }
+    const result=await queueManual(db,id,custom);
     return result.ok?reply({ok:true,queued:result.queued,mensagem:result.queued?"Cobrança colocada na fila do Gmail.":"Já existe uma cobrança manual deste empréstimo para hoje."}):fail(result.reason,409);
   }
   if(path==="/api/admin/mail/settings"&&req.method==="POST"){
