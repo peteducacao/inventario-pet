@@ -426,3 +426,11 @@ body:not(.admin-mode) .inventory-section .catalog-numbers{margin:8px 0 9px}
  .variant-photo-row .variant-photo-upload{font-size:10px;padding:7px}
  .admin-access-card{padding:25px 19px 16px}
 }
+
+/* Caso scripts não carreguem, o placeholder oferece recuperação manual. */
+body[data-admin-route="true"] .admin-entry-message{max-width:min(440px,calc(100vw - 30px));text-align:center}
+body[data-admin-route="true"] .admin-entry-message strong{display:block;font-size:19px}
+body[data-admin-route="true"] .admin-entry-message>span{display:block;margin-top:9px;font-size:12px;font-weight:500;color:#748a98}
+body[data-admin-route="true"] .admin-entry-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-top:18px}
+body[data-admin-route="true"] .admin-entry-actions a{display:inline-flex;align-items:center;justify-content:center;min-height:36px;border-radius:10px;padding:9px 12px;border:1px solid #b3dcca;background:#e4f8ee;color:#125e54;text-decoration:none;font-size:12px;font-weight:750}
+body[data-admin-route="true"] .admin-entry-actions a:last-child{background:#f0f5f7;color:#386275;border-color:#d5e5ed}
