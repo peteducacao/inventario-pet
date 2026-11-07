@@ -89,6 +89,23 @@
       '<path d="M91 113l20-29 35 0 20 29-20 29h-35z" fill="#a3b3bf" stroke="#678298" stroke-width="5"/>'+
       circ(129,113,16,"#f7fafc","#718fa0",4)+'</g>').join("")+t("FIXAÇÃO"),
     trans:()=>plate("#2b6271")+[135,190,245].map((x,i)=>r(x,106,34,44,"#182e3b",3)+pins(x+6,103,22,3)).join("")+t("MÓDULO"),
+    arduinoUno:()=>'<g transform="rotate(-8 200 140)">'+
+      '<path d="M99 68h196v146H99l-14-19V92Z" fill="#18839c" stroke="#15546a" stroke-width="5"/>'+
+      r(82,93,33,49,"#c9d7de",5)+r(111,101,113,76,"#26556e",8)+
+      r(239,101,38,44,"#2d3b4c",4)+
+      [0,1,2,3,4,5,6].map(i=>r(133+i*21,62,9,14,"#293d50",2)).join("")+
+      [0,1,2,3,4,5,6].map(i=>r(132+i*21,211,10,14,"#293d50",2)).join("")+
+      '<text x="209" y="194" font-family="Arial" text-anchor="middle" font-weight="bold" font-size="18" fill="#d9f2ef">UNO</text></g>'+t("ARDUINO UNO"),
+    keyboard:()=>plate("#1f647a")+r(132,83,139,108,"#2b3c4e",7)+
+      [0,1,2,3].map(j=>[0,1,2].map(i=>r(144+i*38,93+j*24,25,18,i===2?"#77b6c6":"#d3e3eb",4)).join("")).join("")+t("TECLADO"),
+    dualJoystick:()=>plate("#1d667b")+[161,238].map(x=>circ(x,133,26,"#a3b8c4","#e4edf0",6)+
+      line(x,133,x,93,"#bdcdd4",12)+circ(x,83,23,"#273d50")).join("")+t("JOYSTICK DUPLO"),
+    powerModule:()=>plate("#276880")+r(136,83,63,73,"#26475c",8)+
+      r(214,92,56,55,"#d0c170",5)+r(146,177,114,16,"#d9dfd7",3)+t("ALIMENTAÇÃO"),
+    metalBars:()=>[0,1,2].map(i=>'<g transform="rotate(-11 200 140) translate(0 '+(i*28)+')">'+r(105,85,200,23,["#a2b5c1","#d2e0e6","#869cac"][i],5,'stroke="#748c9b" stroke-width="2"')+'</g>').join("")+t("BARRAS POLIDAS"),
+    recordKit:()=>circ(190,126,82,"none","#e1ecf1",16)+circ(190,126,61,"none","#c5dce5",7)+
+      r(195,197,11,45,"#647f91",5)+line(200,203,151,236,"#708b99",7)+line(200,203,244,236,"#708b99",7)+
+      r(257,125,46,76,"#283e4f",8)+t("KIT DE GRAVAÇÃO"),
     sharpener:()=>'<g transform="rotate(-14 200 135)">'+r(125,78,151,126,"#e6ad62",24,'stroke="#ab7b42" stroke-width="5"')+r(177,95,63,92,"#bccdd5",9,'stroke="#8299a6" stroke-width="4"')+r(202,102,12,75,"#425d70",2)+circ(206,143,6,"#f8fafa","#647e91",3)+r(109,109,30,65,"#f2d393",9)+'</g>'+t("APONTADOR"),
     cutter:()=>'<g transform="rotate(-13 200 135)">'+r(94,102,212,57,"#428da9",12)+r(144,113,120,35,"#254359",6)+r(245,117,22,27,"#c7d8de",4)+'<path d="M304 108l56 23-56 27z" fill="#cad5dc" stroke="#708796" stroke-width="4"/></g>'+t("ESTILETE"),
     ceramic:()=>[0,1,2].map(i=>'<g transform="translate('+(i*62)+',0)">'+circ(105,119,31,"#d5af77","#ab864d",4)+line(96,148,89,214,"#a1b4bf",5)+line(115,148,122,214,"#a1b4bf",5)+'</g>').join("")+t("CERÂMICO"),
@@ -142,7 +159,7 @@
     if(/bateria 3v/.test(n))return "coin";
     if(/pilha|bateria|recarregavel|alcalina/.test(n))return "battery";
     if(/esp\s*32|esp32/.test(n))return "esp32";
-    if(/arduino/.test(n))return "arduino";
+    if(/arduino/.test(n))return "arduinoUno";
     if(/tablet/.test(n))return "tablet";
     if(/notebook|laptop/.test(n))return "notebook";
     if(/motor de passo|motor de posso/.test(n))return "stepper";
@@ -151,14 +168,15 @@
     if(/visor|display|lcd/.test(n))return "lcd";
     if(/\bled\b/.test(n))return "led";
     if(/interruptor|gangorra/.test(n))return "switch";
-    if(/placa de teclado|botao|botoes/.test(n))return "button";
+    if(/placa de teclado/.test(n))return "keyboard";
+    if(/botao|botoes/.test(n))return "button";
     if(/jumper/.test(n))return "jumper";
-    if(/modulo de alimentacao de protoboard/.test(n))return "power";
+    if(/modulo de alimentacao de protoboard/.test(n))return "powerModule";
     if(/protoboard/.test(n))return "proto";
     if(/modulo rele/.test(n))return "relay";
     if(/adaptador de cartao|leitor de cartao/.test(n))return "sd";
     if(/resistor/.test(n))return "resistor";
-    if(/joystick duplo|joystique duplo/.test(n))return "joystick";
+    if(/joystick duplo|joystique duplo/.test(n))return "dualJoystick";
     if(/joystick|joystique/.test(n))return "joystick";
     if(/potenciometro/.test(n))return "potentiometer";
     if(/buzzer/.test(n))return "buzzer";
@@ -174,13 +192,14 @@
     if(/medidor de agua|mistura de agua|deteccao.*agua/.test(n))return "water";
     if(/sensor/.test(n))return "generic";
     if(/modulo bluetooth/.test(n))return "bluetooth";
+    if(/modulo de alimentacao/.test(n))return "powerModule";
     if(/ponte h|modulo driver|mini drive/.test(n))return "hbridge";
     if(/shield/.test(n))return "solder";
     if(/fusivel/.test(n))return "fuse";
     if(/transistor/.test(n))return "transistor";
     if(/rolo.*estanho/.test(n))return "tin";
     if(/bicos.*impressora|bico.*3d/.test(n))return "nozzle";
-    if(/barras polidas/.test(n))return "tin";
+    if(/barras polidas/.test(n))return "metalBars";
     if(/lixa/.test(n))return "sandpaper";
     if(/plaquinha sucata/.test(n))return "solder";
     if(/modulo|placa/.test(n))return "trans";
@@ -202,11 +221,11 @@
     if(/porca|parafuso/.test(n))return "nuts";
     if(/microfone/.test(n))return "mic";
     if(/projetor/.test(n))return "projector";
-    if(/gravacao|camera|filmagem/.test(n))return "camera";
+    if(/gravacao|camera|filmagem/.test(n))return "recordKit";
     return "generic";
   }
   const path={
-    arduino:"/img/reference-board.svg",
+    esp32:"/img/reference-board.svg",
     motor:"/img/reference-motor.svg",tablet:"/img/reference-tablet.svg",
     notebook:"/img/reference-notebook.svg"
   };
