@@ -217,12 +217,17 @@ async function processRequest(req, env) {
     const ids=Array.isArray(body.ids)?body.ids.map(Number):[];
     if(!ids.length||ids.length>250||ids.some(x=>!Number.isSafeInteger(x)||x<1)||new Set(ids).size!==ids.length)return bad("Selecione até 250 materiais válidos.");
     const show=body.visivel_visitante?1:0;
-    const objects=await results(db,"SELECT id,nome FROM componentes WHERE id IN ("+ids.map(()=>"?").join(",")+")",ids);
+    const objects=await results(db,"SELECT c.id,c.nome,c.visivel_visitante,cat.visivel_visitante AS categoria_visivel,cat.arquivada AS categoria_arquivada FROM componentes c JOIN categorias cat ON cat.id=c.categoria_id WHERE c.id IN ("+ids.map(()=>"?").join(",")+")",ids);
     if(objects.length!==ids.length)return bad("Alguns materiais não foram encontrados.",404);
-    await db.batch(ids.map(id=>db.prepare("UPDATE componentes SET visivel_visitante=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
-      .bind(show,now(),str(body.responsavel,100)||"Admin","Exibição para visitantes: "+(show?"todos":"só PETianes"),id)));
-    await auditLog(db,show?"Liberou exibição":"Restringiu exibição","material",null,objects.length+" materiais: "+objects.map(x=>x.nome).slice(0,16).join(", "),body.responsavel);
-    return j({ok:true,alterados:objects.length});
+    if(show&&objects.some(x=>Number(x.categoria_visivel)===0||Number(x.categoria_arquivada)===1)){
+      return bad("Há materiais de categorias restritas ou arquivadas. Libere a categoria antes de exibir esses materiais para todos.",409);
+    }
+    const changes=objects.filter(x=>Number(x.visivel_visitante)!==show);
+    if(!changes.length)return j({ok:true,alterados:0,inalterados:objects.length});
+    await db.batch(changes.map(x=>db.prepare("UPDATE componentes SET visivel_visitante=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(show,now(),str(body.responsavel,100)||"Admin","Exibição para visitantes: "+(show?"todos":"só PETianes"),x.id)));
+    await auditLog(db,show?"Liberou exibição":"Restringiu exibição","material",null,changes.length+" materiais: "+changes.map(x=>x.nome).slice(0,16).join(", "),body.responsavel);
+    return j({ok:true,alterados:changes.length,inalterados:objects.length-changes.length});
   }
   if(path==="/api/admin/variations" && method==="POST"){
     const body=await input(req,12000),ids=Array.isArray(body.ids)?body.ids.map(Number):[];
