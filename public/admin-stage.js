@@ -768,7 +768,7 @@ function bulkVisibilityState(item){
   const itemRestricted=Number(item.visivel_visitante)===0;
   return {categoryRestricted,itemRestricted,restricted:categoryRestricted||itemRestricted};
 }
-function materialPickerRows(items,selected,term="",withPhotos=false,showVisibility=false){
+function materialPickerRows(items,selected,term="",withPhotos=false,showVisibility=false,targetGroup=""){
   const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
     String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
@@ -785,13 +785,13 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
     if(!withPhotos)return '<label class="admin-bulk-row '+(showVisibility?'bulk-visibility-row ':'')+(selected.has(x.id)?'is-selected':'')+'">'+
       '<input type="checkbox" aria-label="Selecionar '+attr(x.nome)+' para alterar" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+info+'</label>';
     const hasCustomPhoto=/^data:image\//i.test(String(x.imagem||""));
-    const alreadyLinked=Boolean(x.grupo_variacoes)&&selected.has(x.id);
+    const alreadyLinked=Boolean(x.grupo_variacoes)&&String(x.grupo_variacoes).trim().toLocaleLowerCase("pt-BR")===String(targetGroup).trim().toLocaleLowerCase("pt-BR");
     return '<div class="admin-bulk-row variant-photo-row '+(selected.has(x.id)?'is-selected':'')+'">'+
       '<label class="variant-photo-select"><input type="checkbox" data-bulk-id="'+x.id+'" aria-label="Incluir '+attr(x.nome)+' na seleção da família" '+(selected.has(x.id)?'checked':'')+'>'+
       '<img class="variant-photo-thumb" src="'+attr(itemImage(x))+'" alt="Imagem de '+attr(x.nome)+'">'+
       '<span class="bulk-row-details"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
       (x.grupo_variacoes?' · Família atual: '+esc(x.grupo_variacoes):' · Sem grupo')+'</small>'+
-      (alreadyLinked?'<span class="variant-linked-label">✓ Selecionado</span>':'')+'</span></label>'+
+      (selected.has(x.id)?'<span class="variant-linked-label">'+(alreadyLinked?'✓ Já vinculado':'✓ Marcado para vincular')+'</span>':'')+'</span></label>'+
       '<button type="button" class="variant-photo-upload" data-variant-photo="'+x.id+'" aria-label="Enviar foto para '+attr(x.nome)+'">'+
       (hasCustomPhoto?'Trocar foto':'Enviar foto')+'</button>'+
       '<input type="file" accept="image/png,image/jpeg,image/webp" data-variant-file="'+x.id+'" hidden>'+
@@ -801,16 +801,16 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
 function adminMaterialPickerConfig(mode,currentId){
   const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
   const selected=new Set(),current=all.find(x=>x.id===currentId);
-  if(mode==="variations"&&current?.grupo_variacoes){
-    // O que já está vinculado deve aparecer marcado ao abrir o organizador.
-    // Apenas itens pertencentes à família atual são marcados; sugestões ficam livres.
-    const linked=String(current.grupo_variacoes).trim().toLocaleLowerCase("pt-BR");
+  const group=current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
+  if(mode==="variations"&&group){
+    // Já vinculados devem aparecer selecionados antes de qualquer clique.
+    const linked=String(group).trim().toLocaleLowerCase("pt-BR");
     for(const item of all){
       if(String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===linked)selected.add(item.id);
     }
-  }else if(current)selected.add(current.id);
+  }
+  if(current)selected.add(current.id);
   const similar=current?all.filter(x=>x.id!==current.id&&materialFamilyHint(x.nome)===materialFamilyHint(current.nome)):[];
-  const group=current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
   return {all,selected,current,similar,group,mode};
 }
 function openBulkVisibility(currentId){
@@ -953,7 +953,7 @@ function openVariantLinker(currentId){
     '<button type="button" class="primary-button" id="variant-save">Vincular marcados</button></div></div>',{size:"wide"});
   let visible=[];
   const draw=()=>{
-    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value,true);
+    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value,true,false,$("#variant-group-name").value);
     visible=r.visible;$("#variant-list").innerHTML=r.html;
     const linked=model.all.filter(x=>model.selected.has(x.id)&&
       String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===
