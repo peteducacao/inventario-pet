@@ -5,6 +5,7 @@ function setIdentity(user){
   if(user)localStorage.setItem("pet_inventario_nome",user.nome);
   else localStorage.removeItem("pet_inventario_nome");
   render();
+  if(document.body.dataset.loansRoute==="true" && typeof openMyLoans==="function")openMyLoans();
   // Após login/logout ou mudança de tag, recarregar os dados com as novas permissões.
   if(document.body.dataset.adminRoute!=="true" && typeof UI!=="undefined"){
     Promise.all([api("/api/catalog"),api("/api/filaments")]).then(([catalog,colors])=>{
