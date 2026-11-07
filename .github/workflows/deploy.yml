@@ -173,8 +173,9 @@ jobs:
             const pending=(await admin("/api/admin/state")).d.reservas.find(r=>r.componente_id===id&&r.status==="pendente");
             if(!pending)throw Error("Pedido de reserva não chegou ao administrador");
             resId=pending.id;
-            await admin("/api/admin/reservation","POST",{id:resId,acao:"aprovar",responsavel:"Teste automático"});phase="aprovada";
-            await admin("/api/admin/reservation","POST",{id:resId,acao:"retirar",responsavel:"Teste automático"});phase="retirada";
+            await admin("/api/admin/reservation","POST",{id:resId,acao:"aprovar",responsavel:"Teste automático"});phase="retirada";
+            const approved=(await admin("/api/admin/state")).d;
+            if(approved.reservas.find(r=>r.id===resId)?.status!=="retirada"||approved.componentes.find(x=>x.id===id)?.em_uso!==1)throw Error("A aprovação não registrou a retirada e a baixa de estoque automaticamente");
             await admin("/api/admin/reservation","POST",{id:resId,acao:"devolver",responsavel:"Teste automático",defeituosos:0});phase="devolvida";
             const result=(await admin("/api/admin/state")).d;
             const updated=result.componentes.find(x=>x.id===id);
