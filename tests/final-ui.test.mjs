@@ -39,7 +39,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   w.addEventListener("error",e=>errors.push(String(e.error||e.message)));
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
   let adminAuthenticated=alreadyAdmin;
-  const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[];
+  const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[];
   const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
   let noticeRequestCount=0;
   w.fetch=async(uri,init={})=>{
@@ -78,6 +78,17 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       ]};
     }
     else if(path==="/api/my/loans")body={emprestimos:[]};
+    else if(path==="/api/admin/variations/rename"){
+      const payload=JSON.parse(init.body||"{}");
+      variationRenameRequests.push(payload);
+      let changed=0;
+      for(const item of fullAdmin.componentes){
+        if(String(item.grupo_variacoes||"").toLocaleLowerCase("pt-BR")===String(payload.grupo_atual||"").toLocaleLowerCase("pt-BR")){
+          item.grupo_variacoes=payload.novo_nome;changed++;
+        }
+      }
+      body={ok:true,alterados:changed};
+    }
     else if(path==="/api/admin/variations")body={ok:true,vinculados:2};
     else if(path==="/api/admin/visibility")body={ok:true,alterados:2};
     else {status=404;body={error:"Rota simulada não encontrada: "+path};}
@@ -90,7 +101,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests,templateSaves,mailEventSaves};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests};
 }
 
 const publicUI=build(false);
@@ -327,6 +338,30 @@ await adminClick('[data-admin-tab="materiais"]');
 assert.ok(ad.querySelectorAll('[data-loan-audience="item"]').length>=1,"Materiais exibidos devem ter seletor compacto de público.");
 assert.ok(ad.querySelector("#admin-bulk-visibility"));
 assert.equal(ad.querySelector("#admin-group-variations"),null,"Remover atalho redundante; variações continuam disponíveis no editor.");
+const groupSearch=ad.querySelector("#admin-material-search");
+groupSearch.value="Alcalina";
+groupSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(30);
+assert.equal(ad.querySelectorAll('[data-rename-group="Alcalina"]').length,3,
+  "O botão Renomear grupo deve ficar junto das três variações Alcalina.");
+await adminClick('[data-rename-group="Alcalina"]');
+assert.equal(ad.querySelector("#rename-group-name").value,"Alcalina",
+  "Renomear grupo deve abrir com o nome atual preenchido.");
+assert.match(ad.querySelector("#rename-group-form").textContent,/3 material/);
+assert.match(ad.querySelector("#rename-group-form").textContent,/patrimônios/);
+const groupInput=ad.querySelector("#rename-group-name");
+groupInput.value="Pilhas";
+ad.querySelector("#rename-group-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(110);
+assert.equal(adminUI.variationRenameRequests.length,1,"Salvar deve chamar a API de renomeação.");
+assert.equal(adminUI.variationRenameRequests[0].grupo_atual,"Alcalina");
+assert.equal(adminUI.variationRenameRequests[0].novo_nome,"Pilhas");
+assert.ok(fullAdmin.componentes.filter(x=>x.grupo_variacoes==="Pilhas").length===3,
+  "Todas as três variações devem ser renomeadas sem mudar seu cadastro.");
+assert.ok(!ad.querySelector("#rename-group-form"),"Ao concluir o salvamento, o modal deve fechar.");
+groupSearch.value="";
+groupSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(25);
 await adminClick("#admin-bulk-visibility");
 assert.ok(ad.querySelector("#bulk-only-members"),"Visibilidade em lote não está disponível.");
 assert.ok(ad.querySelector("#bulk-category"),"Filtro por categoria ausente.");
