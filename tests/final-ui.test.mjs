@@ -267,6 +267,13 @@ await wait(70);
 assert.equal(d.querySelectorAll(".catalog-card").length,1,"Filtro de busca não funciona.");
 search.value="";search.dispatchEvent(new w.Event("input",{bubbles:true}));
 await wait(70);
+// Regressão: procurar Arduino mostra grupo vinculado e Nano avulso, sem duplicar Uno.
+w.__adminTestState.data.componentes.push({...three,id:899,nome:"Arduino Nano",grupo_variacoes:"",quantidade:2});
+w.__adminTestState.query="Arduino";
+w.__finalRender();
+assert.deepEqual(Array.from(d.querySelectorAll(".catalog-card h3"),n=>n.textContent),["Arduino","Arduino Nano"]);
+w.__adminTestState.query="";
+w.__finalRender();
 await click('[data-photo]');
 assert.ok(d.querySelector(".photo-lightbox"),"Ampliação dos desenhos não funciona.");
 await click("#modal-root [data-close]");
