@@ -171,7 +171,7 @@ function finalCard(original,siblings=[]){
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
   const groupedAction=grouped&&!selection;
   const openModel=grouped?'<button type="button" class="variant-open" data-open-variants="'+attr(groupKey)+'">'+
-    (selection?'Trocar modelo':'Ver '+siblings.length+' variações')+' <span aria-hidden="true">›</span></button>':"";
+    (selection?'Trocar modelo':'Ver variações')+' <span aria-hidden="true">›</span></button>':"";
   const imageAction=grouped?'data-open-variants="'+attr(groupKey)+'"':'data-photo="'+x.id+'"';
   const photoLabel=grouped?'Escolher variação de '+original.grupo_variacoes:'Ampliar ilustração de '+x.nome;
   const action=groupedAction?
