@@ -240,8 +240,10 @@ async function processRequest(req, env) {
     const b=await input(req,2500),acao=str(b.acao,20);
     if(acao==="excluir"){
       const id=requireId(b.id);
+      const old=await db.prepare("SELECT cor FROM filamentos WHERE id=?").bind(id).first();
       const result=await db.prepare("DELETE FROM filamentos WHERE id=?").bind(id).run();
       if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
+      await auditLog(db,"Excluiu","filamento",id,old?.cor||"Filamento");
       return j({ok:true});
     }
     if(acao==="ordenar"){
@@ -252,15 +254,18 @@ async function processRequest(req, env) {
       return j({ok:true});
     }
     if(acao!=="criar" && acao!=="editar")return bad("Ação inválida.");
-    const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade);
+    const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
     if(acao==="criar"){
       const x=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
-      await db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em) VALUES(?,?,?,?,?)").bind(cor,hexadecimal,q,x.proximo,now()).run();
+      const saved=await db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES(?,?,?,?,?,?)").bind(cor,hexadecimal,q,x.proximo,now(),show).run();
+      await auditLog(db,"Cadastrou","filamento",saved.meta?.last_row_id,cor+" · "+q+" unidades");
     }else{
       const id=requireId(b.id);
-      const result=await db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,now(),id).run();
+      const old=await db.prepare("SELECT * FROM filamentos WHERE id=?").bind(id).first();
+      const result=await db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,now(),id).run();
       if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
+      await auditLog(db,"Editou","filamento",id,(old?.cor||"Filamento")+" → "+cor+" · quantidade "+(old?.quantidade??"—")+" → "+q+" · exibição "+(show?"Todos":"PETianes"));
     }
     return j({ok:true});
   }
@@ -268,7 +273,7 @@ async function processRequest(req, env) {
     const body = await input(req);
     const item = validateItem(body);
     const id = body.id ? requireId(body.id) : null;
-    const categoria = await db.prepare("SELECT id FROM categorias WHERE id=?").bind(item.categoria_id).first();
+    const categoria = await db.prepare("SELECT id FROM categorias WHERE id=? AND arquivada=0").bind(item.categoria_id).first();
     if (!categoria) return bad("Categoria não encontrada.");
     const old = id ? await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first() : null;
     if (id && !old) return bad("Material não encontrado.",404);
@@ -279,8 +284,10 @@ async function processRequest(req, env) {
     const vals = fields.map(k => item[k]);
     if (id) {
       await db.prepare("UPDATE componentes SET "+fields.map(k=>k+"=?").join(",")+",ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(...vals,...audit,id).run();
+      await auditLog(db,"Editou","material",id,item.nome+" · "+audit[2],actor);
     } else {
-      await db.prepare("INSERT INTO componentes("+fields.join(",")+",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES ("+Array(fields.length+3).fill("?").join(",")+")").bind(...vals,...audit).run();
+      const saved=await db.prepare("INSERT INTO componentes("+fields.join(",")+",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES ("+Array(fields.length+3).fill("?").join(",")+")").bind(...vals,...audit).run();
+      await auditLog(db,"Cadastrou","material",saved.meta?.last_row_id,item.nome,actor);
     }
     return j({ ok:true });
   }
@@ -288,28 +295,52 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id"));
     const active = await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=? AND status IN ('pendente','aprovada','retirada')").bind(id).first();
     if (active.n) return bad("Existem reservas ativas deste material. Finalize-as antes de excluir.",409);
+    const old=await db.prepare("SELECT nome FROM componentes WHERE id=?").bind(id).first();
     await db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
-      .bind(now(),"Administração","Material arquivado",id).run();
+      .bind(now(),"Admin","Material arquivado",id).run();
+    await auditLog(db,"Arquivou","material",id,old?.nome||"Material");
     return j({ ok:true,arquivado:true });
   }
   if(path==="/api/admin/item/unarchive" && method==="POST"){
     const b=await input(req,1500),id=requireId(b.id);
-    await db.prepare("UPDATE componentes SET arquivado=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(now(),"Administração","Material restaurado",id).run();
+    const old=await db.prepare("SELECT nome FROM componentes WHERE id=?").bind(id).first();
+    await db.prepare("UPDATE componentes SET arquivado=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(now(),"Admin","Material restaurado",id).run();
+    await auditLog(db,"Restaurou","material",id,old?.nome||"Material");
     return j({ok:true});
   }
   if (path === "/api/admin/category" && method === "POST") {
-    const b = await input(req,9000);
-    const name = str(b.nome,80);
+    const b = await input(req,9000),name=str(b.nome,80),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
     if (b.acao === "criar") {
       if (!name) return bad("Informe o nome da categoria.");
-      await db.prepare("INSERT INTO categorias(nome,ordem) VALUES(?,?)").bind(name,Number(b.ordem)||0).run();
+      const saved=await db.prepare("INSERT INTO categorias(nome,ordem,visivel_visitante,arquivada) VALUES(?,?,?,0)").bind(name,Number(b.ordem)||0,show).run();
+      await auditLog(db,"Cadastrou","categoria",saved.meta?.last_row_id,name);
     } else if (b.acao === "editar") {
       if (!name) return bad("Informe o nome da categoria.");
-      await db.prepare("UPDATE categorias SET nome=? WHERE id=?").bind(name,requireId(b.id)).run();
+      const id=requireId(b.id),old=await db.prepare("SELECT nome FROM categorias WHERE id=?").bind(id).first();
+      if(!old)return bad("Categoria inexistente.",404);
+      await db.prepare("UPDATE categorias SET nome=?,visivel_visitante=? WHERE id=?").bind(name,show,id).run();
+      await auditLog(db,"Editou","categoria",id,old.nome+" → "+name+" · exibição "+(show?"Todos":"PETianes"));
     } else if (b.acao === "excluir") {
-      const id = requireId(b.id), linked = await db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=?").bind(id).first();
-      if (linked.n) return bad("Mova os materiais desta categoria antes de excluí-la.",409);
-      await db.prepare("DELETE FROM categorias WHERE id=?").bind(id).run();
+      const id=requireId(b.id);
+      const category=await db.prepare("SELECT nome FROM categorias WHERE id=? AND arquivada=0").bind(id).first();
+      if(!category)return bad("Categoria não encontrada.",404);
+      const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas r JOIN componentes c ON r.componente_id=c.id WHERE c.categoria_id=? AND r.status IN ('pendente','aprovada','retirada')").bind(id).first();
+      if(active.n)return bad("Esta categoria possui reservas ou retiradas abertas. Finalize-as antes de excluir.",409);
+      if(b.confirmacao!==category.nome)return bad("Confirme digitando exatamente o nome da categoria.",400);
+      const linked=await db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=? AND arquivado=0").bind(id).first();
+      // Arquivar, sem destruir referências de empréstimos antigos. O catálogo e a lista normal
+      // deixam de mostrar os itens; recuperação futura continua possível.
+      await db.batch([
+        db.prepare("UPDATE categorias SET arquivada=1,visivel_visitante=0 WHERE id=?").bind(id),
+        db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel='Admin',detalhes_alteracao='Categoria arquivada' WHERE categoria_id=?").bind(now(),id)
+      ]);
+      await auditLog(db,"Excluiu (arquivou)","categoria",id,category.nome+" · "+(linked?.n||0)+" materiais também arquivados");
+      return j({ok:true,arquivados:linked?.n||0});
+    } else if (b.acao === "restaurar") {
+      const id=requireId(b.id),cat=await db.prepare("SELECT nome FROM categorias WHERE id=? AND arquivada=1").bind(id).first();
+      if(!cat)return bad("Categoria arquivada não encontrada.",404);
+      await db.prepare("UPDATE categorias SET arquivada=0 WHERE id=?").bind(id).run();
+      await auditLog(db,"Restaurou","categoria",id,cat.nome+" (materiais permanecem arquivados até restauração individual)");
     } else if (b.acao === "ordenar") {
       if (!Array.isArray(b.ordem) || b.ordem.length > 100) return bad("Ordem inválida.");
       const queries = b.ordem.map((id, i) => db.prepare("UPDATE categorias SET ordem=? WHERE id=?").bind(i,requireId(id)));
@@ -354,6 +385,7 @@ async function processRequest(req, env) {
       else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução de "+item.nome+" foi confirmada.";tipo="devolucao";}
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
+    await auditLog(db,action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actor);
     return j({ ok:true });
   }
   if (path === "/api/admin/settings" && method === "POST") {
@@ -362,6 +394,7 @@ async function processRequest(req, env) {
     await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(days).run();
     if (b.modo_demo === "sim" || b.modo_demo === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('modo_demo',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.modo_demo).run();
     if (b.avisos_email === "sim" || b.avisos_email === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('avisos_email',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.avisos_email).run();
+    await auditLog(db,"Configuração","sistema",null,"Configurações de reservas atualizadas");
     return j({ ok:true });
   }
   if (path === "/api/admin/backup" && method === "GET") {
@@ -388,6 +421,7 @@ async function processRequest(req, env) {
     for (const [key, value] of Object.entries(cfg)) if (/^[a-z_]{1,50}$/.test(key)) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,100)));
     if (!cfg.limpeza_reservas) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
     await db.batch(ops);
+    await auditLog(db,"Restaurou backup","sistema",null,"Backup restaurado com "+b.componentes.length+" materiais e "+b.categorias.length+" categorias");
     return j({ ok:true });
   }
   if (path === "/api/admin/reminder" && method === "POST") {
@@ -401,6 +435,7 @@ async function processRequest(req, env) {
   }
   if (path === "/api/admin/cleanup" && method === "POST") {
     const count = await cleanup(db);
+    await auditLog(db,"Limpeza","sistema",null,count+" reservas concluídas removidas");
     return j({ ok:true, removidas:count });
   }
   return bad("Rota não encontrada.",404);
@@ -435,6 +470,12 @@ async function cleanup(db) {
     const cutoff = new Date(Date.now() - (days === "1min" ? 60000 : Number(days) * 86400000)).toISOString();
     const done = await db.prepare("DELETE FROM reservas WHERE status='devolvida' AND devolvido_em IS NOT NULL AND devolvido_em < ?").bind(cutoff).run();
     removed = done.meta?.changes || 0;
+  }
+  const logSetting=await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_historico'").first();
+  const limit=logSetting?.valor;
+  if(limit&&limit!=="nunca"&&Number(limit)>0){
+    const deadline=new Date(Date.now()-Number(limit)*86400000).toISOString();
+    await db.prepare("DELETE FROM historico_admin WHERE criado_em<?").bind(deadline).run();
   }
   await db.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").bind(now()).run();
   await db.prepare("DELETE FROM usuario_sessoes WHERE expira_em < ?").bind(now()).run();
