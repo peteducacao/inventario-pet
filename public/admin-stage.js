@@ -1002,7 +1002,7 @@ function adminSettings(root){
     '<div class="settings-toggle-grid">'+settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
     settingsToggle("v2-mail-pet","Notificar PETianes","Somente com prazo e permissão habilitada.",cfg.notificacoes_petianos==="sim")+
     settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
-    '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
+    '<button class="outline-button" type="button" id="v2-mail-history">Ver e-mails pendentes</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
     scheduleEditor+emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
@@ -1084,9 +1084,9 @@ function adminSettings(root){
   $("#v2-mail-history").onclick=async()=>{
     try{
       const result=await api("/api/admin/mail/log");
-      const items=result.items||[];
-      const body='<div class="modal-main"><p class="notice">Conexão com o Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'</p><div class="admin-list">'+(items.length?items.map(x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.criado_em))+(x.ultimo_erro?" · "+esc(x.ultimo_erro):"")+'</small></div></div>').join(""):'<div class="empty-state">Nenhum e-mail registrado.</div>')+'</div></div>';
-      openModal("Histórico de notificações","Envios e cobranças do Inventário PET.",body);
+      const items=(result.items||[]).filter(x=>x.situacao==="pendente"||x.situacao==="processando");
+      const body='<div class="modal-main"><p class="notice">Conexão com o Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'</p><div class="admin-list">'+(items.length?items.map(x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.criado_em))+(x.ultimo_erro?" · "+esc(x.ultimo_erro):"")+'</small></div></div>').join(""):'<div class="empty-state">Nenhum e-mail pendente de envio.</div>')+'</div></div>';
+      openModal("E-mails pendentes","Cobranças aguardando envio pelo Gmail.",body);
     }catch(e){toast(e.message,true);}
   };
   $("#v2-backup-download").onclick=async()=>{try{const result=await api("/api/admin/backup");saveDownload("backup-inventario-pet-"+localDate()+".json",JSON.stringify(result,null,2));toast("Backup preparado.");}catch(e){toast(e.message,true);}};

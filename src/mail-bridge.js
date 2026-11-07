@@ -145,7 +145,7 @@ export async function mailAdminAPI(req,env){
     return reply({ok:true,id,destinatario:row.email,assunto:msg.subject,mensagem:msg.body});
   }
   if(path==="/api/admin/mail/log"&&req.method==="GET"){
-    const items=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,origem,situacao,criado_em,enviado_em,ultimo_erro FROM mail_queue ORDER BY id DESC LIMIT 150");
+    const items=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,origem,situacao,criado_em,enviado_em,ultimo_erro FROM mail_queue WHERE situacao IN ('pendente','processando') ORDER BY id DESC LIMIT 150");
     return reply({ok:true,items,configurado:!!env.MAIL_BRIDGE_TOKEN&&env.MAIL_BRIDGE_TOKEN.length>=32});
   }
   if(path==="/api/admin/mail/queue"&&req.method==="POST"){
