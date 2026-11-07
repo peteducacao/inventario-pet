@@ -765,3 +765,18 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .item-editor-essentials .stepper button{width:24px;flex-basis:24px;font-size:17px}
  .item-editor-essentials .stepper input{font-size:12px}
 }
+
+
+/* Edição rápida: somente os campos rolam; salvar permanece sempre ao alcance. */
+.item-edit-modal #item-form{display:flex;flex-direction:column;overflow:hidden;padding:0;min-height:0}
+.item-edit-modal .item-editor-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;padding:14px 22px 10px}
+.item-edit-modal .item-editor-savebar{position:relative;flex:0 0 auto;bottom:auto;margin:0;padding:12px 22px calc(12px + env(safe-area-inset-bottom,0px));box-shadow:0 -6px 18px #0b304b14}
+.variant-photo-row.is-linked{border-left:3px solid #18a386;background:#f0faf6;padding-left:8px}
+.variant-photo-row.is-linked:not(.is-selected){background:#f5faf8}
+.variant-photo-row.is-selected:not(.is-linked){border-left:3px solid #4e8ec5;background:#eef6fd;padding-left:8px}
+.variant-linked-label.is-existing{background:#d2f2e6;color:#11735f}
+.variant-linked-label.is-pending{background:#e0edfb;color:#2e658e}
+@media(max-width:720px){
+ .item-edit-modal .item-editor-scroll{padding:12px 14px 8px;scrollbar-gutter:auto}
+ .item-edit-modal .item-editor-savebar{margin:0;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px))}
+}
