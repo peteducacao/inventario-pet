@@ -44,7 +44,7 @@ function adminBuild(){
     '<div class="admin-brand"><span class="brand-mark">'+iconSvg("box",28)+'</span><span>Inventário PET</span></div>'+
     '<nav class="admin-nav">'+ADMIN_TABS.map(([key,ico,label])=>'<button type="button" data-admin-tab="'+key+'" class="'+(UI.adminTab===key?"active":"")+'">'+iconSvg(ico)+' <span>'+label+'</span>'+(key==="reservas"&&counts.pending?'<span class="nav-badge">'+counts.pending+'</span>':"")+'</button>').join("")+'</nav>'+
     '<div class="admin-side-bottom"><span class="admin-updated">'+esc(adminLastUpdate())+'</span>'+
-    '<button type="button" id="admin-back">'+iconSvg("back",16)+' Voltar ao inventário</button>'+
+    '<a href="/" id="admin-back" class="admin-sidebar-link">'+iconSvg("back",16)+' Voltar ao inventário</a>'+
     '<button type="button" id="admin-logout" style="background:#f36e6e22">'+iconSvg("logout",16)+' Sair da administração</button></div></aside>'+
     '<div class="admin-main"><header class="admin-top"><div style="display:flex;align-items:center;gap:11px">'+
     '<button type="button" class="admin-menu-toggle" id="admin-menu-toggle" aria-label="Abrir menu">'+iconSvg("menu")+'</button>'+
@@ -54,7 +54,7 @@ function adminBuild(){
     '<button id="admin-account" type="button" class="admin-person"><span class="avatar">'+esc((state.actor||"A")[0].toUpperCase())+'</span><span>'+esc(state.actor||"Administrador")+'</span>'+iconSvg("down",15)+'</button></div></header>'+
     '<div id="admin-content"></div><footer class="admin-status-foot">'+esc(adminLastUpdate())+'</footer></div></div>';
   $$("[data-admin-tab]",stage).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.adminTab));
-  $("#admin-back").onclick=leaveAdminWithoutLogout;
+  // O link href="/" permite abrir em nova guia.
   $("#admin-logout").onclick=logoutAdmin;
   $("#admin-menu-toggle").onclick=()=>$("#admin-sidebar").classList.toggle("is-open");
   $("#admin-notifications").onclick=()=>selectAdminTab("reservas");
@@ -77,6 +77,14 @@ async function performAdminLogout(){
   try{await api("/api/logout","POST",{});}
   catch(error){toast("Falha ao encerrar a sessão: "+error.message,true);return;}
   state.admin=null;
+  stored("pet_admin_open","0");
+  closeModal();
+  if(document.body.dataset.adminRoute==="true"){
+    // Redirecionar apenas depois de invalidar a sessão; nunca reconstruir
+    // um modal sobre a página que está navegando para fora do Admin.
+    window.location.replace("/");
+    return;
+  }
   leaveAdminWithoutLogout();
   flashPopup("Até logo!","Você saiu da administração.");
 }
@@ -521,15 +529,24 @@ function materialFamilyHint(name){
   const first=n.match(/^[a-z]{4,}/)?.[0]||"";
   return first?first[0].toUpperCase()+first.slice(1):"Outros";
 }
-function materialPickerRows(items,selected,term=""){
+function materialPickerRows(items,selected,term="",withPhotos=false){
   const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
     String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
-  return {visible:available,html:available.slice(0,160).map(x=>
-    '<label class="admin-bulk-row"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
-    '<span><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.grupo_variacoes?' · '+esc(x.grupo_variacoes):"")+
-    (Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small></span></label>').join("")||
-    '<div class="empty-state">Nenhum material encontrado.</div>'};
+  return {visible:available,html:available.slice(0,160).map(x=>{
+    const info='<span><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
+      (x.grupo_variacoes?' · '+esc(x.grupo_variacoes):"")+
+      (Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small></span>';
+    if(!withPhotos)return '<label class="admin-bulk-row"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+info+'</label>';
+    const hasCustomPhoto=/^data:image\//i.test(String(x.imagem||""));
+    return '<div class="admin-bulk-row variant-photo-row">'+
+      '<label class="variant-photo-select"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
+      '<img class="variant-photo-thumb" src="'+attr(itemImage(x))+'" alt="Imagem de '+attr(x.nome)+'">'+info+'</label>'+
+      '<button type="button" class="variant-photo-upload" data-variant-photo="'+x.id+'" aria-label="Enviar foto para '+attr(x.nome)+'">'+
+      (hasCustomPhoto?'Trocar foto':'Enviar foto')+'</button>'+
+      '<input type="file" accept="image/png,image/jpeg,image/webp" data-variant-file="'+x.id+'" hidden>'+
+      '</div>';
+  }).join("")||'<div class="empty-state">Nenhum material encontrado.</div>'};
 }
 function adminMaterialPickerConfig(mode,currentId){
   const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
@@ -597,12 +614,39 @@ function openVariantLinker(currentId){
     '<button type="button" class="primary-button" id="variant-save">Vincular selecionados</button></div></div>',{size:"wide"});
   let visible=[];
   const draw=()=>{
-    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value);
+    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value,true);
     visible=r.visible;$("#variant-list").innerHTML=r.html;
     $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
     $$("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
       $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
+    });
+    $$("[data-variant-photo]",$("#variant-list")).forEach(button=>button.onclick=()=>{
+      $("#variant-list [data-variant-file='"+button.dataset.variantPhoto+"']")?.click();
+    });
+    $$("[data-variant-file]",$("#variant-list")).forEach(input=>input.onchange=async event=>{
+      const file=event.target.files?.[0];if(!file)return;
+      const id=Number(input.dataset.variantFile);
+      const original=model.all.find(x=>x.id===id);
+      if(!original)return;
+      const button=$("#variant-list [data-variant-photo='"+id+"']");
+      if(button){button.disabled=true;button.textContent="Salvando…";}
+      try{
+        if(!["image/png","image/jpeg","image/webp"].includes(file.type))throw Error("Escolha uma foto PNG, JPG ou WEBP.");
+        const image=await shrinkImage(file);
+        await api("/api/admin/item/photo","POST",{id,imagem:image,responsavel:state.actor||"Admin"});
+        // Manter os nomes, quantidades e a seleção em andamento.
+        original.imagem=image;
+        const adminEntry=state.admin.componentes.find(x=>x.id===id);
+        if(adminEntry)adminEntry.imagem=image;
+        const catalogEntry=state.data.componentes.find(x=>x.id===id);
+        if(catalogEntry)catalogEntry.imagem=image;
+        toast("Foto de "+original.nome+" salva.");
+        draw();
+      }catch(error){
+        toast(error.message,true);
+        if(button){button.disabled=false;button.textContent="Enviar foto";}
+      }
     });
   };
   $("#variant-search").oninput=draw;
@@ -712,34 +756,76 @@ function adminSettings(root){
   };
 }
 
-/* Entrada administrativa concisa, com visibilidade da senha e sessão independente. */
-async function openAdmin(){
-  try{
-    await adminReload();
-    adminModal();
-    return;
-  }catch(error){
-    if(!/painel|401|autoriz/i.test(error.message)){toast(error.message,true);return;}
-  }
-  openModal("Admin","Entre com a senha para acessar o inventário.",
-    '<form class="modal-main" id="v2-admin-login">'+
+/* Entrada administrativa sempre recuperável, sem carregamento infinito. */
+function renderAdminAccess(message=""){
+  const standalone=document.body.dataset.adminRoute==="true";
+  const form='<form class="modal-main" id="v2-admin-login">'+
     '<div class="field"><label for="v2-admin-password">Senha</label>'+
     '<div class="password-input-wrap"><input type="password" id="v2-admin-password" autocomplete="current-password" required placeholder="Digite a senha">'+
     '<button type="button" id="v2-admin-show-password" class="show-password" aria-pressed="false">Mostrar</button></div></div>'+
-    '<button type="submit" class="primary-button" style="width:100%;min-height:49px" id="v2-admin-submit">Entrar no painel</button></form>');
+    (message?'<p class="admin-access-notice" role="status">'+esc(message)+'</p>':"")+
+    '<button type="submit" class="primary-button" style="width:100%;min-height:49px" id="v2-admin-submit">Entrar no Admin</button>'+
+    (standalone?'<div class="admin-access-links"><a href="/">Voltar ao inventário</a>'+
+      '<button type="button" id="v2-admin-retry">Tentar novamente</button></div>':"")+'</form>';
+  if(standalone){
+    const stage=$("#admin-stage");
+    stage.classList.remove("admin-loading");
+    stage.hidden=false;
+    document.body.classList.add("admin-mode");
+    stage.innerHTML='<main class="admin-access-shell"><section class="admin-access-card">'+
+      '<div class="admin-access-symbol">'+iconSvg("box",30)+'</div>'+
+      '<h1>Admin</h1><p>Acesso ao inventário do PET Educação</p>'+
+      form+'</section></main>';
+  }else{
+    openModal("Admin","Entre com a senha para acessar o inventário.",form);
+  }
   const pwd=$("#v2-admin-password"),toggle=$("#v2-admin-show-password");
-  toggle.onclick=()=>{const show=pwd.type==="password";pwd.type=show?"text":"password";toggle.textContent=show?"Ocultar":"Mostrar";toggle.setAttribute("aria-pressed",String(show));};
+  toggle.onclick=()=>{
+    const show=pwd.type==="password";
+    pwd.type=show?"text":"password";toggle.textContent=show?"Ocultar":"Mostrar";
+    toggle.setAttribute("aria-pressed",String(show));
+  };
+  if(standalone)$("#v2-admin-retry").onclick=()=>openAdmin();
   $("#v2-admin-login").onsubmit=async e=>{
-    e.preventDefault();const button=$("#v2-admin-submit");button.disabled=true;button.textContent="Entrando…";
+    e.preventDefault();
+    const button=$("#v2-admin-submit");
+    button.disabled=true;button.textContent="Entrando…";
     try{
       await api("/api/login","POST",{senha:pwd.value});
       await adminReload();
-      adminModal();toast("Administração aberta.");
-    }catch(error){toast(error.message,true);button.disabled=false;button.textContent="Entrar no painel";}
+      adminModal();
+      toast("Acesso administrativo autorizado.");
+    }catch(error){
+      const notice=$("#v2-admin-login .admin-access-notice");
+      if(notice){notice.textContent=error.message;}
+      else{
+        const p=document.createElement("p");p.className="admin-access-notice";
+        p.setAttribute("role","alert");p.textContent=error.message;
+        button.before(p);
+      }
+      button.disabled=false;button.textContent="Entrar no Admin";
+    }
   };
 }
-setupFinalPublic();
-if(document.body.dataset.adminRoute==="true"){
-  const stage=$("#admin-stage");if(stage)stage.classList.add("admin-loading");
-  openAdmin();
+async function openAdmin(){
+  // A página própria mostra o formulário antes da verificação de sessão:
+  // nenhuma falha de rede/autorização deixa o usuário preso no placeholder.
+  const standalone=document.body.dataset.adminRoute==="true";
+  if(standalone)renderAdminAccess();
+  try{
+    await adminReload();
+    adminModal();
+  }catch(error){
+    state.admin=null;
+    if(standalone){
+      // Login já está disponível. Mostramos diagnóstico e a opção de retentar
+      // apenas para falhas reais de conexão, sem bloquear a entrada manual.
+      if(!/painel|401|autoriz/i.test(error.message)){
+        const note=$("#v2-admin-login .admin-access-notice");
+        if(note)note.textContent="Não foi possível verificar sua sessão: "+error.message;
+      }
+    }else renderAdminAccess();
+  }
 }
+setupFinalPublic();
+if(document.body.dataset.adminRoute==="true")openAdmin();

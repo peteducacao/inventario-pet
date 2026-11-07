@@ -269,6 +269,22 @@ async function processRequest(req, env) {
     }
     return j({ok:true});
   }
+  if (path === "/api/admin/item/photo" && method === "POST") {
+    // Atualizar apenas a foto de UMA variação. Não envia nem altera estoque,
+    // emprestimos, categoria, permissões ou qualquer outro campo do item.
+    const b=await input(req,115000),id=requireId(b.id);
+    if(typeof b.imagem!=="string"||b.imagem.length>110000||
+      (b.imagem!==""&&!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.imagem)))
+      return bad("A foto deve ser PNG, JPEG ou WEBP válido.");
+    const old=await db.prepare("SELECT id,nome,imagem FROM componentes WHERE id=? AND arquivado=0").bind(id).first();
+    if(!old)return bad("Material não encontrado.",404);
+    if(old.imagem===b.imagem)return j({ok:true,sem_alteracao:true});
+    const actor=str(b.responsavel,100)||"Admin";
+    await db.prepare("UPDATE componentes SET imagem=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(b.imagem,now(),actor,b.imagem?"Foto individual atualizada":"Ilustração padrão restaurada",id).run();
+    await auditLog(db,b.imagem?"Atualizou foto":"Restaurou desenho","material",id,old.nome,actor);
+    return j({ok:true,id});
+  }
   if (path === "/api/admin/item" && method === "POST") {
     const body = await input(req);
     const item = validateItem(body);

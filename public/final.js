@@ -318,7 +318,8 @@ function setupFinalPublic(){
   $("#stats-toggle").onclick=()=>{UI.summaryMinimized=!UI.summaryMinimized;stored("pet_public_summary_closed",UI.summaryMinimized?"1":"0");finalRender();};
   $("#profile-button").onclick=openUserMenu;
   $("#notification-button").onclick=()=>{if(!state.identity){identityLoginModal();return;}openMyNotificationPopover();};
-  $("#admin-button").onclick=()=>{location.href="/admin/";};
+  // app.js carrega um handler legado; links reais devem usar navegação nativa.
+  if($("#admin-button")?.tagName==="A")$("#admin-button").onclick=null;
   const menuButton=$("#public-menu-toggle");
   const drawer=$("#public-sidebar");
   const veil=$("#public-nav-overlay");
@@ -328,6 +329,7 @@ function setupFinalPublic(){
     if(menuButton)menuButton.setAttribute("aria-expanded",String(Boolean(open)));
   }
   if(menuButton)menuButton.onclick=()=>togglePublicMenu(!document.body.classList.contains("public-nav-open"));
+  if($("#public-nav-close"))$("#public-nav-close").onclick=()=>togglePublicMenu(false);
   if(veil)veil.onclick=()=>togglePublicMenu(false);
   if(drawer){
     drawer.querySelectorAll("[data-public-action]").forEach(button=>button.onclick=()=>{
@@ -343,7 +345,7 @@ function setupFinalPublic(){
         else if(identityIsMember())memberWithdrawModal();
         else reserveModal(null);
       }
-      if(action==="admin")location.href="/admin/";
+      // Link nativo para Admin; não sobrescrever os comandos do navegador.
     });
   }
   $("#reserve-button").onclick=()=>{

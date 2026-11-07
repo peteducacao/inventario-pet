@@ -49,6 +49,7 @@ function build(isAdmin){
       if(adminAuthenticated)body=fullAdmin;
       else {status=401;body={error:"Entre no painel administrativo."};}
     }else if(path==="/api/login"){adminAuthenticated=true;body={ok:true};}
+    else if(path==="/api/logout"){adminAuthenticated=false;body={ok:true};}
     else if(path==="/api/admin/log")body={ok:true,eventos:[{id:1,criado_em:"2026-11-06T12:00:00Z",
       responsavel:"Teste",acao:"Editou",tipo:"material",descricao:"Quantidade alterada"}],
       total:1,pagina:1,limpeza_historico:"nunca"};
@@ -59,7 +60,7 @@ function build(isAdmin){
     else {status=404;body={error:"Rota simulada não encontrada: "+path};}
     return {ok:status<400,status,json:async()=>body};
   };
-  w.eval(scripts+"\nwindow.__pageButtons=pageButtons;");
+  w.eval(scripts+"\nwindow.__pageButtons=pageButtons;window.__adminTestState=state;");
   const click=async(sel)=>{
     const el=d.querySelector(sel);
     assert.ok(el,"Controle ausente: "+sel);
@@ -117,10 +118,17 @@ assert.equal(d.querySelectorAll(".variant-picker-option").length,3,"Trocar model
 await click("#modal-root [data-close]");
 assert.equal(d.querySelector(".catalog-photo img").getAttribute("src").includes("commons.wikimedia"),false);
 assert.ok(d.querySelector("#public-sidebar [data-public-action='admin']"),"Entrada Admin não apareceu.");
+assert.equal(d.querySelector("#public-sidebar [data-public-action='admin']").tagName,"A","Admin deve ser um link real para abrir em nova guia.");
+assert.equal(d.querySelector("#public-sidebar [data-public-action='admin']").getAttribute("href"),"/admin/");
+assert.ok(d.querySelector("#public-nav-close"),"O menu deve ter botão próprio de fechar.");
+assert.ok(d.querySelector(".public-sidebar-head"),"Menu com cabeçalho PET ausente.");
 await click("#public-menu-toggle");
 assert.ok(d.body.classList.contains("public-nav-open"));
 await click("#public-nav-overlay");
 assert.equal(d.body.classList.contains("public-nav-open"),false);
+await click("#public-menu-toggle");
+await click("#public-nav-close");
+assert.equal(d.body.classList.contains("public-nav-open"),false,"Fechar menu pelo X precisa funcionar.");
 const search=d.querySelector("#search");
 search.value="Arduino";search.dispatchEvent(new w.Event("input",{bubbles:true}));
 await wait(70);
@@ -138,6 +146,10 @@ await wait(160);
 const {d:ad,click:adminClick,w:aw}=adminUI;
 assert.equal(ad.body.dataset.adminRoute,"true");
 assert.ok(ad.querySelector("#v2-admin-password"),"Entrada independente do Admin não abriu.");
+assert.ok(ad.querySelector("#admin-stage .admin-access-card"),"Login do Admin deve aparecer na página, não em popup.");
+assert.equal(ad.querySelector("#admin-stage").hidden,false,"Admin deve deixar o carregamento e exibir o login.");
+assert.equal(ad.querySelector("#admin-stage").classList.contains("admin-loading"),false,"Admin não pode ficar preso carregando.");
+assert.equal(ad.querySelector(".admin-access-links a").getAttribute("href"),"/","Acesso direto deve permitir voltar ao catálogo.");
 assert.equal(ad.querySelector("#v2-admin-password").type,"password");
 await adminClick("#v2-admin-show-password");
 assert.equal(ad.querySelector("#v2-admin-password").type,"text");
@@ -168,6 +180,9 @@ assert.ok(ad.querySelector("#admin-bulk-visibility"));
 assert.ok(ad.querySelector("#admin-group-variations"));
 await adminClick("#admin-group-variations");
 assert.ok(ad.querySelector("#variant-group-name"),"Vincular variações não está disponível.");
+assert.ok(ad.querySelector('[data-variant-photo="1"]'),"Cada variação deve permitir enviar foto.");
+assert.ok(ad.querySelector('[data-variant-file="1"][type="file"]'),"Campo de foto independente ausente.");
+assert.ok(ad.querySelector(".variant-photo-thumb"),"Variações precisam mostrar a própria imagem.");
 await adminClick("#modal-root [data-close]");
 await adminClick("#admin-bulk-visibility");
 assert.ok(ad.querySelector("#bulk-only-members"),"Visibilidade em lote não está disponível.");
@@ -182,5 +197,16 @@ assert.equal(ad.querySelector("#i-available"),null,"Aviso redundante de disponí
 await adminClick("#i-link-variations");
 assert.ok(ad.querySelector("#variant-similar"));
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
+await adminClick("#modal-root [data-close]");
+assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");
+assert.equal(ad.querySelector("#admin-back").getAttribute("href"),"/");
+await adminClick("#admin-logout");
+assert.ok(ad.querySelector("#v2-confirm"),"Sair do Admin exige confirmação.");
+await adminClick("#v2-confirm");
+await wait(100);
+assert.equal(aw.localStorage.getItem("pet_admin_open"),"0","Logout deve limpar sessão local.");
+assert.equal(aw.__adminTestState.admin===null,true,"Logout deve limpar estado administrativo.");
+assert.ok(!ad.querySelector("#admin-stage").classList.contains("admin-loading"),"Logout não pode deixar tela carregando.");
+assert.deepEqual(adminUI.errors.filter(x=>!x.includes("Not implemented: navigation (except hash changes)")),[],"Erros de logout além da navegação indisponível no jsdom.");
 adminUI.dom.window.close();
 console.log("NOVA UI OK: catálogo, variações, busca, painel próprio, histórico, visibilidade e filamentos.");

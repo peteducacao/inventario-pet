@@ -55,6 +55,9 @@ const click=async el=>{assert.ok(el,"Controle não encontrado");el.click();await
 // O teste do painel legado usa substitutos de imagens sem acessar a rede.
 // A interface real, com os helpers reais, é verificada em final-ui.test.mjs.
 w.eval("const UI={filaments:[]};\n"+app+"\n"+identityUi+"\nfunction itemImage(x){return x.imagem||'/img/reference-board.svg';} function defaultImage(){return '/img/reference-board.svg';}\nwindow.__identity_test_state=state;");
+// Teste legado carrega apenas app.js: impedir navegação real no jsdom,
+// pois o fluxo da página nova e o link direto são cobertos em final-ui.test.mjs.
+d.querySelector("#admin-button").addEventListener("click",e=>e.preventDefault());
 await tick();
 assert.ok(d.querySelector(".item-card"),"Catálogo não abriu");
 await click(d.querySelector("#admin-button"));

@@ -224,6 +224,30 @@
     if(/gravacao|camera|filmagem/.test(n))return "recordKit";
     return "generic";
   }
+
+  function ledArtwork(name){
+    const n=normalize(name);
+    let tone="#d6e6e9",stroke="#91b5be",label="LED TRANSPARENTE";
+    if(/vermelho/.test(n)){tone="#ee4754";stroke="#b82e3e";label="LED VERMELHO";}
+    else if(/verde/.test(n)){tone="#3ec883";stroke="#1c9c63";label=/pequeno/.test(n)?"LED VERDE PEQUENO":/grande/.test(n)?"LED VERDE GRANDE":"LED VERDE";}
+    else if(/azul/.test(n)){tone="#389bed";stroke="#2173bf";label="LED AZUL";}
+    else if(/amarelo/.test(n)){tone="#f0c33f";stroke="#c89f23";label="LED AMARELO";}
+    else if(/branco/.test(n)){tone="#f6fbfa";stroke="#9eafbf";label="LED BRANCO";}
+    else if(/4 pinos/.test(n)){label="LED RGB 4 PINOS";}
+    const four=/4 pinos/.test(n),small=/pequeno/.test(n),large=/grande/.test(n),socket=/soquete/.test(n);
+    const width=small?64:large?108:89,left=200-width/2,top=small?82:large?38:58;
+    const ledHead='<path d="M'+left+' 170V'+(top+width/2)+'a'+(width/2)+' '+(width/2)+' 0 0 1 '+width+
+      ' 0V170Z" fill="'+tone+'" stroke="'+stroke+'" stroke-width="5" opacity="'+(/transparente|4 pinos/.test(n)?'.78':'1')+'"/>'+
+      '<path d="M'+(left+width*.22)+' '+(top+width*.36)+'Q'+(left+width*.23)+' '+(top+width*.12)+' 200 '+(top+9)+
+      '" fill="none" stroke="#ffffff" opacity=".6" stroke-width="8" stroke-linecap="round"/>'+
+      r(left-7,163,width+14,13,"#a7beca",5);
+    const legs=(four?[-26,-9,9,26]:[-17,17]).map((offset,i)=>
+      line(200+offset,176,200+offset,218+(i%2?9:0),"#96aab4",5)).join("");
+    const rgb=four?[circ(186,141,10,"#ee5a62"),circ(200,141,10,"#45ba86"),circ(214,141,10,"#368ce0")].join(""):"";
+    const connector=socket?r(122,158,156,51,"#304b51",11)+r(145,169,110,20,"#d7e2da",4):"";
+    return connector+ledHead+rgb+legs+
+      '<text x="200" y="246" text-anchor="middle" fill="#567084" font-family="Arial,Helvetica,sans-serif" font-size="'+(label.length>16?12:15)+'" font-weight="700" letter-spacing=".6">'+label+'</text>';
+  }
   const path={
     esp32:"/img/reference-board.svg",
     motor:"/img/reference-motor.svg",tablet:"/img/reference-tablet.svg",
@@ -233,14 +257,15 @@
   function componentArt(name){
     const kind=categoryFor(name);
     if(path[kind])return path[kind];
-    if(cache.has(kind))return cache.get(kind);
-    const figure=(builtin[kind]||builtin.generic)();
+    const artKey=kind==="led"?"led-"+normalize(name):kind;
+    if(cache.has(artKey))return cache.get(artKey);
+    const figure=kind==="led"?ledArtwork(name):(builtin[kind]||builtin.generic)();
     const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" role="img" aria-label="Ilustração de componente">'+
       '<defs><linearGradient id="base" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fbfefe"/><stop offset="1" stop-color="#eef7f6"/></linearGradient></defs>'+
       r(13,9,374,240,"url(#base)",20)+
       '<ellipse cx="200" cy="214" rx="106" ry="12" fill="#abc6cb" opacity=".18"/>'+figure+'</svg>';
     const uri="data:image/svg+xml;charset=utf-8,"+encodeURIComponent(svg);
-    cache.set(kind,uri);
+    cache.set(artKey,uri);
     return uri;
   }
   // Fotografias externas genéricas não serão mais utilizadas.
