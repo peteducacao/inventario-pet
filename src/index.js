@@ -520,7 +520,7 @@ async function processRequest(req, env) {
       const today=todayBR();
       const handoffDay=r.data_devolucao>=today?today:r.data_inicio;
       const outcome=await db.batch([
-        db.prepare("UPDATE reservas SET status='retirada',aprovado_em=?,retirado_em=?,data_inicio=?,responsavel_admin=? WHERE id=? AND status='pendente'").bind(current,current,handoffDay,actor,id),
+        db.prepare("UPDATE reservas SET status='retirada',aprovado_em=?,retirado_em=?,data_inicio=?,responsavel_admin=? WHERE id=? AND status='pendente' AND EXISTS(SELECT 1 FROM componentes WHERE id=? AND quantidade-em_uso-com_defeito>=?)").bind(current,current,handoffDay,actor,id,item.id,r.quantidade),
         db.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso-com_defeito>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada' AND retirado_em=?)").bind(r.quantidade,current,actor,"Reserva aprovada e entregue #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id,current)
       ]);
       if(outcome[0].meta?.changes!==1||outcome[1].meta?.changes!==1){
