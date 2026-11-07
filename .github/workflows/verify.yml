@@ -19,6 +19,7 @@ jobs:
         run: |
           node --check public/app.js
           node --check public/identity-ui.js
+          node --check public/component-art.js
           node --check public/final.js
           node --check public/admin-stage.js
           node --check src/index.js
