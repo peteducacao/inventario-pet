@@ -17,6 +17,8 @@ jobs:
       - run: npm install --no-save wrangler@4 jsdom@26
       - name: Testar fusão dos 26 lotes de Experimentos sem afetar banco remoto
         run: node --disable-warning=ExperimentalWarning tests/experiments.test.mjs
+      - name: Testar backup completo e restauração no banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/backup-v2.test.mjs
       - name: Aplicar tabelas ao D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
