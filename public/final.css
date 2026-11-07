@@ -540,3 +540,30 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .dashboard-change-title{font-size:12px}
  .dashboard-change-date{font-size:10px}
 }
+
+
+/* Visibilidade real salva: separada das caixas temporárias de seleção. */
+.bulk-category-status{display:flex;flex-direction:column;gap:3px;flex:0 0 auto;padding:10px 13px;margin:8px 0 7px;background:#f3f7fb;border:1px solid #dbe7ed;border-radius:12px;color:#2a4c65;font-size:12px;line-height:1.25}
+.bulk-category-status.fully-restricted{background:#ecf9f3;border-color:#b7e5d1;color:#14664f}
+.bulk-category-status strong{font-size:12px}
+.bulk-category-status small{font-size:11px;color:#5e7686;line-height:1.3}
+.bulk-visibility-row{cursor:pointer;min-height:73px;transition:background .12s}
+.bulk-visibility-row.is-selected{background:#f1faf6}
+.bulk-visibility-row>.bulk-row-details{display:flex;min-width:0;flex:1;flex-direction:column;gap:3px}
+.bulk-visibility-row .bulk-row-details strong{font-size:13px;color:#162d43;line-height:1.25;overflow-wrap:anywhere}
+.bulk-visibility-row .bulk-row-details small{font-size:11px;color:#738392}
+.bulk-visibility-badge{display:inline-flex;align-items:center;align-self:flex-start;gap:3px;border:1px solid #d2e3eb;border-radius:8px;padding:4px 8px;margin-top:2px;line-height:1.25;font-size:11px;font-weight:850;background:#f1f7fb;color:#24638e}
+.bulk-visibility-badge.restricted{border-color:#b4e4cc;background:#e4f8ee;color:#087451}
+.bulk-visibility-badge.category-locked{border-color:#eedba9;background:#fff8e7;color:#855c16}
+.bulk-selection-footer{display:flex;flex-direction:column;gap:2px;flex:0 0 auto;margin:7px 0 0}
+.bulk-selection-footer #bulk-selected-count{margin:0!important}
+.bulk-selection-footer small{font-size:11px;line-height:1.3;color:#557487}
+.bulk-category-warning{font-size:11px;font-weight:650;line-height:1.4;border-radius:9px;padding:8px 10px;color:#86591c;background:#fff5e7;border:1px solid #f5ddad;margin:6px 0 0;flex:0 0 auto}
+.bulk-category-warning[hidden]{display:none!important}
+.bulk-visibility-modal .modal-footer button:disabled{opacity:.45}
+@media(max-width:720px){
+ .bulk-category-status{padding:8px 10px;margin:6px 0}
+ .bulk-visibility-row{min-height:76px;padding:8px 10px}
+ .bulk-visibility-badge{font-size:11px;padding:4px 7px}
+ .bulk-selection-footer small{font-size:10.5px}
+}
