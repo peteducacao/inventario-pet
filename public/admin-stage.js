@@ -237,7 +237,9 @@ function adminMaterialRow(x){
   const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
   const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
   return '<div class="material-row">'+thumb(x)+
-    '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
+    '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small>'+
+    (x.grupo_variacoes?'<div class="admin-group-inline"><span>Grupo: <strong>'+esc(x.grupo_variacoes)+'</strong></span>'+
+      '<button type="button" class="admin-group-rename" data-rename-group="'+attr(x.grupo_variacoes)+'" aria-label="Renomear grupo '+attr(x.grupo_variacoes)+'" title="Editar o nome exibido no card de todas as variações">'+iconSvg("edit",13)+' Renomear grupo</button></div>':"")+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
     loanAudienceSelect("item",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
     (Number(cat?.permitir_petianos)!==1||Number(cat?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A liberação também depende da categoria</small>':'')+'</div>'+
@@ -259,8 +261,42 @@ function wireMaterialActions(root){
     }catch(error){input.value=original;input.disabled=false;toast(error.message,true);}
   });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
-  $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
+  $("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
+  $("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
   $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
+}
+function adminRenameVariationGroup(name){
+  const current=String(name||"").trim();
+  if(!current)return;
+  const normalize=x=>String(x||"").trim().toLocaleLowerCase("pt-BR");
+  const members=(state.admin.componentes||[]).filter(x=>normalize(x.grupo_variacoes)===normalize(current));
+  if(!members.length){toast("Grupo não encontrado. Atualize o painel.",true);return;}
+  const existing=new Set((state.admin.componentes||[]).map(x=>normalize(x.grupo_variacoes)).filter(Boolean));
+  openModal("Renomear grupo de variações","Altere o título do card no catálogo sem mudar os nomes individuais dos materiais.",
+    '<form id="rename-group-form" class="modal-main">'+
+    '<div class="field"><label for="rename-group-name">Nome do grupo</label>'+
+    '<input id="rename-group-name" required minlength="2" maxlength="80" value="'+attr(current)+'" autocomplete="off"></div>'+
+    '<p class="notice"><strong>'+members.length+' material(is)</strong> fazem parte do grupo <strong>'+esc(current)+'</strong>. Todos receberão o novo nome de grupo; nomes, fotos, patrimônios, estoques e empréstimos permanecem iguais.</p>'+
+    '<div class="modal-footer" style="border:0;padding:14px 0 0"><button class="outline-button" id="rename-group-cancel" type="button">Cancelar</button>'+
+    '<button class="primary-button" id="rename-group-submit" type="submit">Salvar nome do grupo</button></div></form>');
+  $("#rename-group-cancel").onclick=closeModal;
+  $("#rename-group-form").onsubmit=async e=>{
+    e.preventDefault();
+    const next=$("#rename-group-name").value.trim();
+    if(next.length<2){toast("O nome do grupo precisa ter pelo menos 2 caracteres.",true);return;}
+    if(next===current){closeModal();return;}
+    if(normalize(next)!==normalize(current)&&existing.has(normalize(next))){
+      toast("Já existe outro grupo com esse nome. Escolha um nome diferente.",true);return;
+    }
+    const btn=$("#rename-group-submit");btn.disabled=true;btn.textContent="Salvando…";
+    try{
+      const result=await api("/api/admin/variations/rename","POST",{
+        grupo_atual:current,novo_nome:next,responsavel:state.actor||"Admin"
+      });
+      await adminReload();closeModal();adminBuild();
+      toast("Grupo renomeado para "+next+" em "+result.alterados+" material(is).");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar nome do grupo";}
+  };
 }
 function adminViewMaterial(id){
   const x=state.admin.componentes.find(z=>z.id===id);if(!x)return;
@@ -291,7 +327,7 @@ function adminMaterials(root){
     '<option value="archived" '+(UI.adminCategory==="archived"?"selected":"")+'>Arquivados</option>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head admin-materials-heading"><div><h2>Materiais cadastrados</h2></div>'+
     '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
-    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
+    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais ou grupos..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
     '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>';
@@ -316,7 +352,7 @@ function paintAdminMaterials(){
   const visible=state.admin.componentes.filter(x=>{
     if(UI.adminCategory==="archived"){if(!isArchived(x))return false;}
     else if(isArchived(x)||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
-    return !query||[x.nome,x.patrimonio,x.identificacao].some(v=>String(v||"").toLowerCase().includes(query));
+    return !query||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes].some(v=>String(v||"").toLowerCase().includes(query));
   });
   const p=paginate(ordered(visible,UI.adminSort),UI.adminPage);
   UI.adminPage=p.page;stored("pet_admin_page",p.page);
