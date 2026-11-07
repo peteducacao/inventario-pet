@@ -48,4 +48,4 @@
 - Filamento: categoria e cor habilitadas → reservar/retirar → atualizar rolos corretamente.
 - Gmail: evento e permissões → fila → Apps Script → ACK → e-mail enviado some dos pendentes, sem apagar registro.
 - Reservas: limpeza automática só das concluídas; reset total protegido contra empréstimos ativos e com backup.
-- Login Admin protegido na navegação direta; Ajuda pública em `/ajuda/` e menu Ajuda do painel.
+- Login Admin protegido na navegação direta; Ajuda no menu autenticado do painel Admin (sem atalhos no catálogo ou barra externa). A URL da documentação permanece acessível diretamente para publicação/visualização; ocultar o atalho não é controle de acesso.
