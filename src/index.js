@@ -267,7 +267,7 @@ async function processRequest(req, env) {
       if(active?.n)return bad("Há empréstimos ativos ou pendentes desta cor. Conclua-os antes de excluir.",409);
       await db.batch([
         db.prepare("DELETE FROM filamentos WHERE id=?").bind(id),
-        db.prepare("UPDATE componentes SET arquivado=1,permitir_emprestimos=0 WHERE id=?").bind(old.componente_id)
+        db.prepare("UPDATE componentes SET arquivado=1,permitir_emprestimos=0,permitir_petianos=0,permitir_visitantes=0 WHERE id=?").bind(old.componente_id)
       ]);
       await auditLog(db,"Excluiu","filamento",id,old.cor+" (histórico preservado)");
       return j({ok:true});
@@ -306,10 +306,12 @@ async function processRequest(req, env) {
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
     if(action==="criar"){
       const position=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
-      const enabled=b.permitir_emprestimos===true?1:0;
+      const pet=b.permitir_petianos===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_petianos===true);
+      const visitor=b.permitir_visitantes===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_visitantes===true);
+      const enabled=Number(!!(pet||visitor));
       await db.batch([
-        db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos) VALUES(?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled),
-        db.prepare("INSERT INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,? FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.cor=?").bind(now(),cor),
+        db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled,pet,visitor),
+        db.prepare("INSERT INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,? FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.cor=?").bind(now(),cor),
         db.prepare("UPDATE filamentos SET componente_id=(SELECT id FROM componentes WHERE import_key='FILAMENTO-'||filamentos.id) WHERE cor=?").bind(cor)
       ]);
       await auditLog(db,"Cadastrou","filamento",null,cor+" · "+q+" rolo(s)");
@@ -320,10 +322,12 @@ async function processRequest(req, env) {
       if(!component)return bad("Vínculo do filamento não encontrado.",409);
       const approved=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(old.componente_id).first();
       if(q<Number(component.em_uso)+Number(component.com_defeito)+Number(approved?.n||0))return bad("A quantidade não cobre os materiais emprestados, com defeito e já aprovados.",409);
-      const enabled=b.permitir_emprestimos===undefined?Number(old.permitir_emprestimos):(b.permitir_emprestimos?1:0);
+      const pet=b.permitir_petianos===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_petianos):Number(b.permitir_emprestimos===true)):Number(b.permitir_petianos===true);
+      const visitor=b.permitir_visitantes===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_visitantes):Number(b.permitir_emprestimos===true)):Number(b.permitir_visitantes===true);
+      const enabled=Number(!!(pet||visitor));
       await db.batch([
-        db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,enabled,now(),id),
-        db.prepare("UPDATE componentes SET nome=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,ultima_alteracao=? WHERE id=?").bind("Filamento - "+cor,q,show,enabled,now(),old.componente_id)
+        db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,enabled,pet,visitor,now(),id),
+        db.prepare("UPDATE componentes SET nome=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,ultima_alteracao=? WHERE id=?").bind("Filamento - "+cor,q,show,enabled,pet,visitor,now(),old.componente_id)
       ]);
       await auditLog(db,"Editou","filamento",id,old.cor+" → "+cor+" · "+old.quantidade+" → "+q+" rolo(s)");
     }
