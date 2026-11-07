@@ -496,6 +496,12 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     if(state.identity)localStorage.setItem("pet_inventario_nome",state.actor);
     $("#offline-alert").hidden=true;
     render();
+    // Fragmento não é enviado ao servidor, e é retirado da barra após ser lido.
+    const token=new URLSearchParams(window.location.hash.replace(/^#/,"")).get("redefinir");
+    if(token && document.body.dataset.adminRoute!=="true"){
+      window.history.replaceState(null,"",window.location.pathname+window.location.search);
+      identityResetFromEmailModal(token);
+    }
     if(document.body.dataset.loansRoute==="true")openMyLoans();
     if(state.identity&&typeof refreshNotifications==="function")refreshNotifications();
     const returnedFromAdmin=sessionStorage.getItem("pet_check_identity_after_admin")==="1";
