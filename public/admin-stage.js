@@ -169,7 +169,7 @@ function adminMaterialRow(x){
   const available=stock(x),isHidden=isArchived(x);
   const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
   return '<div class="material-row">'+thumb(x)+
-    '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+'</small>'+
+    '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small></div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
     '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
@@ -210,12 +210,14 @@ function adminMaterials(root){
   const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("")+
     '<option value="archived" '+(UI.adminCategory==="archived"?"selected":"")+'>Arquivados</option>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Materiais cadastrados</h2></div>'+
-    '<div class="buttons"><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
+    '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade em lote</button><button class="outline-button" type="button" id="admin-group-variations">'+iconSvg("layers",15)+' Variações</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
     '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
+  $("#admin-bulk-visibility").onclick=()=>openBulkVisibility();
+  $("#admin-group-variations").onclick=()=>openVariantLinker();
   $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
   $("#admin-material-category").onchange=e=>{UI.adminCategory=e.target.value;UI.adminPage=1;stored("pet_admin_category",UI.adminCategory);paintAdminMaterials()};
   $("#admin-material-sort").onchange=e=>{UI.adminSort=e.target.value;UI.adminPage=1;stored("pet_admin_sort",UI.adminSort);paintAdminMaterials()};
@@ -486,10 +488,143 @@ async function deleteFilament(id){
 
 
 /* Editor de materiais e configurações do painel renovado. */
+/* Busca inteligente por tipo: sugere, mas nunca aplica mudanças sem confirmação. */
+function materialFamilyHint(name){
+  const n=String(name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  if(/resistor/.test(n))return "Resistores";
+  if(/capacit/.test(n))return "Capacitores";
+  if(/arduino/.test(n))return "Arduino";
+  if(/ponte\s*h/.test(n))return "Pontes H";
+  if(/esp\s*32/.test(n))return "ESP32";
+  if(/tablet/.test(n))return "Tablets";
+  if(/notebook/.test(n))return "Notebooks";
+  if(/motor/.test(n))return "Motores";
+  if(/\bled\b/.test(n))return "LEDs";
+  if(/pilha|bateria/.test(n))return "Baterias";
+  if(/sensor/.test(n))return "Sensores";
+  const first=n.match(/^[a-z]{4,}/)?.[0]||"";
+  return first?first[0].toUpperCase()+first.slice(1):"Outros";
+}
+function materialPickerRows(items,selected,term=""){
+  const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
+    String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
+  return {visible:available,html:available.slice(0,160).map(x=>
+    '<label class="admin-bulk-row"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
+    '<span><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.grupo_variacoes?' · '+esc(x.grupo_variacoes):"")+
+    (Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small></span></label>').join("")||
+    '<div class="empty-state">Nenhum material encontrado.</div>'};
+}
+function adminMaterialPickerConfig(mode,currentId){
+  const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
+  const selected=new Set(),current=all.find(x=>x.id===currentId);
+  if(current)selected.add(current.id);
+  const similar=current?all.filter(x=>x.id!==current.id&&materialFamilyHint(x.nome)===materialFamilyHint(current.nome)):[];
+  const group=current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
+  return {all,selected,current,similar,group,mode};
+}
+function openBulkVisibility(currentId){
+  const model=adminMaterialPickerConfig("visibility",currentId);
+  const initial=model.current?.nome.split(/\s+/)[0]||"";
+  openModal("Visibilidade em lote","Selecione materiais e escolha o público. As sugestões não são aplicadas automaticamente.",
+    '<div class="modal-main"><div class="field"><label for="bulk-search">Buscar materiais</label><input id="bulk-search" placeholder="Ex.: Resistor, Arduino..." value="'+attr(initial)+'"></div>'+
+    '<div class="admin-bulk-actions"><button class="outline-button small-button" id="bulk-similar" type="button">Selecionar semelhantes ('+model.similar.length+')</button>'+
+    '<button class="outline-button small-button" type="button" id="bulk-select-all">Selecionar resultados</button>'+
+    '<button class="outline-button small-button" type="button" id="bulk-clear">Desmarcar todos</button></div>'+
+    '<div class="admin-bulk-list" id="bulk-list"></div>'+
+    '<p class="hint" id="bulk-selected-count"></p>'+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="outline-button" id="bulk-show-all" type="button">Exibir para todos</button>'+
+    '<button class="primary-button" id="bulk-only-members" type="button">Só PETianes</button></div></div>',{size:"wide"});
+  let visible=[];
+  const draw=()=>{
+    const result=materialPickerRows(model.all,model.selected,$("#bulk-search").value);
+    visible=result.visible;$("#bulk-list").innerHTML=result.html;
+    $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
+    $("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
+      const id=Number(b.dataset.bulkId);
+      if(b.checked)model.selected.add(id);else model.selected.delete(id);
+      $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
+    });
+  };
+  $("#bulk-search").oninput=draw;
+  $("#bulk-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
+  $("#bulk-select-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
+  $("#bulk-clear").onclick=()=>{model.selected.clear();draw();};
+  const save=async show=>{
+    if(!model.selected.size){toast("Selecione pelo menos um material.",true);return;}
+    const ok=await niceModalConfirm("Aplicar a "+model.selected.size+" materiais?",show?"Todos os visitantes poderão ver os materiais selecionados.":"Só PETianes poderão ver os materiais selecionados.",show?"Exibir para todos":"Só PETianes");
+    if(!ok)return;
+    try{
+      await api("/api/admin/visibility","POST",{ids:[...model.selected],visivel_visitante:show,responsavel:state.actor||"Admin"});
+      await adminReload();closeModal();adminBuild();toast("Visibilidade alterada em "+model.selected.size+" materiais.");
+    }catch(error){toast(error.message,true);}
+  };
+  $("#bulk-show-all").onclick=()=>save(true);
+  $("#bulk-only-members").onclick=()=>save(false);
+  draw();
+}
+function openVariantLinker(currentId){
+  const model=adminMaterialPickerConfig("variations",currentId);
+  const existing=[...new Set(model.all.map(x=>x.grupo_variacoes).filter(Boolean))];
+  openModal("Organizar variações","Vincule modelos sem juntar seus estoques. Selecione os materiais que devem compartilhar um card.",
+    '<div class="modal-main"><div class="field"><label for="variant-group-name">Nome da família</label>'+
+    '<input id="variant-group-name" maxlength="80" list="variant-existing-groups" value="'+attr(model.current?.grupo_variacoes||model.group||"")+'" placeholder="Ex.: Resistores"><datalist id="variant-existing-groups">'+existing.map(x=>'<option value="'+attr(x)+'"></option>').join("")+'</datalist></div>'+
+    '<div class="field"><label for="variant-search">Buscar outros modelos</label><input id="variant-search" placeholder="Buscar material..." value="'+attr(model.current?.nome.split(/\s+/)[0]||"")+'"></div>'+
+    '<div class="admin-bulk-actions"><button class="outline-button small-button" type="button" id="variant-similar">Sugerir semelhantes ('+model.similar.length+')</button>'+
+    '<button class="outline-button small-button" type="button" id="variant-check-all">Selecionar resultados</button>'+
+    '<button class="outline-button small-button" type="button" id="variant-check-none">Limpar seleção</button></div>'+
+    '<div class="admin-bulk-list" id="variant-list"></div><p class="hint" id="variant-selected"></p>'+
+    '<div class="modal-footer" style="border:0;padding:14px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button type="button" class="outline-button" id="variant-create">Cadastrar nova variação</button>'+
+    '<button type="button" class="outline-button" id="variant-unlink">Desvincular selecionados</button>'+
+    '<button type="button" class="primary-button" id="variant-save">Vincular selecionados</button></div></div>',{size:"wide"});
+  let visible=[];
+  const draw=()=>{
+    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value);
+    visible=r.visible;$("#variant-list").innerHTML=r.html;
+    $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
+    $("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
+      const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
+      $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
+    });
+  };
+  $("#variant-search").oninput=draw;
+  $("#variant-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
+  $("#variant-check-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
+  $("#variant-check-none").onclick=()=>{model.selected.clear();draw();};
+  $("#variant-create").onclick=()=>{
+    window.__newVariantGroup=$("#variant-group-name").value.trim();
+    adminItemEditor();
+  };
+  const save=async unlink=>{
+    const group=unlink?"":$("#variant-group-name").value.trim();
+    if(!model.selected.size){toast("Selecione pelo menos um material.",true);return;}
+    if(!unlink&&group.length<2){toast("Informe um nome de grupo com pelo menos 2 caracteres.",true);return;}
+    const ok=await niceModalConfirm(unlink?"Desvincular variações?":"Vincular variações?",model.selected.size+" materiais serão "+(unlink?"separados em cards individuais.":"ligados ao grupo "+group+"."),unlink?"Desvincular":"Vincular");
+    if(!ok)return;
+    try{
+      await api("/api/admin/variations","POST",{ids:[...model.selected],grupo:group,responsavel:state.actor||"Admin"});
+      await adminReload();closeModal();adminBuild();toast(unlink?"Variações desvinculadas.":"Materiais vinculados no mesmo card.");
+    }catch(error){toast(error.message,true);}
+  };
+  $("#variant-save").onclick=()=>save(false);
+  $("#variant-unlink").onclick=()=>save(true);
+  draw();
+}
 function adminItemEditor(id){
   itemEditor(id);
   const form=$("#item-form");
   if(!form)return;
+  if(id){
+    const publicControl=$("#i-public");
+    if(publicControl){
+      const apply=document.createElement("button");
+      apply.type="button";apply.className="outline-button small-button";apply.textContent="Aplicar aos semelhantes";
+      publicControl.closest(".switch-row")?.insertAdjacentElement("afterend",apply);
+      apply.onclick=()=>openBulkVisibility(id);
+    }
+  }
   let edited=false,saved=false;
   const markDirty=()=>{edited=true};
   form.addEventListener("input",markDirty);
