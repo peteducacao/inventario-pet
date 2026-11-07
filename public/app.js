@@ -89,6 +89,7 @@ function dateInput(name,label,value,min=""){return '<div class="field"><label fo
 function inputField(name,label,value="",opts={}){return '<div class="field"><label for="'+name+'">'+esc(label)+'</label><input id="'+name+'" name="'+name+'" type="'+(opts.type||"text")+'" '+(opts.required?"required":"")+' maxlength="'+(opts.max||140)+'" placeholder="'+attr(opts.placeholder||"")+'" value="'+attr(value)+'"></div>'}
 function selectField(id,label,options,selected,first=false){return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><select id="'+id+'">'+(first?'<option value="">Selecione</option>':"")+options.map(x=>'<option value="'+attr(x.value)+'" '+(String(selected)===String(x.value)?"selected":"")+'>'+esc(x.label)+'</option>').join("")+'</select></div>'}
 async function reserveModal(itemId){
+  if(!state.identity){identityLoginModal();return;}
   if(state.identity&&!state.identity.email){identityEmailModal(true);return;}
   const cats=state.data.categorias;
   if(!state.data.componentes.length){toast("Ainda não há materiais cadastrados.",true);return;}
@@ -476,6 +477,7 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     if(returnedFromAdmin&&!state.identity&&typeof showReturnFromAdminIdentityNotice==="function")showReturnFromAdminIdentityNotice();
     if(state.identity?.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
     else if(state.identity?.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
+    else if(state.identity&&!state.identity.email)setTimeout(()=>identityEmailModal(true),400);
   }catch(error){
     console.error(error);
     $("#offline-alert").hidden=false;
