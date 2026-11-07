@@ -1043,8 +1043,8 @@ function openVariantLinker(currentId,groupName=""){
     model.all=state.admin.componentes.filter(x=>!isArchived(x)&&
       !state.admin.categorias.find(cat=>Number(cat.id)===Number(x.categoria_id))?.arquivada);
   };
-  const groupName=()=>$("#variant-group-name")?.value.trim()||"";
-  const linked=()=>model.all.filter(x=>normalized(x.grupo_variacoes)===normalized(groupName())&&normalized(groupName()));
+  const currentGroupName=()=>$("#variant-group-name")?.value.trim()||"";
+  const linked=()=>model.all.filter(x=>normalized(x.grupo_variacoes)===normalized(currentGroupName())&&normalized(currentGroupName()));
   const makeRow=(x,already)=>{
     const current=String(x.grupo_variacoes||"").trim();
     return '<div class="variant-manager-row" data-variant-item="'+Number(x.id)+'">'+
@@ -1058,7 +1058,7 @@ function openVariantLinker(currentId,groupName=""){
           (current?'Mover para este grupo':'Adicionar ao grupo')+'</button>')+'</div>';
   };
   const draw=()=>{
-    const name=groupName();
+    const name=currentGroupName();
     const members=linked().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
     $("#variant-linked-count").textContent=String(members.length);
     $("#variant-linked-list").innerHTML=members.length?members.map(x=>makeRow(x,true)).join(""):
@@ -1077,7 +1077,7 @@ function openVariantLinker(currentId,groupName=""){
   };
   const updateMember=async(id,add)=>{
     if(saving)return;
-    const name=groupName(),current=model.all.find(x=>x.id===id);
+    const name=currentGroupName(),current=model.all.find(x=>x.id===id);
     if(!current)return;
     if(add&&name.length<2){toast("Digite o nome do grupo antes de adicionar um material.",true);$("#variant-group-name").focus();return;}
     const oldName=String(current.grupo_variacoes||"").trim();
@@ -1105,7 +1105,7 @@ function openVariantLinker(currentId,groupName=""){
   $("#variant-group-name").oninput=draw;
   $("#variant-search").oninput=draw;
   $("#variant-create").onclick=()=>{
-    const name=groupName();
+    const name=currentGroupName();
     if(name.length<2){toast("Informe o nome do grupo antes de cadastrar um modelo.",true);$("#variant-group-name").focus();return;}
     window.__newVariantGroup=name;
     window.__variantReturnGroup=name;
