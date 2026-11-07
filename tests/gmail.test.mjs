@@ -84,6 +84,13 @@ assert.equal(queued.assunto,"Cobrança revisada de teste");
 assert.match(queued.mensagem,/alterado diretamente no painel/);
 const repeated=await(await adminCall("/api/admin/mail/queue",{id:testId,assunto:"Cobrança repetida de teste",mensagem:"Esta mensagem duplicada não deve substituir a primeira."})).json();
 assert.equal(repeated.queued,false,"Não repetir cobrança no mesmo dia.");
+// A janela de acompanhamento só mostra a fila ainda não enviada. O registro de envios permanece no banco.
+const mailLog=await(await adminCall("/api/admin/mail/log")).json();
+assert.equal(mailLog.ok,true);
+assert.ok(mailLog.items.length>0,"A janela deve listar cobranças ainda pendentes.");
+assert.ok(mailLog.items.every(x=>["pendente","processando"].includes(x.situacao)),"A janela não deve exibir e-mails já enviados, cancelados ou com erro.");
+assert.ok(mailLog.items.some(x=>x.reserva_id===testId),"A cobrança nova deve aparecer nos pendentes.");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE situacao='enviado'").get().n,1,"O histórico interno de envios deve ser preservado.");
 
 // Preferências por tag e momento: editar sem habilitar ou desabilitar a outra tag.
 const originalEvents=await(await adminCall("/api/admin/mail/events")).json();
