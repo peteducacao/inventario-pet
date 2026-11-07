@@ -529,15 +529,24 @@ function materialFamilyHint(name){
   const first=n.match(/^[a-z]{4,}/)?.[0]||"";
   return first?first[0].toUpperCase()+first.slice(1):"Outros";
 }
-function materialPickerRows(items,selected,term=""){
+function materialPickerRows(items,selected,term="",withPhotos=false){
   const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
     String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
-  return {visible:available,html:available.slice(0,160).map(x=>
-    '<label class="admin-bulk-row"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
-    '<span><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.grupo_variacoes?' · '+esc(x.grupo_variacoes):"")+
-    (Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small></span></label>').join("")||
-    '<div class="empty-state">Nenhum material encontrado.</div>'};
+  return {visible:available,html:available.slice(0,160).map(x=>{
+    const info='<span><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
+      (x.grupo_variacoes?' · '+esc(x.grupo_variacoes):"")+
+      (Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small></span>';
+    if(!withPhotos)return '<label class="admin-bulk-row"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+info+'</label>';
+    const hasCustomPhoto=/^data:image\//i.test(String(x.imagem||""));
+    return '<div class="admin-bulk-row variant-photo-row">'+
+      '<label class="variant-photo-select"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
+      '<img class="variant-photo-thumb" src="'+attr(itemImage(x))+'" alt="Imagem de '+attr(x.nome)+'">'+info+'</label>'+
+      '<button type="button" class="variant-photo-upload" data-variant-photo="'+x.id+'" aria-label="Enviar foto para '+attr(x.nome)+'">'+
+      (hasCustomPhoto?'Trocar foto':'Enviar foto')+'</button>'+
+      '<input type="file" accept="image/png,image/jpeg,image/webp" data-variant-file="'+x.id+'" hidden>'+
+      '</div>';
+  }).join("")||'<div class="empty-state">Nenhum material encontrado.</div>'};
 }
 function adminMaterialPickerConfig(mode,currentId){
   const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
@@ -605,12 +614,39 @@ function openVariantLinker(currentId){
     '<button type="button" class="primary-button" id="variant-save">Vincular selecionados</button></div></div>',{size:"wide"});
   let visible=[];
   const draw=()=>{
-    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value);
+    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value,true);
     visible=r.visible;$("#variant-list").innerHTML=r.html;
     $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
-    $$("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
+    $("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
       $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
+    });
+    $("[data-variant-photo]",$("#variant-list")).forEach(button=>button.onclick=()=>{
+      $("#variant-list [data-variant-file='"+button.dataset.variantPhoto+"']")?.click();
+    });
+    $("[data-variant-file]",$("#variant-list")).forEach(input=>input.onchange=async event=>{
+      const file=event.target.files?.[0];if(!file)return;
+      const id=Number(input.dataset.variantFile);
+      const original=model.all.find(x=>x.id===id);
+      if(!original)return;
+      const button=$("#variant-list [data-variant-photo='"+id+"']");
+      if(button){button.disabled=true;button.textContent="Salvando…";}
+      try{
+        if(!["image/png","image/jpeg","image/webp"].includes(file.type))throw Error("Escolha uma foto PNG, JPG ou WEBP.");
+        const image=await shrinkImage(file);
+        await api("/api/admin/item/photo","POST",{id,imagem:image,responsavel:state.actor||"Admin"});
+        // Manter os nomes, quantidades e a seleção em andamento.
+        original.imagem=image;
+        const adminEntry=state.admin.componentes.find(x=>x.id===id);
+        if(adminEntry)adminEntry.imagem=image;
+        const catalogEntry=state.data.componentes.find(x=>x.id===id);
+        if(catalogEntry)catalogEntry.imagem=image;
+        toast("Foto de "+original.nome+" salva.");
+        draw();
+      }catch(error){
+        toast(error.message,true);
+        if(button){button.disabled=false;button.textContent="Enviar foto";}
+      }
     });
   };
   $("#variant-search").oninput=draw;
