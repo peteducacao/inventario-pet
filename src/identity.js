@@ -294,7 +294,7 @@ export async function identityAPI(req,env,adminAuth){
   const u=await loggedIn(req,db);
   if(path==="/api/my/loans"&&method==="GET"){
     if(!u)return error("Entre em sua conta para consultar os empréstimos.",401);
-    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 250",[u.id]);
+    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.responsavel_admin,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 250",[u.id]);
     return respond({ok:true,emprestimos:loanRows});
   }
   if(path==="/api/notifications"&&method==="GET"){
