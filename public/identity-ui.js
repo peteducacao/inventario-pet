@@ -185,12 +185,13 @@ async function memberWithdrawModal(initialId){
   const all=state.data.componentes;
   if(!all.length){toast("Não há materiais cadastrados.",true);return;}
   const initial=byId(initialId)||all[0];
-  const today=localDate(),seven=localDate(new Date(Date.now()+7*86400000));
+  const today=localDate();
   const body='<form class="modal-main" id="member-withdraw-form">'+
     '<p class="notice"><strong>'+esc(state.identity.nome)+'</strong> · '+esc(state.identity.id)+'<br>Esta retirada será registrada diretamente, sem aprovação prévia.</p>'+
     '<div class="field"><label for="member-item">Material</label><select id="member-item" required>'+all.map(x=>'<option value="'+x.id+'" '+(x.id===initial.id?"selected":"")+'>'+esc(x.nome)+'</option>').join("")+'</select></div>'+
     '<div class="field-grid"><div class="field"><label for="member-qty">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="member-qty" data-delta="-1">−</button><input id="member-qty" type="number" min="1" max="1000" value="1" required><button type="button" class="step" data-target="member-qty" data-delta="1">+</button></div></div>'+
-    dateInput("member-due","Previsão de devolução",seven,today)+'</div>'+
+    '<div class="field"><label for="member-due">Previsão de devolução (opcional)</label><input type="date" id="member-due" min="'+today+'"></div></div>'+
+    '<div class="field"><label for="member-email">E-mail para notificações (opcional)</label><input type="email" id="member-email" maxlength="180" autocomplete="email" placeholder="email@exemplo.com"></div>'+
     '<p id="member-availability" class="reservation-availability">Consultando disponibilidade…</p>'+
     '<div class="field"><label for="member-note">Observação (opcional)</label><textarea id="member-note" maxlength="500" placeholder="Onde ou para qual atividade será utilizado?"></textarea></div>'+
     '<div class="modal-footer" style="border:0;padding:14px 0 0"><button type="button" class="secondary-button" id="member-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-submit">Confirmar retirada</button></div></form>';
@@ -201,9 +202,9 @@ async function memberWithdrawModal(initialId){
     const index=++request,id=Number($("#member-item").value),due=$("#member-due").value,q=Number($("#member-qty").value);
     const text=$("#member-availability"),submit=$("#member-submit");
     text.textContent="Consultando disponibilidade…";submit.disabled=true;
-    if(!due||due<today||!Number.isInteger(q)||q<1){text.textContent="Informe quantidade e data válidas.";return;}
+    if((due&&due<today)||!Number.isInteger(q)||q<1){text.textContent="Confira quantidade e data.";return;}
     try{
-      const result=await api("/api/availability?id="+id+"&inicio="+today+"&fim="+due);
+      const result=await api("/api/availability?id="+id+"&inicio="+today+"&fim="+(due||today));
       if(index!==request||!document.contains(text))return;
       const ok=result.disponiveis>=q;
       text.className="reservation-availability "+(ok?"available":"unavailable");
@@ -216,7 +217,7 @@ async function memberWithdrawModal(initialId){
   $("#member-withdraw-form").onsubmit=async e=>{
     e.preventDefault();const submit=$("#member-submit");submit.disabled=true;submit.textContent="Registrando…";
     try{
-      const r=await api("/api/member/withdraw","POST",{componente_id:Number($("#member-item").value),quantidade:Number($("#member-qty").value),data_devolucao:$("#member-due").value,observacao:$("#member-note").value});
+      const r=await api("/api/member/withdraw","POST",{componente_id:Number($("#member-item").value),quantidade:Number($("#member-qty").value),data_devolucao:$("#member-due").value,email:$("#member-email").value.trim(),observacao:$("#member-note").value});
       await publicReload();
       toast("Retirada #"+r.retirada_id+" registrada no painel!");
       await memberHistoryModal();
@@ -233,7 +234,7 @@ async function memberHistoryModal(){
     if(!document.contains(list))return;
     list.innerHTML=(r.retiradas||[]).length?'<div class="admin-list">'+r.retiradas.map(x=>{
       const live=x.status==="retirada";
-      return '<div class="admin-list-row"><div class="main-info"><strong>'+esc(x.componente_nome)+' · '+x.quantidade+' unidade(s)</strong><small>Retirado: '+esc(fmt(x.retirado_em))+' · Previsto: '+esc(formatDay(x.data_devolucao))+'</small><span class="status '+(live?"picked":"done")+'">'+(live?"Em uso":"Devolvido")+'</span></div>'+(live?'<button type="button" class="primary-button small-button" data-member-return="'+x.id+'">Devolver</button>':'')+'</div>';
+      return '<div class="admin-list-row"><div class="main-info"><strong>'+esc(x.componente_nome)+' · '+x.quantidade+' unidade(s)</strong><small>Retirado: '+esc(fmt(x.retirado_em))+' · Previsto: '+(x.sem_prazo?'Sem prazo':esc(formatDay(x.data_devolucao)))+'</small><span class="status '+(live?"picked":"done")+'">'+(live?"Em uso":"Devolvido")+'</span></div>'+(live?'<button type="button" class="primary-button small-button" data-member-return="'+x.id+'">Devolver</button>':'')+'</div>';
     }).join("")+'</div>':'<div class="empty-state">Nenhuma retirada direta registrada até agora.</div>';
     list.innerHTML+='<div style="margin-top:16px"><button type="button" class="secondary-button" id="member-back-profile">Voltar ao perfil</button></div>';
     $("#member-back-profile").onclick=identityProfileModal;
