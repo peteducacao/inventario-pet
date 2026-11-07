@@ -685,7 +685,7 @@ function adminSettings(root){
   $("#v2-backup-import").onclick=()=>$("#v2-backup-file").click();
   $("#v2-backup-file").onchange=async e=>{
     const file=e.target.files?.[0];if(!file)return;
-    if(file.size>1500000){toast("Arquivo acima do limite de 1,5 MB.",true);return;}
+    if(file.size>30000000){toast("Backup acima do limite de 30 MB.",true);return;}
     if(!await niceModalConfirm("Restaurar backup?","Esta operação substituirá dados e pode afetar reservas e usuários. Faça um backup antes de continuar.","Restaurar",true))return;
     try{
       const result=JSON.parse(await file.text());
