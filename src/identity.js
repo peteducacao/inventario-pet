@@ -215,8 +215,12 @@ async function memberReturn(req,env,user){
     env.DB.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND usuario_id=? AND status='retirada'").bind(stamp,actor,note||r.observacao,id,user.id)
   ]);
   if(done[0].meta?.changes!==1||done[1].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
-  await env.DB.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
-    .bind(user.id,id,"Devolução registrada","A devolução de seu material foi registrada.","devolucao").run();
+  // O PETiane já confirmou a própria devolução: não gerar aviso redundante.
+  // Para visitantes, a notificação interna de confirmação permanece.
+  if(user.papel!=="petiano"){
+    await env.DB.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
+      .bind(user.id,id,"Devolução registrada","A devolução de seu material foi registrada.","devolucao").run();
+  }
   await identityAudit(env.DB,"Devolução pelo titular","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(broken?" · "+broken+" com defeito":""),actor);
   return respond({ok:true});
 }
@@ -318,7 +322,13 @@ export async function identityAPI(req,env,adminAuth){
   }
   if(path==="/api/notifications"&&method==="GET"){
     if(!u)return respond({ok:true,notificacoes:[],nao_lidas:0});
-    const notices=await rows(db,"SELECT id,reserva_id,titulo,mensagem,tipo,criada_em,lida_em FROM notificacoes WHERE usuario_id=? ORDER BY criada_em DESC LIMIT 50",[u.id]);
+    // Ocultar também os avisos antigos de auto-devolução que já lotaram o sino
+    // dos PETianes, sem apagar notificações de decisões do administrador.
+    const isPetiane=u.papel==="petiano";
+    const sql="SELECT id,reserva_id,titulo,mensagem,tipo,criada_em,lida_em FROM notificacoes WHERE usuario_id=?"+
+      (isPetiane?" AND NOT (tipo='devolucao' AND titulo='Devolução registrada' AND mensagem='A devolução de seu material foi registrada.')":"")+
+      " ORDER BY criada_em DESC LIMIT 50";
+    const notices=await rows(db,sql,[u.id]);
     return respond({ok:true,notificacoes:notices,nao_lidas:notices.filter(n=>!n.lida_em).length});
   }
   if(path==="/api/notifications/read"&&method==="POST"){

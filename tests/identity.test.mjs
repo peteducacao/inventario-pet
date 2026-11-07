@@ -109,6 +109,27 @@ const deniedActive=await post("/api/admin/users/delete",{id:a.body.usuario.id},"
 assert.equal(deniedActive.status,409,"Não apagar conta com retirada aberta.");
 assert.equal((await post("/api/member/return",{id:loan.id,defeituosos:1},loginA.cookie)).status,200);
 assert.equal((await post("/api/member/return",{id:loan.id,defeituosos:0},loginA.cookie)).status,404);
+// O PETiane não deve receber avisos por ações que ele mesmo fez.
+const petNotices=await call("/api/notifications","GET",null,loginA.cookie);
+assert.equal(petNotices.status,200);
+assert.ok(!petNotices.body.notificacoes.some(n=>n.titulo==="Devolução registrada"),
+  "A devolução feita pelo próprio PETiane não deve tocar o sino.");
+// Avisos redundantes antigos precisam desaparecer da consulta sem apagar o registro do banco.
+db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
+  .run(db.prepare("SELECT id FROM usuarios WHERE public_id=?").get(a.body.usuario.id).id,loan.id,
+    "Devolução registrada","A devolução de seu material foi registrada.","devolucao");
+const legacyPetNotices=await call("/api/notifications","GET",null,loginA.cookie);
+assert.ok(!legacyPetNotices.body.notificacoes.some(n=>n.titulo==="Devolução registrada"),
+  "Avisos antigos de auto-devolução também devem ficar ocultos para PETianes.");
+assert.equal(legacyPetNotices.body.nao_lidas,0,"Avisos antigos ocultos não devem continuar contando no sino.");
+// Ações administrativas continuam disponíveis no sino do PETiane.
+db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
+  .run(db.prepare("SELECT id FROM usuarios WHERE public_id=?").get(a.body.usuario.id).id,loan.id,
+    "Mensagem da administração","Confira seu material.","info");
+const adminPetNotices=await call("/api/notifications","GET",null,loginA.cookie);
+assert.ok(adminPetNotices.body.notificacoes.some(n=>n.titulo==="Mensagem da administração"),
+  "Notificações importantes da administração devem continuar visíveis.");
+assert.equal(adminPetNotices.body.nao_lidas,1);
 assert.equal(db.prepare("SELECT em_uso,com_defeito FROM componentes WHERE id=?").get(item.id).em_uso,item.em_uso);
 assert.equal(db.prepare("SELECT em_uso,com_defeito FROM componentes WHERE id=?").get(item.id).com_defeito,item.com_defeito+1);
 

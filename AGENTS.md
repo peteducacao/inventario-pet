@@ -19,7 +19,7 @@
 2. O catálogo mantém a ação **Reservar** para Visitantes e **Retirar** para PETianes; a API deve negar uma ação não autorizada. Os seletores de autorização aceitam PETianes, Visitantes, Todos ou Ninguém.
 3. A permissão efetiva do perfil depende da **categoria E do item**, campos `permitir_petianos`/`permitir_visitantes`.
 4. Visitantes fazem reserva `pendente`; o Admin aprova/recusa. **Aprovar = entregar:** transição direta `pendente -> retirada` e incremento de `em_uso`; nunca exija segunda aprovação/retirada para pedidos novos.
-5. PETianes com tag `petiano` registram `retirada_direta` sem aprovação. Titular pode registrar **devolução sem aprovação** pela própria conta, e o Admin também pode fazê-lo. Não permitir devolução duplicada.
+5. PETianes com tag `petiano` registram `retirada_direta` sem aprovação. Titular pode registrar **devolução sem aprovação** pela própria conta, e o Admin também pode fazê-lo. Não permitir devolução duplicada. **Não notificar PETianes no sino sobre a própria devolução**; avisos redundantes antigos de auto-devolução devem ficar ocultos, sem esconder notificações administrativas.
 6. Estoque: disponível = `quantidade - em_uso - com_defeito`. Jamais deixe estoque negativo/inconsistente.
 7. Filamentos: cada cor tem registro em `filamentos` ligado a `componentes` pela chave `FILAMENTO-<id>`. Preserve vínculo, quantidades e devoluções; não duplique os cadastros.
 8. Exclusão de categoria exige confirmação e backup JSON; a categoria sai da lista ativa, o histórico administrativo registra a exclusão.
