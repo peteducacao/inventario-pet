@@ -272,11 +272,14 @@ async function adminDeleteUser(req,env){
   return respond({ok:true,excluido:id});
 }
 async function adminList(env){
+  // Contar no D1, e não apenas na página carregada, para manter totais corretos.
+  const summary=await env.DB.prepare("SELECT COUNT(*) AS todos,COALESCE(SUM(CASE WHEN papel='petiano' THEN 1 ELSE 0 END),0) AS petiano,COALESCE(SUM(CASE WHEN papel='visitante' THEN 1 ELSE 0 END),0) AS visitante FROM usuarios").first();
   const list=await rows(env.DB,"SELECT public_id AS id,nome,email,login,must_change_password,papel AS tag,ativo,notificar_email,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
   const loans=await rows(env.DB,"SELECT usuario_id,COUNT(*) AS n FROM reservas WHERE tipo='retirada_direta' AND status='retirada' AND usuario_id IS NOT NULL GROUP BY usuario_id");
   const usersIds=await rows(env.DB,"SELECT id,public_id FROM usuarios WHERE id IN (SELECT DISTINCT usuario_id FROM reservas WHERE tipo='retirada_direta' AND status='retirada')");
   const map=new Map(usersIds.map(x=>[x.id,x.public_id])),counts=new Map(loans.map(x=>[map.get(x.usuario_id),x.n]));
-  return respond({ok:true,usuarios:list.map(x=>({...x,retiradas_ativas:counts.get(x.id)||0}))});
+  return respond({ok:true,usuarios:list.map(x=>({...x,retiradas_ativas:counts.get(x.id)||0})),
+    totais:{todos:Number(summary?.todos)||0,petiano:Number(summary?.petiano)||0,visitante:Number(summary?.visitante)||0}});
 }
 export async function identityAPI(req,env,adminAuth){
   const url=new URL(req.url),path=url.pathname,method=req.method,db=env.DB;
