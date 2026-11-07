@@ -349,8 +349,8 @@ function reservationRow(r){
   const x=state.admin.componentes.find(z=>z.id===r.componente_id);
   const group=reservationGroup(r),tag={pendente:"Pendente",ativas:r.status==="aprovada"?"Aprovada":"Retirado",atrasadas:"Atrasada",concluidas:r.status==="devolvida"?"Devolvido":"Encerrada"}[group];
   const cls=group==="pendente"?"pending":group==="ativas"?(r.status==="retirada"?"picked":"approved"):group==="atrasadas"?"late":"";
-  const actions=r.status==="pendente"?'<button class="primary-button" type="button" data-res-do="aprovar" data-id="'+r.id+'">'+iconSvg("check",14)+' Aprovar</button><button type="button" class="danger-button" data-res-do="recusar" data-id="'+r.id+'">Recusar</button>':
-    r.status==="aprovada"?'<button type="button" class="primary-button" data-res-do="retirar" data-id="'+r.id+'">Registrar retirada</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
+  const actions=r.status==="pendente"?'<button class="primary-button" type="button" data-res-do="aprovar" data-id="'+r.id+'">'+iconSvg("check",14)+' Aprovar e entregar</button><button type="button" class="danger-button" data-res-do="recusar" data-id="'+r.id+'">Recusar</button>':
+    r.status==="aprovada"?'<button type="button" class="outline-button" data-res-do="retirar" data-id="'+r.id+'">Regularizar aprovação antiga</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
     r.status==="retirada"?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>':"";
   const mailAction=r.status==="retirada"&&(r.email_conta||r.email)?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
   return '<div class="reservation-row">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb"></div>')+
@@ -427,7 +427,7 @@ async function adminReservationAction(id,action){
     decision=await confirmReservationRefusal(r);
     if(!decision)return;
   }else{
-    const descriptions={aprovar:"Aprovar a reserva de "+r.nome_solicitante+"?",retirar:"Confirmar que o material foi entregue?"};
+    const descriptions={aprovar:"Aprovar e confirmar que "+r.nome_solicitante+" recebeu o material? A retirada será registrada automaticamente, e a pessoa poderá registrar a devolução pela própria conta.",retirar:"Regularizar uma aprovação antiga e registrar a retirada?"};
     if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar"))return;
   }
   try{
@@ -436,7 +436,7 @@ async function adminReservationAction(id,action){
     if(action==="recusar"&&response.notificacao_registrada===false){
       toast("Reserva recusada, mas esta solicitação não está vinculada a uma conta: notificação não enviada.",true);
     }else{
-      toast(action==="recusar"?"Recusa registrada e notificação salva.":"Reserva atualizada.");
+      toast(action==="recusar"?"Recusa registrada e notificação salva.":action==="aprovar"?"Reserva aprovada e retirada registrada!":"Reserva atualizada.");
     }
   }catch(e){toast(e.message,true);}
 }
