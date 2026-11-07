@@ -278,15 +278,27 @@ async function processRequest(req, env) {
       return j({ok:true});
     }
     if(action==="emprestimos"){
-      const id=requireId(b.id),permit=b.permitir_emprestimos===true?1:0;
-      if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
-      const f=await db.prepare("SELECT id,cor,componente_id FROM filamentos WHERE id=?").bind(id).first();
+      const id=requireId(b.id),f=await db.prepare("SELECT id,cor,componente_id FROM filamentos WHERE id=?").bind(id).first();
       if(!f)return bad("Filamento não encontrado.",404);
-      await db.batch([
-        db.prepare("UPDATE filamentos SET permitir_emprestimos=? WHERE id=?").bind(permit,id),
-        db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE id=?").bind(permit,f.componente_id)
-      ]);
-      await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(permit?"Liberados":"Bloqueados"));
+      const profile=b.perfil;
+      if(profile==="petianos"||profile==="visitantes"){
+        if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
+        const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
+        const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
+        await db.batch([
+          db.prepare("UPDATE filamentos SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,id),
+          db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,f.componente_id)
+        ]);
+        await auditLog(db,"Alterou retiradas","filamento",id,f.cor+" · "+(profile==="petianos"?"PETianes":"Visitantes")+" · "+(enabled?"Liberada":"Bloqueada"));
+      }else{
+        if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
+        const enabled=b.permitir_emprestimos?1:0;
+        await db.batch([
+          db.prepare("UPDATE filamentos SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,id),
+          db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,f.componente_id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(enabled?"Liberados":"Bloqueados"));
+      }
       return j({ok:true});
     }
     if(action!=="criar"&&action!=="editar")return bad("Ação inválida.");
@@ -381,16 +393,29 @@ async function processRequest(req, env) {
     const b = await input(req,9000),name=str(b.nome,80),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
     if(b.acao==="emprestimos"){
       const id=requireId(b.id);
-      if(typeof b.permitir_emprestimos!=="boolean")return bad("Informe a permissão desejada.");
       const cat=await db.prepare("SELECT nome,arquivada FROM categorias WHERE id=?").bind(id).first();
       if(!cat||cat.arquivada)return bad("Categoria não encontrada.",404);
-      const enabled=b.permitir_emprestimos?1:0;
-      await db.batch([
-        db.prepare("UPDATE categorias SET permitir_emprestimos=? WHERE id=?").bind(enabled,id),
-        db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE categoria_id=?").bind(enabled,id),
-        db.prepare("UPDATE filamentos SET permitir_emprestimos=? WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(enabled,id)
-      ]);
-      await auditLog(db,"Alterou empréstimos","categoria",id,cat.nome+" · Todos os itens "+(enabled?"liberados":"bloqueados"));
+      const profile=b.perfil;
+      if(profile==="petianos"||profile==="visitantes"){
+        if(typeof b.permitir!=="boolean")return bad("Informe a permissão desejada.");
+        const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
+        const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
+        await db.batch([
+          db.prepare("UPDATE categorias SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,id),
+          db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE categoria_id=?").bind(enabled,enabled,id),
+          db.prepare("UPDATE filamentos SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(enabled,enabled,id)
+        ]);
+        await auditLog(db,"Alterou retiradas","categoria",id,cat.nome+" · "+(profile==="petianos"?"PETianes":"Visitantes")+" · Todos os itens "+(enabled?"liberados":"bloqueados"));
+      }else{
+        if(typeof b.permitir_emprestimos!=="boolean")return bad("Informe a permissão desejada.");
+        const enabled=b.permitir_emprestimos?1:0;
+        await db.batch([
+          db.prepare("UPDATE categorias SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,id),
+          db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE categoria_id=?").bind(enabled,enabled,enabled,id),
+          db.prepare("UPDATE filamentos SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(enabled,enabled,enabled,id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","categoria",id,cat.nome+" · Todos os itens "+(enabled?"liberados":"bloqueados"));
+      }
       return j({ok:true});
     }
     if (b.acao === "criar") {
@@ -437,11 +462,21 @@ async function processRequest(req, env) {
   }
   if(path==="/api/admin/item/loans" && method==="POST"){
     const b=await input(req,2000),id=requireId(b.id);
-    if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
     const item=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
     if(!item||isFilamentMirror(item))return bad("Material não encontrado ou pertence à aba Filamentos.",404);
-    await db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE id=?").bind(b.permitir_emprestimos?1:0,id).run();
-    await auditLog(db,"Alterou empréstimos","material",id,item.nome+" · "+(b.permitir_emprestimos?"Liberados":"Bloqueados"));
+    const profile=b.perfil;
+    if(profile==="petianos"||profile==="visitantes"){
+      if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
+      const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
+      const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
+      await db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,id).run();
+      await auditLog(db,"Alterou retiradas","material",id,item.nome+" · "+(profile==="petianos"?"PETianes":"Visitantes")+" · "+(enabled?"Liberada":"Bloqueada"));
+    }else{
+      if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
+      const enabled=b.permitir_emprestimos?1:0;
+      await db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,id).run();
+      await auditLog(db,"Alterou empréstimos","material",id,item.nome+" · "+(enabled?"Liberados":"Bloqueados"));
+    }
     return j({ok:true});
   }
   if (path === "/api/admin/reservation" && method === "POST") {
