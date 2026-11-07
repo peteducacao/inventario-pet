@@ -378,9 +378,26 @@ async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
   if(action==="devolver")return returnModal(r);
   if(action==="cobrar"){
-    if(!await niceModalConfirm("Enviar cobrança pelo Gmail?", "O aviso será colocado na fila para envio a "+(r.email_conta||r.email)+".", "Colocar na fila"))return;
-    try{const result=await api("/api/admin/mail/queue","POST",{id});toast(result.mensagem||"Cobrança colocada na fila do Gmail.");}
-    catch(e){toast(e.message,true);}
+    try{
+      const draft=await api("/api/admin/mail/preview?id="+id);
+      openModal("Cobrança por e-mail #"+id,"Confira o destinatário e edite a mensagem antes de enviá-la.",
+        '<form id="admin-manual-mail-form" class="modal-main">'+
+        '<p class="notice"><strong>Para:</strong> '+esc(draft.destinatario)+'</p>'+
+        '<div class="field"><label for="admin-mail-subject">Assunto</label><input id="admin-mail-subject" required maxlength="180" value="'+attr(draft.assunto)+'"></div>'+
+        '<div class="field"><label for="admin-mail-body">Mensagem</label><textarea id="admin-mail-body" required rows="11" maxlength="5000">'+esc(draft.mensagem)+'</textarea></div>'+
+        '<p class="hint">O envio respeita a tag e o prazo. Você pode alterar o texto desta cobrança sem mudar o modelo padrão.</p>'+
+        '<div class="modal-footer"><button type="button" class="secondary-button" id="admin-mail-cancel">Cancelar</button>'+
+        '<button type="submit" class="primary-button" id="admin-mail-send">Colocar na fila de envio</button></div></form>');
+      $("#admin-mail-cancel").onclick=closeModal;
+      $("#admin-manual-mail-form").onsubmit=async e=>{
+        e.preventDefault();
+        const send=$("#admin-mail-send");send.disabled=true;send.textContent="Registrando…";
+        try{
+          const result=await api("/api/admin/mail/queue","POST",{id,assunto:$("#admin-mail-subject").value,mensagem:$("#admin-mail-body").value});
+          closeModal();toast(result.mensagem||"Cobrança colocada na fila do Gmail.");
+        }catch(error){toast(error.message,true);send.disabled=false;send.textContent="Colocar na fila de envio";}
+      };
+    }catch(e){toast(e.message,true);}
     return;
   }
   let decision=null;
@@ -406,7 +423,7 @@ let adminUserFilter="todos";
 let adminUserQuery="";
 async function adminUsers(root){
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Usuários</h2></div></div>'+
-    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-users-search" placeholder="Buscar nome, login ou ID..." value="'+attr(adminUserQuery)+'"></div>'+
+    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-users-search" placeholder="Buscar nome, login, e-mail ou ID..." value="'+attr(adminUserQuery)+'"></div>'+
     '<select id="admin-users-filter" aria-label="Filtro de usuários" class="admin-filter"><option value="todos">Todos</option><option value="petiano">PETianos</option><option value="visitante">Visitantes</option></select></div>'+
     '<div id="admin-users-list" class="user-list">Carregando…</div><nav id="admin-users-pages" class="page-controls"></nav></section>';
   $("#admin-users-filter").value=adminUserFilter;
@@ -433,7 +450,7 @@ function paintUsers(){
   const list=$("#admin-users-list");if(!list)return;
   const users=UI.users||[];
   const query=adminUserQuery.toLowerCase().trim();
-  const found=users.filter(x=>(adminUserFilter==="todos"||x.tag===adminUserFilter)&&(!query||[x.nome,x.login,x.id].some(v=>String(v||"").toLowerCase().includes(query))));
+  const found=users.filter(x=>(adminUserFilter==="todos"||x.tag===adminUserFilter)&&(!query||[x.nome,x.login,x.email,x.id].some(v=>String(v||"").toLowerCase().includes(query))));
   const p=paginate(found,UI.usersPage||1);UI.usersPage=p.page;
   list.innerHTML=found.length?p.items.map(userRow).join(""):'<div class="empty-state">Nenhum usuário encontrado.</div>';
   $("#admin-users-pages").innerHTML=pageButtons(p,"users");
@@ -902,20 +919,32 @@ function adminItemEditor(id){
 function adminSettings(root){
   const cfg=state.admin.configuracoes||{};
   const current=String(cfg.limpeza_reservas||"nunca");
+  const settingsToggle=(id,label,explanation,enabled)=>
+    '<label class="settings-toggle" for="'+id+'"><span class="settings-toggle-label"><strong>'+esc(label)+'</strong>'+
+    (explanation?'<small>'+esc(explanation)+'</small>':'')+'</span>'+
+    '<input id="'+id+'" type="checkbox" role="switch" '+(enabled?"checked":"")+'><span class="settings-switch" aria-hidden="true"></span></label>';
+  const emailEditor='<section class="admin-panel mail-template-panel">'+
+    '<div class="admin-section-head"><div><h2>Textos dos e-mails</h2><p>Personalize assuntos e mensagens. Os dados do empréstimo serão preenchidos automaticamente.</p></div></div>'+
+    '<div class="field"><label for="mail-template-type">Tipo de cobrança ou lembrete</label><select id="mail-template-type"><option value="">Carregando modelos…</option></select></div>'+
+    '<div class="field"><label for="mail-template-subject">Assunto do e-mail</label><input type="text" maxlength="180" id="mail-template-subject" placeholder="Assunto"></div>'+
+    '<div class="field"><label for="mail-template-body">Texto da mensagem</label><textarea id="mail-template-body" maxlength="5000" rows="9" placeholder="Mensagem"></textarea></div>'+
+    '<p class="mail-template-help">Use <code>{nome}</code>, <code>{material}</code>, <code>{quantidade}</code>, <code>{prazo}</code>, <code>{registro}</code> e <code>{link}</code> nos textos.</p>'+
+    '<div class="mail-template-preview"><strong>Prévia com dados fictícios</strong><p id="mail-template-preview-subject"></p><pre id="mail-template-preview-body"></pre></div>'+
+    '<div class="mail-template-actions"><button type="button" class="primary-button" id="mail-template-save">Salvar texto deste modelo</button></div></section>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Configurações</h2></div></div>'+
     '<form id="admin-settings-form" class="settings-grid">'+
     '<div class="settings-block"><div class="field"><label for="v2-cleanup">Excluir empréstimos devolvidos após</label>'+
     '<select id="v2-cleanup"><option value="nunca">Nunca apagar</option><option value="1min">1 minuto (teste)</option><option value="7">7 dias</option><option value="15">15 dias</option><option value="30">30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option><option value="personalizado">Outro prazo</option></select></div>'+
     '<div id="v2-custom-wrap" class="field" hidden><label for="v2-custom-days">Dias</label><input id="v2-custom-days" type="number" min="1" max="3650" value="'+attr(/^\d+$/.test(current)?current:"45")+'"></div>'+
     '<p>Somente reservas devolvidas são apagadas. Reservas pendentes e materiais em uso permanecem.</p></div>'+
-    '<div class="settings-block"><strong>Dados do inventário</strong><p>'+esc(adminLastUpdate())+'</p><div class="field"><label><input type="checkbox" id="v2-demo" '+(cfg.modo_demo==="sim"?"checked":"")+'> Exibir modo de demonstração</label></div></div>'+
-    '<div class="settings-block"><strong>Notificações por Gmail</strong><p>O disparo automático depende da conexão com o Apps Script. A cobrança manual também respeita as permissões da tag.</p>'+
-    '<div class="field"><label><input type="checkbox" id="v2-mail-auto" '+(cfg.avisos_email==="sim"?"checked":"")+'> Ativar lembretes automáticos</label></div>'+
-    '<div class="field"><label><input type="checkbox" id="v2-mail-pet" '+(cfg.notificacoes_petianos==="sim"?"checked":"")+'> Notificar PETianes por e-mail (se houver e-mail e prazo)</label></div>'+
-    '<div class="field"><label><input type="checkbox" id="v2-mail-visitor" '+(cfg.notificacoes_visitantes!=="nao"?"checked":"")+'> Notificar visitantes por e-mail</label></div>'+
+    '<div class="settings-block"><strong>Dados do inventário</strong><p>'+esc(adminLastUpdate())+'</p>'+settingsToggle("v2-demo","Exibir modo de demonstração","Ativa os exemplos visuais do catálogo.",cfg.modo_demo==="sim")+'</div>'+
+    '<div class="settings-block settings-gmail-block"><strong>Notificações por Gmail</strong><p>Controle quem recebe cobranças. Os PETianes ficam desativados por padrão.</p>'+
+    settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
+    settingsToggle("v2-mail-pet","Notificar PETianes","Somente com prazo e permissão habilitada.",cfg.notificacoes_petianos==="sim")+
+    settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+
     '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
-    '<section class="admin-panel"><div class="admin-section-head"><h2>Backup</h2></div>'+
+    emailEditor+'<section class="admin-panel"><div class="admin-section-head"><h2>Backup</h2></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
     '<button type="button" class="outline-button" id="v2-backup-import">Importar backup</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
     '<button type="button" class="outline-button" id="v2-run-cleanup">Executar limpeza</button></div></section>';
@@ -930,6 +959,45 @@ function adminSettings(root){
       await adminReload();adminBuild();toast("Configurações salvas.");
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
+
+  // Editor de modelos: salvar um tipo por vez, mantendo a configuração dos destinatários.
+  let mailTemplates=[],templateSelected="",templateChanged=false;
+  const typeSelect=$("#mail-template-type"),subjectField=$("#mail-template-subject"),bodyField=$("#mail-template-body");
+  const example={nome:"Ana",material:"Arduino Uno",quantidade:"1",prazo:"15/11/2026",registro:"123",link:"https://inventario-pet.pet-educacao.workers.dev"};
+  const sampleText=value=>Object.entries(example).reduce((out,[key,content])=>out.split("{"+key+"}").join(content),String(value||""));
+  const updateSample=()=>{
+    $("#mail-template-preview-subject").textContent=sampleText(subjectField.value);
+    $("#mail-template-preview-body").textContent=sampleText(bodyField.value);
+  };
+  const loadTemplate=event=>{
+    const model=mailTemplates.find(item=>item.evento===event);if(!model)return;
+    templateSelected=event;typeSelect.value=event;subjectField.value=model.assunto;bodyField.value=model.mensagem;
+    templateChanged=false;updateSample();
+  };
+  [subjectField,bodyField].forEach(field=>field.addEventListener("input",()=>{templateChanged=true;updateSample();}));
+  typeSelect.onchange=()=>{
+    const requested=typeSelect.value;
+    if(templateChanged&&!window.confirm("As alterações deste modelo não foram salvas. Deseja descartá-las?")){
+      typeSelect.value=templateSelected;return;
+    }
+    loadTemplate(requested);
+  };
+  $("#mail-template-save").onclick=async()=>{
+    const button=$("#mail-template-save");button.disabled=true;button.textContent="Salvando modelo…";
+    try{
+      await api("/api/admin/mail/templates","POST",{evento:templateSelected,assunto:subjectField.value,mensagem:bodyField.value});
+      const model=mailTemplates.find(x=>x.evento===templateSelected);
+      if(model){model.assunto=subjectField.value.trim();model.mensagem=bodyField.value.trim();}
+      templateChanged=false;toast("Modelo de e-mail salvo.");
+    }catch(error){toast(error.message,true);}
+    finally{button.disabled=false;button.textContent="Salvar texto deste modelo";}
+  };
+  api("/api/admin/mail/templates").then(result=>{
+    if(!document.contains(root)||UI.adminTab!=="configuracoes")return;
+    mailTemplates=result.templates||[];
+    typeSelect.innerHTML=mailTemplates.map(x=>'<option value="'+attr(x.evento)+'">'+esc(x.nome)+'</option>').join("");
+    if(mailTemplates.length)loadTemplate(mailTemplates[0].evento);
+  }).catch(error=>{if(document.contains(root))typeSelect.innerHTML='<option value="">'+esc(error.message)+'</option>';toast("Não foi possível carregar os modelos de e-mail.",true);});
   $("#v2-mail-history").onclick=async()=>{
     try{
       const result=await api("/api/admin/mail/log");
