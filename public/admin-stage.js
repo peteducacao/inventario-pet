@@ -360,29 +360,44 @@ async function adminToggleTag(id){
 }
 /* Categorias: arraste no desktop, use setas no celular. */
 function adminCategories(root){
-  const cats=state.admin.categorias;
-  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Arraste para ordenar ou use as setas.</p></div>'+
+  const cats=(state.admin.categorias||[]).filter(x=>!x.arquivada);
+  const archived=(state.admin.categorias||[]).filter(x=>x.arquivada);
+  const itemCounts=cat=>{
+    const items=state.admin.componentes.filter(x=>x.categoria_id===cat.id);
+    const active=items.filter(x=>!isArchived(x)).length;
+    return active+' ativos'+(items.length-active?' · '+(items.length-active)+' arquivados':'');
+  };
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Organize e defina quem pode acessar cada categoria.</p></div>'+
     '<div class="buttons"><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
-    '<div class="category-list" id="v2-category-list">'+cats.map((c,i)=>
-    '<div class="category-row" data-category-id="'+c.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
-    '<strong>'+esc(c.nome)+'</strong><small>'+state.admin.componentes.filter(x=>x.categoria_id===c.id&&!isArchived(x)).length+' itens</small>'+
-    '<div class="actions"><button type="button" class="square-action" data-cat-up="'+c.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
-    '<button type="button" class="square-action" data-cat-down="'+c.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
-    '<button type="button" class="square-action" data-cat-edit="'+c.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
-    '<button type="button" class="square-action danger" data-cat-delete="'+c.id+'" aria-label="Excluir">'+iconSvg("trash")+'</button></div></div>').join("")+'</div></section>';
+    '<div class="category-list" id="v2-category-list">'+cats.map((cat,i)=>
+    '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
+    '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
+    '<small class="tag '+(Number(cat.visivel_visitante)===0?'pending':'')+'">'+(Number(cat.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
+    '<div class="actions"><button type="button" class="square-action" data-cat-up="'+cat.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
+    '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
+    '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
+    '<button type="button" class="square-action danger" data-cat-delete="'+cat.id+'" aria-label="Excluir categoria e seus materiais">'+iconSvg("trash")+'</button></div></div>').join("")+'</div>'+
+    (archived.length?'<details class="editor-advanced"><summary>Categorias excluídas ('+archived.length+')</summary><div class="category-list">'+archived.map(cat=>
+      '<div class="category-row archived"><strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small><button class="outline-button small-button" type="button" data-cat-restore="'+cat.id+'">Restaurar categoria</button></div>').join("")+'</div></details>':'')+
+    '</section>';
   $("#v2-new-category").onclick=()=>editCategory();
-  $$("[data-cat-up]").forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
-  $$("[data-cat-down]").forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
-  $$("[data-cat-edit]").forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
-  $$("[data-cat-delete]").forEach(b=>b.onclick=()=>adminDeleteCategory(Number(b.dataset.catDelete)));
+  $$("[data-cat-up]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
+  $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
+  $$("[data-cat-edit]",root).forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
+  $$("[data-cat-delete]",root).forEach(b=>b.onclick=()=>adminDeleteCategory(Number(b.dataset.catDelete)));
+  $$("[data-cat-restore]",root).forEach(b=>b.onclick=async()=>{
+    if(!await niceModalConfirm("Restaurar categoria?","Os materiais anteriormente arquivados continuarão arquivados até serem restaurados individualmente.","Restaurar"))return;
+    try{await api("/api/admin/category","POST",{acao:"restaurar",id:Number(b.dataset.catRestore)});await adminReload();adminBuild();toast("Categoria restaurada.");}
+    catch(error){toast(error.message,true);}
+  });
   let dragged=null;
-  $$(".category-row").forEach(el=>{
+  $$("[data-category-id]",root).forEach(el=>{
     el.ondragstart=e=>{dragged=Number(el.dataset.categoryId);el.classList.add("dragging");e.dataTransfer.effectAllowed="move";};
     el.ondragend=()=>{el.classList.remove("dragging");dragged=null;};
     el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect="move";};
     el.ondrop=async e=>{
       e.preventDefault();const target=Number(el.dataset.categoryId);if(!dragged||target===dragged)return;
-      const ids=state.admin.categorias.map(c=>c.id),a=ids.indexOf(dragged),b=ids.indexOf(target);
+      const ids=cats.map(cat=>cat.id),a=ids.indexOf(dragged),b=ids.indexOf(target);
       if(a<0||b<0)return;ids.splice(b,0,...ids.splice(a,1));
       await commitCategoryOrder(ids);
     };
@@ -390,16 +405,31 @@ function adminCategories(root){
 }
 async function commitCategoryOrder(ids){
   try{await api("/api/admin/category","POST",{acao:"ordenar",ordem:ids});await adminReload();adminBuild();toast("Ordem salva.");}
-  catch(e){toast(e.message,true);}
+  catch(error){toast(error.message,true);}
 }
-async function adminDeleteCategory(id){
-  const c=state.admin.categorias.find(x=>x.id===id);if(!c)return;
-  if(!await niceModalConfirm("Excluir categoria?",c.nome+" deve estar vazia para ser excluída.","Excluir",true))return;
-  try{await api("/api/admin/category","POST",{acao:"excluir",id});await adminReload();adminBuild();toast("Categoria excluída.");}
-  catch(e){toast(e.message,true);}
+function adminDeleteCategory(id){
+  const cat=state.admin.categorias.find(x=>x.id===id);if(!cat)return;
+  const linked=state.admin.componentes.filter(x=>x.categoria_id===id);
+  const active=linked.filter(x=>!isArchived(x)).length;
+  openModal("Excluir categoria e materiais","Confirmação de segurança",
+    '<form id="delete-category-confirm" class="modal-main">'+
+    '<p>Esta ação retirará <strong>'+esc(cat.nome)+'</strong> e '+active+' material(is) do inventário. Registros antigos de empréstimos serão preservados.</p>'+
+    '<p class="notice warning">Categorias e materiais ficarão arquivados para recuperação. Reservas ou retiradas em aberto impedem esta operação.</p>'+
+    '<label for="cat-delete-name">Digite exatamente <strong>'+esc(cat.nome)+'</strong> para confirmar:</label>'+
+    '<input id="cat-delete-name" required autocomplete="off" placeholder="'+attr(cat.nome)+'">'+
+    '<div class="confirm-actions"><button class="secondary-button" type="button" id="cat-delete-cancel">Cancelar</button>'+
+    '<button class="danger-button" type="submit" id="cat-delete-submit">Excluir categoria e materiais</button></div></form>');
+  $("#cat-delete-cancel").onclick=closeModal;
+  $("#delete-category-confirm").onsubmit=async e=>{
+    e.preventDefault();const name=$("#cat-delete-name").value;
+    if(name!==cat.nome){toast("O nome não corresponde à categoria.",true);return;}
+    const button=$("#cat-delete-submit");button.disabled=true;
+    try{
+      await api("/api/admin/category","POST",{acao:"excluir",id,confirmacao:name});
+      await adminReload();closeModal();adminBuild();toast("Categoria e materiais arquivados.");
+    }catch(error){toast(error.message,true);button.disabled=false;}
+  };
 }
-
-
 /* Filamentos: só cor e quantidade, sem patrimônio nem empréstimo. */
 const FILAMENT_PALETTE=[
   ["Preto","#24272C"],["Branco","#F4F5F1"],["Vermelho","#D83741"],
