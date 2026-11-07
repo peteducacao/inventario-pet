@@ -27,6 +27,10 @@ O projeto usa JavaScript sem framework para o navegador. `src/index.js` exporta 
 
 **Arquivos fundamentais da API:** `src/index.js` (roteamento e inventário), `src/identity.js` (contas, sessão, retiradas e devoluções) e `src/mail-bridge.js` (Gmail, filas, preferências e modelos de e-mail).
 
+**Contas e recuperação (nov/2026):** cadastro exige e-mail exclusivo (comparação sem distinção entre maiúsculas/minúsculas); a migração `0022_seguranca_contas_email_recuperacao.sql` acrescenta gatilhos que protegem novos cadastros e alterações sem modificar e-mails repetidos eventualmente existentes. A senha pode ser livremente escolhida (1–2.048 caracteres), com indicação fraca/média/forte e confirmação consciente da senha fraca, sem 2FA obrigatório. Ao entrar, a pessoa volta ao catálogo, sem abrir automaticamente Minha conta. A alteração do e-mail exige a senha atual, encerra sessões anteriores e avisa o endereço antigo. A sessão pessoal nova vale 30 dias; o acesso Admin é independente.
+
+**Recuperação por e-mail:** `POST /api/identity/recover` recebe `{email}` e responde sempre a mesma mensagem, exista ou não uma conta; pedidos para a mesma conta têm intervalo de 15 minutos e IP limitado. A API cria segredo aleatório de 256 bits, armazena seu SHA-256 em `identity_recovery_tokens` e enfileira link no `identity_mail_queue` usando Apps Script já configurado (`processarFilaPET`). Expira em 30 minutos, é consumido uma única vez por `POST /api/identity/reset-by-email`, revoga sessões e avisa a conta. A fila de identidade usa IDs `conta-*`, separados de `mail_queue` das cobranças. Links expirados são descartados; conteúdo do e-mail é limpo após confirmação. A página de redefinição usa fragmento `#redefinir=...` retirado da URL antes de completar o pedido. Nunca logar ou publicar esse segredo. Sem integração Gmail operacional, o usuário deve pedir redefinição ao Admin, e a equipe deve investigar a fila.
+
 ## 2. Mapa de arquivos
 
 ```text
