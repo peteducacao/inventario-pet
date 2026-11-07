@@ -94,7 +94,7 @@ await wait(70);
 assert.equal(d.querySelectorAll(".catalog-card").length,1,"Filtro de busca não funciona.");
 search.value="";search.dispatchEvent(new w.Event("input",{bubbles:true}));
 await wait(70);
-await click('[data-photo="1"]');
+await click('[data-photo]');
 assert.ok(d.querySelector(".photo-lightbox"),"Ampliação dos desenhos não funciona.");
 await click("#modal-root [data-close]");
 assert.deepEqual(publicUI.errors,[],"Erros do catálogo.");
