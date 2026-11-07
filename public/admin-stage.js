@@ -415,8 +415,8 @@ function adminDeleteCategory(id){
   const active=linked.filter(x=>!isArchived(x)).length;
   openModal("Excluir categoria e materiais","Confirmação de segurança",
     '<form id="delete-category-confirm" class="modal-main">'+
-    '<p>Esta ação retirará <strong>'+esc(cat.nome)+'</strong> e '+active+' material(is) do inventário. Registros antigos de empréstimos serão preservados.</p>'+
-    '<p class="notice warning">Categorias e materiais ficarão arquivados para recuperação. Reservas ou retiradas em aberto impedem esta operação.</p>'+
+    '<p>Esta ação retirará <strong>'+esc(cat.nome)+'</strong> e '+linked.length+' material(is) do inventário, inclusive arquivados. Empréstimos já concluídos vinculados também serão excluídos.</p>'+
+    '<p class="notice warning">Exclusão definitiva. Um backup será baixado antes. Reservas ou retiradas em aberto impedem esta operação.</p>'+
     '<label for="cat-delete-name">Digite exatamente <strong>'+esc(cat.nome)+'</strong> para confirmar:</label>'+
     '<input id="cat-delete-name" required autocomplete="off" placeholder="'+attr(cat.nome)+'">'+
     '<div class="confirm-actions"><button class="secondary-button" type="button" id="cat-delete-cancel">Cancelar</button>'+
@@ -427,8 +427,10 @@ function adminDeleteCategory(id){
     if(name!==cat.nome){toast("O nome não corresponde à categoria.",true);return;}
     const button=$("#cat-delete-submit");button.disabled=true;
     try{
-      await api("/api/admin/category","POST",{acao:"excluir",id,confirmacao:name});
-      await adminReload();closeModal();adminBuild();toast("Categoria e materiais arquivados.");
+      const backup=await api("/api/admin/backup");
+       saveDownload("backup-antes-de-excluir-"+localDate()+".json",JSON.stringify(backup,null,2));
+       await api("/api/admin/category","POST",{acao:"excluir",id,confirmacao:name});
+      await adminReload();closeModal();adminBuild();toast("Categoria e materiais excluídos. Backup gerado.");
     }catch(error){toast(error.message,true);button.disabled=false;}
   };
 }
