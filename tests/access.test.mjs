@@ -91,11 +91,11 @@ const addItem=await postAdmin("/api/admin/item",{categoria_id:catId,nome:"Compon
  mostrar_quantidade:true,mostrar_em_uso:true,mostrar_defeito:true,visivel_visitante:true,grupo_variacoes:"",unidade:"unidades"});
 assert.equal(addItem.status,200,JSON.stringify(addItem.body));
 assert.equal((await postAdmin("/api/admin/category",{acao:"excluir",id:catId,confirmacao:"errado"})).status,400);
-const archived=await postAdmin("/api/admin/category",{acao:"excluir",id:catId,confirmacao:"Categoria de teste para exclusão"});
-assert.equal(archived.status,200,JSON.stringify(archived.body));
-assert.equal(archived.body.arquivados,1);
-assert.equal(db.prepare("SELECT arquivada FROM categorias WHERE id=?").get(catId).arquivada,1);
-assert.equal(db.prepare("SELECT arquivado FROM componentes WHERE categoria_id=?").get(catId).arquivado,1);
+const deleted=await postAdmin("/api/admin/category",{acao:"excluir",id:catId,confirmacao:"Categoria de teste para exclusão"});
+assert.equal(deleted.status,200,JSON.stringify(deleted.body));
+assert.equal(deleted.body.excluidos,1);
+assert.equal(db.prepare("SELECT COUNT(*) AS n FROM categorias WHERE id=?").get(catId).n,0,"Categoria deve ser realmente excluída.");
+assert.equal(db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=?").get(catId).n,0,"Material da categoria deve ser excluído.");
 assert.ok(!(await call("/api/catalog")).body.categorias.some(x=>x.id===catId));
 console.log("ACESSO OK: visitante/PETiano, filamentos, categorias, variações, histórico e exclusão segura.");
 db.close();
