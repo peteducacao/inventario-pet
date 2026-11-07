@@ -31,6 +31,8 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/variation-linking.test.mjs
       - name: Testar backup completo e restauração no banco isolado
         run: node --disable-warning=ExperimentalWarning tests/backup-v2.test.mjs
+      - name: Testar segurança e fila de cobranças Gmail
+        run: node --disable-warning=ExperimentalWarning tests/gmail.test.mjs
       - name: Testar banco local, identidade e reservas
         run: node --disable-warning=ExperimentalWarning tests/identity.test.mjs
       - name: Testar permissões, histórico, grupos e exclusão no banco isolado
