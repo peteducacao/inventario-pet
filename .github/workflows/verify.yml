@@ -26,6 +26,8 @@ jobs:
           node --check src/identity.js
       - name: Testar banco local, identidade e reservas
         run: node --disable-warning=ExperimentalWarning tests/identity.test.mjs
+      - name: Testar permissões, histórico, grupos e exclusão no banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/access.test.mjs
       - name: Testar navegação antiga, sem tocar na produção
         run: node tests/admin-navigation.test.mjs
       - name: Testar catálogo e painel novos, sem tocar na produção
