@@ -142,7 +142,7 @@ function finalCard(original,siblings=[]){
   const familyName=String(original.grupo_variacoes||"").trim();
   const groupKey=familyName.toLocaleLowerCase("pt-BR");
   const selection=siblings.find(a=>a.id===UI.variantChoice[groupKey]);
-  const grouped=siblings.length>1;
+  const grouped=Boolean(familyName)&&siblings.length>0;
   const x=selection||original;
   if(x._filament){
     const free=Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0));
@@ -192,7 +192,7 @@ function openVariantChoices(groupKey){
   const group=String(groupKey||"").trim().toLocaleLowerCase("pt-BR");
   const variants=(state.data.componentes||[]).filter(item=>!isArchived(item)&&
     String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===group);
-  if(variants.length<2)return;
+  if(!variants.length)return;
   const title=variants[0].grupo_variacoes;
   const rows=variants.map(v=>{
     const quantity=Number(v.quantidade)||0,free=stock(v),used=Number(v.em_uso)||0;
