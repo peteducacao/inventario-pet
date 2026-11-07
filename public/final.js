@@ -112,6 +112,22 @@ function groupPublicMaterials(items){
   }
   return list;
 }
+// A ordenação alfabética deve considerar o título visível de CADA CARD,
+// e não o nome do primeiro componente usado para formar uma família.
+// Os outros modos preservam sua ordenação original por material.
+function orderedCatalogGroups(groups,sort){
+  if(sort!=="az"&&sort!=="za")return groups;
+  const title=group=>{
+    const item=group[0]||{};
+    return String(item._filament?item.cor:(item.grupo_variacoes||item.nome)||"").trim();
+  };
+  const compare=(a,b)=>title(a).localeCompare(title(b),"pt-BR",{sensitivity:"base",numeric:true});
+  return [...groups].sort((a,b)=>{
+    const order=compare(a,b);
+    if(order)return sort==="za"?-order:order;
+    return String(a[0]?.nome||"").localeCompare(String(b[0]?.nome||""),"pt-BR",{sensitivity:"base",numeric:true});
+  });
+}
 function finalCard(original,siblings=[]){
   const familyName=String(original.grupo_variacoes||"").trim();
   const groupKey=familyName.toLocaleLowerCase("pt-BR");
@@ -219,7 +235,8 @@ function finalRender(){
     .map(x=>normalize(x.grupo_variacoes)));
   const filtered=inCategory.filter(x=>!q||matches(x)||
     (x.grupo_variacoes&&matchingGroups.has(normalize(x.grupo_variacoes))));
-  const p=paginate(groupPublicMaterials(ordered(filtered,UI.sort)),UI.page,12);
+  // Ordenar depois do agrupamento: A–Z/Z–A precisam usar os nomes vistos pelo visitante.
+  const p=paginate(orderedCatalogGroups(groupPublicMaterials(ordered(filtered,UI.sort)),UI.sort),UI.page,12);
   UI.page=p.page;stored("pet_public_page",p.page);
   $("#category-sections").innerHTML=p.total?'<div class="card-grid">'+p.items.map(group=>finalCard(group[0],group)).join("")+'</div>':
     '<div class="empty-state"><strong>Nenhum material encontrado.</strong><p>Experimente outro filtro.</p></div>';
