@@ -403,7 +403,7 @@ function adminMaterials(root){
   }
   const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("");
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head admin-materials-heading"><div><h2>Materiais cadastrados</h2></div>'+
-    '<div class="buttons"><button class="outline-button" type="button" id="admin-links-hub">Vínculos</button><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
+    '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade</button><button class="outline-button" type="button" id="admin-links-hub">'+iconSvg("box",15)+' Vínculos</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
