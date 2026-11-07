@@ -25,6 +25,8 @@ O projeto usa JavaScript sem framework para o navegador. `src/index.js` exporta 
 - `d1_databases`: binding `DB`, database `inventario-pet`, `migrations_dir`: `migrations`.
 - Crons: `* * * * *` (limpeza rápida quando o teste de 1 minuto está ativo) e `0 12 * * *` (rotina de avisos/limpeza). O agendamento é executado pela infraestrutura Cloudflare, em UTC; a lógica de datas de devolução usa `America/Sao_Paulo`. Cron que prepara e-mail **não é** o gatilho do Apps Script que realmente envia.
 
+**Arquivos fundamentais da API:** `src/index.js` (roteamento e inventário), `src/identity.js` (contas, sessão, retiradas e devoluções) e `src/mail-bridge.js` (Gmail, filas, preferências e modelos de e-mail).
+
 ## 2. Mapa de arquivos
 
 ```text
