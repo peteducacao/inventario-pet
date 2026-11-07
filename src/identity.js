@@ -108,6 +108,27 @@ async function requestPasswordRecovery(req,env){
   return respond(RECOVERY_REPLY);
 }
 
+async function completePasswordRecovery(req,env){
+  const payload=await bodyJson(req,12000),secret=String(payload.token||""),password=payload.nova_senha;
+  if(!/^[A-F0-9]{64}$/.test(secret)||!validPassword(password))return error("Link inválido ou expirado.",400);
+  if(!await rate(env.DB,req,"redefinir-senha",35,1))return error("Muitas tentativas. Tente mais tarde.",429);
+  const hash=await sha256(secret);
+  const token=await env.DB.prepare("SELECT r.usuario_id,u.email FROM identity_recovery_tokens r JOIN usuarios u ON u.id=r.usuario_id WHERE r.hash=? AND r.usado_em IS NULL AND r.expira_em>? AND u.ativo=1 AND u.login IS NOT NULL").bind(hash,now()).first();
+  if(!token)return error("Link inválido, expirado ou já utilizado.",400);
+  const {salt,hash:passHash}=await securityFields(password);
+  // Um único pedido pode consumir o token, mesmo se houver acessos simultâneos.
+  const marked=await env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=? WHERE hash=? AND usado_em IS NULL AND expira_em>?").bind(now(),hash,now()).run();
+  if(marked.meta?.changes!==1)return error("Link inválido, expirado ou já utilizado.",400);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE usuarios SET password_hash=?,password_salt=?,password_iterations=?,must_change_password=0,atualizado_em=? WHERE id=?").bind(passHash,salt,ITERATIONS,now(),token.usuario_id),
+    env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(token.usuario_id),
+    env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=COALESCE(usado_em,?) WHERE usuario_id=?").bind(now(),token.usuario_id),
+    env.DB.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='' WHERE usuario_id=? AND tipo='recuperacao' AND situacao IN ('pendente','processando')").bind(token.usuario_id)
+  ]);
+  if(validEmail(token.email))await enqueueIdentityNotice(env.DB,token.usuario_id,token.email,"Senha redefinida - Inventário PET","A senha da sua conta do Inventário PET Educação foi redefinida. Se não reconhece essa ação, procure imediatamente a equipe do PET.");
+  return respond({ok:true,mensagem:"Senha redefinida. Entre com seu login e a nova senha."});
+}
+
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
@@ -339,8 +360,10 @@ export async function identityAPI(req,env,adminAuth){
   if(path==="/api/identity/login"&&method==="POST")return loginUser(req,env);
   if(path==="/api/identity/upgrade"&&method==="POST")return upgradeLegacy(req,env);
   if(path==="/api/identity/password"&&method==="POST")return changePassword(req,env);
+  if(path==="/api/identity/recover"&&method==="POST")return requestPasswordRecovery(req,env);
+  if(path==="/api/identity/reset-by-email"&&method==="POST")return completePasswordRecovery(req,env);
   if(path==="/api/identity/email"&&method==="POST")return updateEmail(req,env,await loggedIn(req,db));
-  if(path==="/api/identity/recover" || path==="/api/identity/recovery-code")return error("Recuperação antiga encerrada. Use login e senha ou solicite redefinição ao administrador.",410);
+  if(path==="/api/identity/recovery-code")return error("Código antigo desativado. Utilize recuperação por e-mail.",410);
   if(path==="/api/identity/me"&&method==="GET"){
     const u=await loggedIn(req,db);
     return respond({ok:true,usuario:u?publicUser(u):null});
