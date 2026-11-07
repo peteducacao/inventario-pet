@@ -368,6 +368,12 @@ function adminGroupedFamilies(items){
   }
   return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"}));
 }
+function adminFamilyModelRow(x){
+  return '<div class="admin-family-model-row" data-group-model="'+Number(x.id)+'">'+thumb(x)+
+    '<div class="admin-family-model-text"><strong>'+esc(x.nome)+'</strong>'+
+      '<small>Total: '+Number(x.quantidade||0)+' · Em uso: '+Number(x.em_uso||0)+' · Defeito: '+Number(x.com_defeito||0)+'</small></div>'+
+    '<button class="outline-button small-button" type="button" data-item-edit="'+Number(x.id)+'" aria-label="Editar '+attr(x.nome)+'">Editar</button></div>';
+}
 function adminFamilyCard(group){
   const items=group.members,quantity=items.reduce((v,x)=>v+Number(x.quantidade||0),0),
     inUse=items.reduce((v,x)=>v+Number(x.em_uso||0),0);
@@ -382,7 +388,7 @@ function adminFamilyCard(group){
       '<button type="button" class="outline-button small-button" data-rename-group="'+attr(group.name)+'">'+iconSvg("edit",14)+' Renomear grupo</button>'+
       '<button type="button" class="primary-button small-button" data-group-links="'+attr(group.name)+'">'+iconSvg("box",14)+' Organizar vínculos</button></div>'+
     '<details class="admin-family-models"><summary>Ver '+items.length+' '+(items.length===1?'material':'modelos')+'</summary>'+
-      '<div class="material-list">'+items.map(adminMaterialRow).join("")+'</div></details></article>';
+      '<div class="admin-family-model-list">'+items.map(adminFamilyModelRow).join("")+'</div></details></article>';
 }
 function paintAdminMaterials(){
   const list=$("#admin-material-list");if(!list)return;
