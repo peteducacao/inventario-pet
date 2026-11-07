@@ -570,15 +570,28 @@ function materialFamilyHint(name){
   const first=n.match(/^[a-z]{4,}/)?.[0]||"";
   return first?first[0].toUpperCase()+first.slice(1):"Outros";
 }
-function materialPickerRows(items,selected,term="",withPhotos=false){
+function bulkVisibilityState(item){
+  const category=state.admin?.categorias?.find(c=>String(c.id)===String(item.categoria_id));
+  const categoryRestricted=Boolean(category&&Number(category.visivel_visitante)===0);
+  const itemRestricted=Number(item.visivel_visitante)===0;
+  return {categoryRestricted,itemRestricted,restricted:categoryRestricted||itemRestricted};
+}
+function materialPickerRows(items,selected,term="",withPhotos=false,showVisibility=false){
   const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
     String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
   return {visible:available,html:available.slice(0,160).map(x=>{
-    const info='<span><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
+    const status=showVisibility?bulkVisibilityState(x):null;
+    const label=status?(status.categoryRestricted?
+      '<span class="bulk-visibility-badge restricted category-locked">🔒 Só PETianes · categoria restrita</span>':
+      status.itemRestricted?
+      '<span class="bulk-visibility-badge restricted">✓ Só PETianes</span>':
+      '<span class="bulk-visibility-badge public">🌐 Visível para todos</span>'):"";
+    const info='<span class="bulk-row-details"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
       (x.grupo_variacoes?' · '+esc(x.grupo_variacoes):"")+
-      (Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small></span>';
-    if(!withPhotos)return '<label class="admin-bulk-row"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+info+'</label>';
+      (!showVisibility&&Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small>'+label+'</span>';
+    if(!withPhotos)return '<label class="admin-bulk-row '+(showVisibility?'bulk-visibility-row ':'')+(selected.has(x.id)?'is-selected':'')+'">'+
+      '<input type="checkbox" aria-label="Selecionar '+attr(x.nome)+' para alterar" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+info+'</label>';
     const hasCustomPhoto=/^data:image\//i.test(String(x.imagem||""));
     return '<div class="admin-bulk-row variant-photo-row">'+
       '<label class="variant-photo-select"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
@@ -607,52 +620,75 @@ function openBulkVisibility(currentId){
     const count=model.all.filter(x=>String(x.categoria_id)===String(c.id)).length;
     return '<option value="'+attr(c.id)+'">'+esc(c.nome)+' ('+count+')</option>';
   }).join("");
-  openModal("Visibilidade dos materiais","Selecione os materiais e defina quem poderá visualizá-los.",
+  openModal("Visibilidade dos materiais","Confira a visibilidade já salva e selecione apenas os itens que deseja alterar.",
     '<div class="modal-main">'+
     '<div class="field"><label for="bulk-search">Buscar materiais</label><input id="bulk-search" placeholder="Ex.: Resistor, Arduino..." value="'+attr(initial)+'"></div>'+
     '<div class="bulk-category-picker"><div class="field"><label for="bulk-category">Categoria</label>'+
     '<select id="bulk-category"><option value="all">Todas as categorias</option>'+options+'</select></div>'+
     '<button class="outline-button small-button" type="button" id="bulk-select-category" disabled>Selecionar categoria</button></div>'+
+    '<div id="bulk-category-status" class="bulk-category-status" role="status"></div>'+
     '<div class="admin-bulk-actions">'+
     '<button class="outline-button small-button" id="bulk-similar" type="button" hidden title="Seleciona outros materiais da mesma família dos itens marcados.">Selecionar semelhantes</button>'+
     '<button class="outline-button small-button" type="button" id="bulk-select-all">Selecionar resultados</button>'+
     '<button class="outline-button small-button" type="button" id="bulk-clear">Desmarcar todos</button></div>'+
-    '<p class="bulk-similar-hint" id="bulk-similar-hint" hidden>Semelhantes são modelos da mesma família dos materiais marcados.</p>'+
     '<div class="admin-bulk-list" id="bulk-list"></div>'+
-    '<p class="hint" id="bulk-selected-count" role="status" aria-live="polite"></p>'+
+    '<div class="bulk-selection-footer"><p class="hint" id="bulk-selected-count" role="status" aria-live="polite"></p>'+
+    '<small id="bulk-selection-state"></small></div>'+
+    '<p id="bulk-category-warning" class="bulk-category-warning" hidden></p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="outline-button" id="bulk-show-all" type="button">Exibir para todos</button>'+
     '<button class="primary-button" id="bulk-only-members" type="button">Só PETianes</button></div></div>',{size:"wide bulk-visibility-modal"});
   let visible=[];
+  const chosen=()=>model.all.filter(x=>model.selected.has(x.id));
   const similarItems=()=>{
-    const marked=model.all.filter(x=>model.selected.has(x.id));
+    const marked=chosen();
     if(!marked.length)return [];
     const groups=new Set(marked.map(x=>String(x.categoria_id)+"|"+materialFamilyHint(x.nome)));
     return model.all.filter(x=>!model.selected.has(x.id)&&
       groups.has(String(x.categoria_id)+"|"+materialFamilyHint(x.nome)));
   };
   const countSelected=()=>{
+    const selectedItems=chosen();
+    const restricted=selectedItems.filter(x=>bulkVisibilityState(x).restricted).length;
     $("#bulk-selected-count").textContent=model.selected.size+
       (model.selected.size===1?" material selecionado.":" materiais selecionados.");
-    const suggestions=similarItems();
-    const similar=$("#bulk-similar");
+    $("#bulk-selection-state").textContent=selectedItems.length?
+      restricted+" já visíveis só para PETianes · "+(selectedItems.length-restricted)+" visíveis para todos.":
+      "✓ no quadrado = selecionar para alterar; a etiqueta mostra a visibilidade já salva.";
+    const locked=selectedItems.filter(x=>bulkVisibilityState(x).categoryRestricted);
+    const warning=$("#bulk-category-warning");
+    warning.hidden=!locked.length;
+    warning.textContent=locked.length?
+      "⚠️ "+locked.length+" material(is) pertence(m) a categoria(s) restrita(s). Para exibi-los a visitantes, libere também a categoria na aba Categorias.":"";
+    const suggestions=similarItems(),similar=$("#bulk-similar");
     similar.hidden=!suggestions.length;
     similar.textContent="Selecionar semelhantes ("+suggestions.length+")";
-    $("#bulk-similar-hint").hidden=!suggestions.length;
+    $("#bulk-show-all").disabled=!selectedItems.length;
+    $("#bulk-only-members").disabled=!selectedItems.length;
   };
   const draw=()=>{
     const category=$("#bulk-category").value;
-    const filtered=model.all.filter(x=>category==="all"||String(x.categoria_id)===category);
-    const result=materialPickerRows(filtered,model.selected,$("#bulk-search").value);
+    const byCategory=model.all.filter(x=>category==="all"||String(x.categoria_id)===category);
+    const restricted=byCategory.filter(x=>bulkVisibilityState(x).restricted).length;
+    const categoryRecord=categories.find(c=>String(c.id)===category);
+    const categoryLocked=Boolean(categoryRecord&&Number(categoryRecord.visivel_visitante)===0);
+    const categoryLabel=categoryRecord?categoryRecord.nome:"Todos os materiais";
+    const summary=$("#bulk-category-status");
+    summary.innerHTML='<strong>'+(categoryLocked?'🔒 ':'')+esc(categoryLabel)+': '+restricted+'/'+byCategory.length+' só PETianes</strong>'+
+      '<small>'+((byCategory.length-restricted)===0?'Todos os itens já estão restritos.':(byCategory.length-restricted)+' visíveis para todos.')+
+      (categoryLocked?' A categoria inteira está restrita.':'')+'</small>';
+    summary.classList.toggle("fully-restricted",byCategory.length>0&&restricted===byCategory.length);
+    const result=materialPickerRows(byCategory,model.selected,$("#bulk-search").value,false,true);
     visible=result.visible;
     $("#bulk-list").innerHTML=result.html;
-    countSelected();
     $$("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);
       if(b.checked)model.selected.add(id);
       else model.selected.delete(id);
+      b.closest(".bulk-visibility-row")?.classList.toggle("is-selected",b.checked);
       countSelected();
     });
+    countSelected();
   };
   $("#bulk-search").oninput=draw;
   $("#bulk-category").onchange=()=>{
@@ -665,19 +701,31 @@ function openBulkVisibility(currentId){
     for(const x of model.all)if(String(x.categoria_id)===category)model.selected.add(x.id);
     draw();
   };
-  $("#bulk-similar").onclick=()=>{
-    for(const x of similarItems())model.selected.add(x.id);
-    draw();
-  };
+  $("#bulk-similar").onclick=()=>{for(const x of similarItems())model.selected.add(x.id);draw();};
   $("#bulk-select-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
   $("#bulk-clear").onclick=()=>{model.selected.clear();draw();};
   const save=async show=>{
-    if(!model.selected.size){toast("Selecione pelo menos um material.",true);return;}
-    const ok=await niceModalConfirm("Aplicar a "+model.selected.size+" materiais?",show?"Todos os visitantes poderão ver os materiais selecionados.":"Só PETianes poderão ver os materiais selecionados.",show?"Exibir para todos":"Só PETianes");
+    const selected=chosen();
+    if(!selected.length){toast("Selecione pelo menos um material.",true);return;}
+    if(show&&selected.some(x=>bulkVisibilityState(x).categoryRestricted)){
+      toast("Há categorias restritas. Libere-as na aba Categorias antes de exibir esses materiais para todos.",true);
+      return;
+    }
+    const changed=selected.filter(x=>Number(x.visivel_visitante)!==(show?1:0));
+    if(!changed.length){
+      toast("Esses materiais já estão com a visibilidade escolhida. Nenhuma alteração foi feita.");
+      return;
+    }
+    const unchanged=selected.length-changed.length;
+    const description=changed.length+" material(is) terão a visibilidade alterada."+
+      (unchanged?" "+unchanged+" já possuem essa configuração e não serão modificados.":"")+
+      (show?" Visitantes também poderão ver esses materiais.":" Apenas PETianes poderão vê-los.");
+    const ok=await niceModalConfirm("Alterar visibilidade de "+changed.length+" materiais?",description,show?"Exibir para todos":"Só PETianes");
     if(!ok)return;
     try{
-      await api("/api/admin/visibility","POST",{ids:[...model.selected],visivel_visitante:show,responsavel:state.actor||"Admin"});
-      await adminReload();closeModal();adminBuild();toast("Visibilidade alterada em "+model.selected.size+" materiais.");
+      const response=await api("/api/admin/visibility","POST",{ids:changed.map(x=>x.id),visivel_visitante:show,responsavel:state.actor||"Admin"});
+      await adminReload();closeModal();adminBuild();
+      toast((response.alterados??changed.length)+" material(is) atualizado(s).");
     }catch(error){toast(error.message,true);}
   };
   $("#bulk-show-all").onclick=()=>save(true);
