@@ -1025,6 +1025,20 @@ function openVariantLinker(currentId,groupName=""){
         '<button type="button" class="outline-button" id="variant-create">+ Cadastrar novo modelo neste grupo</button>'+
         '<button type="button" class="primary-button" id="variant-close">Concluir</button></div></div>',{size:"wide"});
   let saving=false;
+  // Uma confirmação não pode fechar a janela de vínculos nem apagar a busca.
+  const confirmInPlace=(title,message,action,danger=false)=>new Promise(resolve=>{
+    const root=$("#modal-root"),overlay=document.createElement("div");
+    overlay.className="modal-overlay editor-confirm-layer";
+    overlay.innerHTML='<section class="modal" role="alertdialog" aria-modal="true" aria-label="'+attr(title)+'">'+
+      '<header class="modal-header"><h2>'+esc(title)+'</h2></header><div class="confirm-body"><p>'+esc(message)+'</p>'+
+      '<div class="confirm-actions"><button type="button" class="secondary-button" data-variant-cancel>Cancelar</button>'+
+      '<button type="button" class="'+(danger?"danger-button":"primary-button")+'" data-variant-confirm>'+esc(action)+'</button></div></div></section>';
+    root.appendChild(overlay);
+    const finish=value=>{overlay.remove();resolve(value);};
+    overlay.querySelector("[data-variant-cancel]").onclick=()=>finish(false);
+    overlay.querySelector("[data-variant-confirm]").onclick=()=>finish(true);
+    overlay.onclick=e=>{if(e.target===overlay)finish(false);};
+  });
   const refreshModel=()=>{
     model.all=state.admin.componentes.filter(x=>!isArchived(x)&&
       !state.admin.categorias.find(cat=>Number(cat.id)===Number(x.categoria_id))?.arquivada);
@@ -1068,12 +1082,12 @@ function openVariantLinker(currentId,groupName=""){
     if(add&&name.length<2){toast("Digite o nome do grupo antes de adicionar um material.",true);$("#variant-group-name").focus();return;}
     const oldName=String(current.grupo_variacoes||"").trim();
     if(add&&oldName&&normalized(oldName)!==normalized(name)){
-      const yes=await niceModalConfirm("Mover material para outro grupo?",
+      const yes=await confirmInPlace("Mover material para outro grupo?",
         current.nome+" deixará o grupo "+oldName+" e passará para "+name+". Quantidades e empréstimos não serão alterados.",
         "Mover material");
       if(!yes)return;
     }else if(!add){
-      const yes=await niceModalConfirm("Retirar deste grupo?",
+      const yes=await confirmInPlace("Retirar deste grupo?",
         current.nome+" ficará como material individual no catálogo. O estoque continuará igual.","Retirar",true);
       if(!yes)return;
     }
