@@ -80,6 +80,9 @@ docs/GUIA_TECNICO.md               Este guia
 
 **Arquivo/exclusão:** arquivar um material não apaga seu histórico. Excluir categoria tem confirmação textual, gera backup no navegador e remove seus materiais conforme lógica administrativa. Não suponha que deletar uma categoria possa ser desfeito sem o JSON guardado.
 
+### Reorganização do catálogo (07/11/2026)
+A migration `migrations/0018_reorganizar_robotica_equipamentos.sql` renomeia **Eletrônica** para **Robótica** e transfere os notebooks e tablets (incluindo os registros originalmente nas categorias **Tablets** e **Notebooks**) para a categoria **Equipamentos**, já existente. A migração conserva o identificador dos materiais, patrimônio, identificações, quantidade total, em uso, defeitos, reservas e permissões individuais. As categorias que ficaram vazias são **arquivadas**, não excluídas, e a ação é registrada no histórico administrativo. Não criar uma nova categoria Eletrônica nem duplicar tablets/notebooks. O catálogo também restaura o filtro “Todos” quando um filtro persistido se referir a uma categoria que deixou de aparecer.
+
 ## 4. Fluxos reais de empréstimo e devolução
 
 ### Visitante
