@@ -467,6 +467,8 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     if(state.identity)localStorage.setItem("pet_inventario_nome",state.actor);
     $("#offline-alert").hidden=true;
     render();
+    // A sessão pessoal já foi conferida; buscar notificações imediatamente.
+    if(state.identity&&typeof refreshNotifications==="function")refreshNotifications();
     // Exibir o estado real da conta pessoal após sair do Admin: sessão Admin não serve como login de usuário.
     const returnedFromAdmin=sessionStorage.getItem("pet_check_identity_after_admin")==="1";
     if(returnedFromAdmin)sessionStorage.removeItem("pet_check_identity_after_admin");
