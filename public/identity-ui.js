@@ -33,6 +33,7 @@ function wirePasswordVisibility(){
 }
 function accountFields(prefix,nome=""){
   return '<div class="field"><label for="'+prefix+'-name">Nome completo</label><input id="'+prefix+'-name" maxlength="80" required autocomplete="name" placeholder="Como podemos chamar você?" value="'+attr(nome)+'"></div>'+
+    '<div class="field"><label for="'+prefix+'-email">E-mail</label><input id="'+prefix+'-email" type="email" maxlength="180" required autocomplete="email" placeholder="seuemail@exemplo.com"></div>'+
     '<div class="field"><label for="'+prefix+'-login">Nome de usuário</label><input id="'+prefix+'-login" maxlength="24" minlength="4" autocapitalize="none" spellcheck="false" required autocomplete="username" placeholder="Ex.: sergio01"></div>'+
     '<p class="hint" style="margin:-8px 0 15px">De 4 a 24 caracteres, sem espaços ou acentos. Pode usar letras, números, ponto, traço e _.</p>'+
     passwordField(prefix+"-password","Criar senha","new-password")+
@@ -81,7 +82,7 @@ function identityRegisterModal(first=false){
     if(senha!==$("#reg-confirm").value){toast("As senhas não coincidem.",true);return;}
     const btn=$("#identity-register-submit");btn.disabled=true;btn.textContent="Criando conta…";
     try{
-      const r=await api("/api/identity/register","POST",{nome:$("#reg-name").value,login:$("#reg-login").value,senha});
+      const r=await api("/api/identity/register","POST",{nome:$("#reg-name").value,email:$("#reg-email").value.trim(),login:$("#reg-login").value,senha});
       setIdentity(r.usuario);identityProfileModal();toast("Conta criada com sucesso!");
     }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Criar conta";}
   };
@@ -92,6 +93,7 @@ function identityUpgradeModal(){
   if(!u.precisa_criar_login)return identityProfileModal();
   openModal("Atualizar meu cadastro","Seu perfil antigo e sua tag serão preservados. Só precisamos configurar um login e senha.",
     '<form class="modal-main" id="identity-upgrade-form"><p class="notice">Encontramos seu perfil de <strong>'+esc(u.nome)+'</strong> ('+esc(u.id)+'). Sua tag e suas movimentações não serão alteradas.</p>'+
+    '<div class="field"><label for="upgrade-email">E-mail</label><input type="email" id="upgrade-email" maxlength="180" required autocomplete="email" placeholder="seuemail@exemplo.com"></div>'+
     '<div class="field"><label for="upgrade-login">Escolha um nome de usuário</label><input id="upgrade-login" maxlength="24" minlength="4" autocapitalize="none" autocomplete="username" required placeholder="Ex.: sergio01"></div>'+
     '<p class="hint" style="margin:-9px 0 14px">De 4 a 24 caracteres, sem espaços nem acentos.</p>'+
     passwordField("upgrade-password","Criar senha","new-password")+
@@ -102,7 +104,7 @@ function identityUpgradeModal(){
     e.preventDefault();if($("#upgrade-password").value!==$("#upgrade-confirm").value){toast("As senhas não coincidem.",true);return;}
     const btn=$("#identity-upgrade-form button[type=submit]");btn.disabled=true;
     try{
-      const r=await api("/api/identity/upgrade","POST",{login:$("#upgrade-login").value,senha:$("#upgrade-password").value});
+      const r=await api("/api/identity/upgrade","POST",{login:$("#upgrade-login").value,email:$("#upgrade-email").value.trim(),senha:$("#upgrade-password").value});
       setIdentity(r.usuario);identityProfileModal();toast("Sua conta antiga foi atualizada!");
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
@@ -142,13 +144,16 @@ function identityProfileModal(){
   const u=state.identity;if(!u)return identityLoginModal();
   if(u.precisa_criar_login)return identityUpgradeModal();
   if(u.trocar_senha)return identityChangePasswordModal(true);
+  if(!u.email)return identityEmailModal(true);
   const member=u.tag==="petiano";
   const body='<div class="modal-main"><div class="identity-profile-head"><div class="identity-avatar">'+esc(u.nome.slice(0,1).toUpperCase())+'</div><div><strong>'+esc(u.nome)+'</strong><span class="status '+(member?"picked":"done")+'">'+(member?"✓ PETiano":"Visitante")+'</span></div></div>'+
     '<div class="field"><label for="identity-my-login">Meu nome de usuário</label><input id="identity-my-login" readonly value="'+attr(u.login||"")+'"></div>'+
+    '<div class="field"><label for="identity-my-email">Meu e-mail</label><input id="identity-my-email" readonly value="'+attr(u.email||"")+'"></div>'+
     '<div class="field"><label for="identity-public-id">Meu ID público</label><div class="copy-field"><input id="identity-public-id" readonly value="'+attr(u.id)+'"><button type="button" class="outline-button" id="identity-copy-id">Copiar ID</button></div><small class="hint">O administrador pode encontrar você pelo nome de usuário ou ID.</small></div>'+
     (member?'<div class="notice"><strong>Tag PETiano ativa:</strong> você pode registrar retiradas e devoluções sem aprovação.</div>':'<div class="notice">Sua tag é Visitante. Solicitações de reserva aguardam aprovação do PET.</div>')+
     '<div class="identity-actions">'+(member?'<button type="button" class="primary-button" id="identity-open-withdraw">Registrar retirada</button><button type="button" class="outline-button" id="identity-my-items">Minhas retiradas</button>':'')+
     '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar minha tag</button>'+
+    '<button type="button" class="outline-button" id="identity-email-edit">Alterar meu e-mail</button>'+
     '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button>'+
     '<button type="button" class="outline-button" id="identity-change-password">Alterar minha senha</button>'+
     '<button type="button" class="danger-button" id="identity-logout">Sair deste dispositivo</button></div></div>';
@@ -168,7 +173,28 @@ function identityProfileModal(){
   };
   $("#identity-change-password").onclick=()=>identityChangePasswordModal(false);
   $("#identity-rename").onclick=identityRenameModal;
+  $("#identity-email-edit").onclick=()=>identityEmailModal();
   $("#identity-logout").onclick=()=>{if(confirm("Deseja sair deste dispositivo?"))identityLogout();};
+}
+function identityEmailModal(required=false){
+  const u=state.identity;if(!u)return identityLoginModal();
+  openModal(required?"Complete seu cadastro":"Alterar e-mail",required?
+    "Seu login e sua tag continuam iguais. Informe um e-mail para utilizarmos nas reservas e nos empréstimos.":
+    "Este endereço será utilizado nas comunicações do Inventário PET.",
+    '<form class="modal-main" id="identity-email-form">'+
+    '<div class="field"><label for="identity-email-value">E-mail</label><input type="email" id="identity-email-value" maxlength="180" required autocomplete="email" value="'+attr(u.email||"")+'" placeholder="seuemail@exemplo.com"></div>'+
+    '<p class="notice">O cadastro do e-mail não ativa cobranças para PETianes; isso depende da configuração da tag.</p>'+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0">'+
+    (required?'':'<button type="button" class="secondary-button" id="identity-email-cancel">Cancelar</button>')+
+    '<button type="submit" class="primary-button" id="identity-email-submit">Salvar e-mail</button></div></form>');
+  const cancel=$("#identity-email-cancel");if(cancel)cancel.onclick=identityProfileModal;
+  $("#identity-email-form").onsubmit=async e=>{
+    e.preventDefault();const btn=$("#identity-email-submit");btn.disabled=true;btn.textContent="Salvando…";
+    try{
+      const r=await api("/api/identity/email","POST",{email:$("#identity-email-value").value.trim()});
+      setIdentity(r.usuario);identityProfileModal();toast("E-mail atualizado com sucesso.");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar e-mail";}
+  };
 }
 function identityRenameModal(){
   openModal("Alterar meu nome","O ID permanece o mesmo mesmo se você mudar o nome.",
@@ -183,15 +209,17 @@ function identityRenameModal(){
 }
 async function memberWithdrawModal(initialId){
   if(state.identity?.tag!=="petiano"){toast("Aguarde a liberação da tag PETiano pelo administrador.",true);return identityProfileModal();}
+  if(!state.identity.email)return identityEmailModal(true);
   const all=state.data.componentes;
   if(!all.length){toast("Não há materiais cadastrados.",true);return;}
   const initial=byId(initialId)||all[0];
-  const today=localDate(),seven=localDate(new Date(Date.now()+7*86400000));
+  const today=localDate();
   const body='<form class="modal-main" id="member-withdraw-form">'+
     '<p class="notice"><strong>'+esc(state.identity.nome)+'</strong> · '+esc(state.identity.id)+'<br>Esta retirada será registrada diretamente, sem aprovação prévia.</p>'+
     '<div class="field"><label for="member-item">Material</label><select id="member-item" required>'+all.map(x=>'<option value="'+x.id+'" '+(x.id===initial.id?"selected":"")+'>'+esc(x.nome)+'</option>').join("")+'</select></div>'+
     '<div class="field-grid"><div class="field"><label for="member-qty">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="member-qty" data-delta="-1">−</button><input id="member-qty" type="number" min="1" max="1000" value="1" required><button type="button" class="step" data-target="member-qty" data-delta="1">+</button></div></div>'+
-    dateInput("member-due","Previsão de devolução",seven,today)+'</div>'+
+    '<div class="field"><label for="member-due">Previsão de devolução (opcional)</label><input type="date" id="member-due" min="'+today+'"></div></div>'+
+    '<p class="hint">E-mail da conta: '+esc(state.identity.email)+'. A notificação depende das regras da tag PETiane.</p>'+
     '<p id="member-availability" class="reservation-availability">Consultando disponibilidade…</p>'+
     '<div class="field"><label for="member-note">Observação (opcional)</label><textarea id="member-note" maxlength="500" placeholder="Onde ou para qual atividade será utilizado?"></textarea></div>'+
     '<div class="modal-footer" style="border:0;padding:14px 0 0"><button type="button" class="secondary-button" id="member-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-submit">Confirmar retirada</button></div></form>';
@@ -202,9 +230,9 @@ async function memberWithdrawModal(initialId){
     const index=++request,id=Number($("#member-item").value),due=$("#member-due").value,q=Number($("#member-qty").value);
     const text=$("#member-availability"),submit=$("#member-submit");
     text.textContent="Consultando disponibilidade…";submit.disabled=true;
-    if(!due||due<today||!Number.isInteger(q)||q<1){text.textContent="Informe quantidade e data válidas.";return;}
+    if((due&&due<today)||!Number.isInteger(q)||q<1){text.textContent="Confira quantidade e data.";return;}
     try{
-      const result=await api("/api/availability?id="+id+"&inicio="+today+"&fim="+due);
+      const result=await api("/api/availability?id="+id+"&inicio="+today+"&fim="+(due||today));
       if(index!==request||!document.contains(text))return;
       const ok=result.disponiveis>=q;
       text.className="reservation-availability "+(ok?"available":"unavailable");
@@ -234,7 +262,7 @@ async function memberHistoryModal(){
     if(!document.contains(list))return;
     list.innerHTML=(r.retiradas||[]).length?'<div class="admin-list">'+r.retiradas.map(x=>{
       const live=x.status==="retirada";
-      return '<div class="admin-list-row"><div class="main-info"><strong>'+esc(x.componente_nome)+' · '+x.quantidade+' unidade(s)</strong><small>Retirado: '+esc(fmt(x.retirado_em))+' · Previsto: '+esc(formatDay(x.data_devolucao))+'</small><span class="status '+(live?"picked":"done")+'">'+(live?"Em uso":"Devolvido")+'</span></div>'+(live?'<button type="button" class="primary-button small-button" data-member-return="'+x.id+'">Devolver</button>':'')+'</div>';
+      return '<div class="admin-list-row"><div class="main-info"><strong>'+esc(x.componente_nome)+' · '+x.quantidade+' unidade(s)</strong><small>Retirado: '+esc(fmt(x.retirado_em))+' · Previsto: '+(x.sem_prazo?'Sem prazo':esc(formatDay(x.data_devolucao)))+'</small><span class="status '+(live?"picked":"done")+'">'+(live?"Em uso":"Devolvido")+'</span></div>'+(live?'<button type="button" class="primary-button small-button" data-member-return="'+x.id+'">Devolver</button>':'')+'</div>';
     }).join("")+'</div>':'<div class="empty-state">Nenhuma retirada direta registrada até agora.</div>';
     list.innerHTML+='<div style="margin-top:16px"><button type="button" class="secondary-button" id="member-back-profile">Voltar ao perfil</button></div>';
     $("#member-back-profile").onclick=identityProfileModal;

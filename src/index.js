@@ -1,4 +1,5 @@
 import { identityAPI, currentIdentity } from "./identity.js";
+import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual } from "./mail-bridge.js";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const j = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...extra } });
 const bad = (message, status = 400) => j({ error: message }, status);
@@ -94,7 +95,7 @@ async function catalog(db, isAdmin = false, member = false) {
 }
 async function state(db) {
   const data = await catalog(db, true);
-  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.solicitado_em DESC LIMIT 1500");
+  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id ORDER BY r.solicitado_em DESC LIMIT 1500");
   data.filamentos = await results(db,"SELECT * FROM filamentos ORDER BY ordem,cor COLLATE NOCASE");
   const config = await results(db, "SELECT chave,valor FROM configuracoes");
   data.configuracoes = Object.fromEntries(config.map(x => [x.chave, x.valor]));
@@ -122,6 +123,8 @@ async function processRequest(req, env) {
     const origin = req.headers.get("origin");
     if (origin && origin !== url.origin) return bad("Origem não permitida.", 403);
   }
+  const mailBridge = await mailBridgeAPI(req,env);
+  if (mailBridge) return mailBridge;
   if (path === "/api/health") {
     const row = await db.prepare("SELECT COUNT(*) AS n FROM categorias").first();
     return j({ ok:true, service:"Inventário PET", database:"connected", categories:row?.n ?? 0 });
@@ -148,8 +151,6 @@ async function processRequest(req, env) {
   if (path === "/api/reservations" && method === "POST") {
     const body = await input(req, 8000);
     if (body.website) return j({ ok:true });
-    // A página pública pode ser consultada sem login, mas reservas exigem conta pessoal válida.
-    // A sessão de administrador, sozinha, não identifica um solicitante.
     const identity = await currentIdentity(req, db);
     if (!identity) return bad("Entre na sua conta pessoal para solicitar uma reserva.",401);
     if (!identity.login || identity.must_change_password) return bad("Finalize a configuração da sua senha para solicitar reservas.",403);
@@ -157,8 +158,8 @@ async function processRequest(req, env) {
     const quantidade = Number(body.quantidade);
     const nome = identity.nome;
     const contato = str(body.contato, 140);
-    const email = str(body.email, 180).toLowerCase();
-    if (!validEmail(email)) return bad("Informe um e-mail válido ou deixe o campo vazio.");
+    const email = str(identity.email,180).toLowerCase();
+    if (!email || !validEmail(email)) return bad("Cadastre um e-mail válido em Minha conta antes de reservar materiais.",409);
     const inicio = str(body.data_inicio, 10), fim = str(body.data_devolucao, 10);
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
@@ -189,6 +190,8 @@ async function processRequest(req, env) {
   if(identityResponse)return identityResponse;
   if (!path.startsWith("/api/admin/")) return bad("Endereço não encontrado.",404);
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
+  const mailAdmin = await mailAdminAPI(req,env);
+  if (mailAdmin) return mailAdmin;
   if (path === "/api/admin/state" && method === "GET") return j(await state(db));
   if(path==="/api/admin/log" && method==="GET"){
     const page=Math.max(1,Math.min(1000,Number(url.searchParams.get("pagina"))||1));
@@ -532,13 +535,9 @@ async function processRequest(req, env) {
     return j({ok:true});
   }
   if (path === "/api/admin/reminder" && method === "POST") {
-    const b = await input(req,2000), id = requireId(b.id);
-    const row = await db.prepare("SELECT r.*,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.id=?").bind(id).first();
-    if (!row || row.status !== "retirada" || row.data_devolucao >= todayBR()) return bad("Somente retiradas em atraso podem receber cobrança.",409);
-    const sent = await emailReminder(env, row);
-    if (!sent) return bad("Configure o serviço de e-mail e confira o endereço do solicitante.",503);
-    await db.prepare("UPDATE reservas SET aviso_atraso_em=? WHERE id=?").bind(now(),id).run();
-    return j({ok:true});
+    const b=await input(req,2000), id=requireId(b.id);
+    const scheduled=await queueManual(db,id);
+    return scheduled.ok?j({ok:true,mensagem:"Cobrança incluída na fila do Gmail."}):bad(scheduled.reason,409);
   }
   if (path === "/api/admin/cleanup" && method === "POST") {
     const count = await cleanup(db);
@@ -546,28 +545,6 @@ async function processRequest(req, env) {
     return j({ ok:true, removidas:count });
   }
   return bad("Rota não encontrada.",404);
-}
-async function emailReminder(env, row) {
-  if (!env.BREVO_API_KEY || !env.EMAIL_FROM || !validEmail(row.email) || !row.email) return false;
-  const message = "Olá, "+row.nome_solicitante+"!\n\nO PET Educação informa que a devolução do material \""+row.componente_nome+"\" (reserva #"+row.id+") estava prevista para "+row.data_devolucao.split("-").reverse().join("/")+" e ainda não foi registrada.\n\nPedimos, por gentileza, que entre em contato com o PET para combinar a devolução. Caso já tenha devolvido, desconsidere este lembrete e avise nossa equipe.\n\nPET Educação";
-  const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-    method:"POST",
-    headers:{"api-key":env.BREVO_API_KEY,"content-type":"application/json","accept":"application/json"},
-    body:JSON.stringify({sender:{email:env.EMAIL_FROM,name:"PET Educação"},to:[{email:row.email,name:row.nome_solicitante}],subject:"PET Educação: lembrete de devolução do material",textContent:message})
-  });
-  if (!response.ok) { console.error("Brevo: erro de envio",response.status); return false; }
-  return true;
-}
-async function automaticEmails(env) {
-  if (!env.DB || !env.BREVO_API_KEY || !env.EMAIL_FROM) return;
-  const setting = await env.DB.prepare("SELECT valor FROM configuracoes WHERE chave='avisos_email'").first();
-  if (setting?.valor !== "sim") return;
-  const due = await results(env.DB,"SELECT r.*,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.status='retirada' AND r.data_devolucao<? AND r.email!='' AND r.aviso_atraso_em IS NULL ORDER BY r.data_devolucao ASC LIMIT 80",[todayBR()]);
-  for (const row of due) {
-    try {
-      if (await emailReminder(env,row)) await env.DB.prepare("UPDATE reservas SET aviso_atraso_em=? WHERE id=? AND aviso_atraso_em IS NULL").bind(now(),row.id).run();
-    } catch(error) { console.error("Falha em lembrete da reserva",row.id,String(error).slice(0,100)); }
-  }
 }
 async function cleanup(db) {
   const cfg = await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_reservas'").first();
@@ -610,7 +587,7 @@ export default {
         if (setting?.valor === "1min") await cleanup(env.DB);
         return;
       }
-      await automaticEmails(env);
+      await generateDailyEmails(env);
       await cleanup(env.DB);
     })());
   }

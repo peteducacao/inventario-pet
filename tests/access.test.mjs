@@ -4,7 +4,7 @@ import {DatabaseSync} from "node:sqlite";
 import worker from "../src/index.js";
 const db=new DatabaseSync(":memory:");
 db.exec("PRAGMA foreign_keys=ON");
-for(const name of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql"]){
+for(const name of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0013_gmail_queue.sql","0014_email_usuarios.sql"]){
   db.exec(readFileSync("migrations/"+name,"utf8"));
 }
 class Prepared{
@@ -56,14 +56,15 @@ const payload={componente_id:one.id,quantidade:1,data_inicio:start,data_devoluca
 assert.equal((await post("/api/reservations",payload)).status,401,"Sem conta pessoal a reserva deve ser recusada.");
 assert.equal((await post("/api/reservations",payload,admin)).status,401,"A sessão do Admin não substitui o login de usuário.");
 assert.equal(db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE usuario_id IS NULL").get().n,0,"Reserva anônima não pode ser registrada.");
-const user=await post("/api/identity/register",{nome:"Pessoa teste",login:"pessoa123",senha:"SenhaSeguraTeste2026!"});
+const user=await post("/api/identity/register",{nome:"Pessoa teste",email:"teste.reserva@example.com",login:"pessoa123",senha:"SenhaSeguraTeste2026!"});
 assert.equal(user.status,201,JSON.stringify(user.body));
 const tag=await postAdmin("/api/admin/users",{id:user.body.usuario.id,tag:"petiano"});
 assert.equal(tag.status,200,JSON.stringify(tag.body));
 const loginUser=await post("/api/identity/login",{login:"pessoa123",senha:"SenhaSeguraTeste2026!"});
 assert.equal(loginUser.status,200);
-const verifiedReserve=await post("/api/reservations",{...payload,email:"teste.reserva@example.com"},loginUser.cookie);
+const verifiedReserve=await post("/api/reservations",{...payload,email:"ignorado@example.com"},loginUser.cookie);
 assert.equal(verifiedReserve.status,201,JSON.stringify(verifiedReserve.body));
+assert.equal(db.prepare("SELECT email FROM reservas ORDER BY id DESC LIMIT 1").get().email,"teste.reserva@example.com","Reserva usa o e-mail da conta, não o informado no pedido.");
 assert.equal(db.prepare("SELECT usuario_id FROM reservas ORDER BY id DESC LIMIT 1").get().usuario_id,db.prepare("SELECT id FROM usuarios WHERE public_id=?").get(user.body.usuario.id).id,"Reserva deve pertencer à conta pessoal verificada.");
 const reservedId=db.prepare("SELECT id FROM reservas WHERE usuario_id=? ORDER BY id DESC LIMIT 1").get(db.prepare("SELECT id FROM usuarios WHERE public_id=?").get(user.body.usuario.id).id).id;
 const rejected=await postAdmin("/api/admin/reservation",{id:reservedId,acao:"recusar",responsavel:"Ana Maria (PET)",observacao:"Material indisponível na data solicitada"});

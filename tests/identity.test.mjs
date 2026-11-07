@@ -5,7 +5,7 @@ import {identityAPI} from "../src/identity.js";
 
 const db=new DatabaseSync(":memory:");
 db.exec("PRAGMA foreign_keys=ON");
-for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql"]){
+for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0013_gmail_queue.sql","0014_email_usuarios.sql"]){
   db.exec(readFileSync("migrations/"+f,"utf8"));
 }
 class Prepared {
@@ -35,7 +35,8 @@ const call=async(path,method="GET",payload=null,cookie="",admin=false)=>{
   return {status:response.status,body,cookie:response.headers.get("set-cookie")?.split(";")[0]||"",headers:response.headers};
 };
 const post=(path,payload,cookie="",admin=false)=>call(path,"POST",payload,cookie,admin);
-const registration=(nome,login,senha)=>post("/api/identity/register",{nome,login,senha});
+const registration=(nome,login,senha)=>post("/api/identity/register",{nome,email:login+"@example.com",login,senha});
+assert.equal((await post("/api/identity/register",{nome:"Sem e-mail",login:"semmail01",senha:"teste"})).status,400,"Novas contas precisam de e-mail.");
 const senhaA="SenhaSegura!2026",senhaB="OutraSenhaSegura!2026";
 const a=await registration("Sérgio","sergio01",senhaA);
 const b=await registration("Sérgio","sergio02",senhaB);
@@ -148,7 +149,7 @@ const oldCookie="__Host_pet_identity="+token;
 const initial=await call("/api/identity/me","GET",null,oldCookie);
 assert.equal(initial.body.usuario.precisa_criar_login,true);
 assert.equal(initial.body.usuario.tag,"petiano");
-const migrated=await post("/api/identity/upgrade",{login:"petianoantigo",senha:"SenhaMigrada!2026"},oldCookie);
+const migrated=await post("/api/identity/upgrade",{login:"petianoantigo",email:"antigo@example.com",senha:"SenhaMigrada!2026"},oldCookie);
 assert.equal(migrated.status,200,JSON.stringify(migrated.body));
 assert.equal(migrated.body.usuario.precisa_criar_login,false);
 assert.equal(migrated.body.usuario.tag,"petiano");

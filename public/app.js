@@ -89,6 +89,8 @@ function dateInput(name,label,value,min=""){return '<div class="field"><label fo
 function inputField(name,label,value="",opts={}){return '<div class="field"><label for="'+name+'">'+esc(label)+'</label><input id="'+name+'" name="'+name+'" type="'+(opts.type||"text")+'" '+(opts.required?"required":"")+' maxlength="'+(opts.max||140)+'" placeholder="'+attr(opts.placeholder||"")+'" value="'+attr(value)+'"></div>'}
 function selectField(id,label,options,selected,first=false){return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><select id="'+id+'">'+(first?'<option value="">Selecione</option>':"")+options.map(x=>'<option value="'+attr(x.value)+'" '+(String(selected)===String(x.value)?"selected":"")+'>'+esc(x.label)+'</option>').join("")+'</select></div>'}
 async function reserveModal(itemId){
+  if(!state.identity){identityLoginModal();return;}
+  if(state.identity&&!state.identity.email){identityEmailModal(true);return;}
   const cats=state.data.categorias;
   if(!state.data.componentes.length){toast("Ainda não há materiais cadastrados.",true);return;}
   const item=byId(itemId)||state.data.componentes[0];
@@ -100,6 +102,7 @@ async function reserveModal(itemId){
     '<div class="field-grid">'+dateInput("r-start","Data de retirada",date,date)+dateInput("r-end","Previsão de devolução",date,date)+'</div>'+
     '<div id="r-availability" class="reservation-availability">Consultando disponibilidade…</div>'+
     inputField("r-name","Nome do solicitante *",state.actor,{required:true,max:100,placeholder:"Nome completo"})+
+    '<p class="hint">E-mail da conta: '+esc(state.identity?.email||"Cadastre o e-mail na sua conta para reservar")+'.</p>'+
     inputField("r-contact","Contato (opcional)","",{max:140,placeholder:"Telefone"})+
     '<div class="field"><label for="r-note">Observação (opcional)</label><textarea id="r-note" maxlength="500" placeholder="Detalhes da solicitação"></textarea></div>'+
     '<p class="notice">A reserva só será confirmada após aprovação da equipe do PET. O contato informado fica restrito ao painel administrativo.</p>'+
@@ -467,15 +470,14 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     if(state.identity)localStorage.setItem("pet_inventario_nome",state.actor);
     $("#offline-alert").hidden=true;
     render();
-    // A sessão pessoal já foi conferida; buscar notificações imediatamente.
+    if(document.body.dataset.loansRoute==="true")openMyLoans();
     if(state.identity&&typeof refreshNotifications==="function")refreshNotifications();
-    // Exibir o estado real da conta pessoal após sair do Admin: sessão Admin não serve como login de usuário.
     const returnedFromAdmin=sessionStorage.getItem("pet_check_identity_after_admin")==="1";
     if(returnedFromAdmin)sessionStorage.removeItem("pet_check_identity_after_admin");
     if(returnedFromAdmin&&!state.identity&&typeof showReturnFromAdminIdentityNotice==="function")showReturnFromAdminIdentityNotice();
-    if(document.body.dataset.loansRoute==="true")openMyLoans();
     if(state.identity?.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
     else if(state.identity?.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
+    else if(state.identity&&!state.identity.email)setTimeout(()=>identityEmailModal(true),400);
   }catch(error){
     console.error(error);
     $("#offline-alert").hidden=false;
