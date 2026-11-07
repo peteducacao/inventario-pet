@@ -147,5 +147,19 @@ assert.equal(created.permitir_petianos,1,"Novo filamento deve começar liberado 
 assert.equal(created.permitir_visitantes,1,"Novo filamento deve começar liberado para visitantes.");
 assert.equal(sqlite.prepare("SELECT permitir_petianos,permitir_visitantes FROM componentes WHERE id=?").get(created.componente_id).permitir_visitantes,1,"O material vinculado também deve permitir reserva.");
 
+// Matemática exigida: quantidade 10, seis em uso, somente quatro disponíveis.
+const unit=await postAdmin("/api/admin/item",{
+  categoria_id:electronic.id,nome:"Teste de disponibilidade 10-6",quantidade:10,em_uso:6,
+  imagem:"",observacoes:"",identificacao:"",patrimonio:"",visivel_visitante:true,
+  permitir_petianos:true,permitir_visitantes:true,mostrar_quantidade:true,mostrar_em_uso:true,unidade:"unidades"
+});
+assert.equal(unit.status,200,JSON.stringify(unit.body));
+const constrained=sqlite.prepare("SELECT id FROM componentes WHERE nome='Teste de disponibilidade 10-6'").get();
+assert.ok(constrained);
+const availableFour=await req("/api/availability?id="+constrained.id+"&inicio="+today+"&fim="+end,"GET",undefined,visitor);
+assert.equal(availableFour.status,200,JSON.stringify(availableFour.body));
+assert.equal(availableFour.body.disponiveis,4);
+const excess=await req("/api/reservations","POST",{componente_id:constrained.id,quantidade:5,data_inicio:today,data_devolucao:end},visitor);
+assert.equal(excess.status,409,"Jamais aceitar reserva de cinco unidades se só há quatro disponíveis.");
 console.log("EMPRÉSTIMOS OK: categoria, material, filamentos, reserva, retirada, devolução, bloqueio, estoque e restauração.");
 sqlite.close();
