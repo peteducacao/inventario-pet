@@ -467,11 +467,13 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     if(state.identity)localStorage.setItem("pet_inventario_nome",state.actor);
     $("#offline-alert").hidden=true;
     render();
+    if(document.body.dataset.loansRoute==="true")openMyLoans();
     if(state.identity?.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
     else if(state.identity?.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
   }catch(error){
     console.error(error);
     $("#offline-alert").hidden=false;
+    if(document.body.dataset.loansRoute==="true")openMyLoans();
     $("#category-sections").innerHTML='<div class="empty-state">Não foi possível carregar o inventário. Tente atualizar.</div>';
   }finally{document.body.classList.remove("catalog-loading");}
 })();
