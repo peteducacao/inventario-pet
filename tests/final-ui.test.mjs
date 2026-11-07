@@ -448,8 +448,12 @@ clearMaterialsSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
 await wait(20);
 assert.equal(ad.querySelector("[data-admin-group]"),null,"Materiais nunca exibem grupos ou botão Ver variações.");
 assert.equal(ad.querySelector(".admin-family-models"),null,"Ver variações é exclusivo do catálogo.");
-assert.equal(ad.querySelectorAll("#admin-material-list .material-row").length,7,
-  "Todos os sete componentes são listados diretamente, com ou sem vínculo.");
+assert.equal(ad.querySelectorAll("#admin-material-list .material-row").length,6,
+  "A primeira página deve listar os componentes individuais, sem agrupamento.");
+assert.match(ad.querySelector("#admin-individual-count").textContent,/7 materiais encontrados/,
+  "Sete componentes aparecem na contagem total, inclusive os vinculados.");
+assert.ok(ad.querySelector('#admin-material-pages [data-page="2"]'),
+  "O sétimo material deve estar acessível pela paginação.");
 assert.ok(ad.querySelector('#admin-material-list [data-item-edit="3"]'),
   "Arduino Uno vinculado deve ter edição própria na lista.");
 const adminSearch=ad.querySelector("#admin-material-search"),espAdmin=fullAdmin.componentes.find(x=>x.id===3),previous=espAdmin.nome;
