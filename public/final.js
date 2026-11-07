@@ -60,6 +60,31 @@ const ordered=(array,sort)=>{
 };
 function paginate(array,page,limit=6){const pages=Math.max(1,Math.ceil(array.length/limit));const current=Math.max(1,Math.min(pages,Number(page)||1));return {items:array.slice((current-1)*limit,current*limit),page:current,pages,total:array.length};}
 function pageButtons(info,which){
+  // Apenas o catálogo público: informar total de páginas e manter a última
+  // sempre clicável. O painel Admin conserva sua paginação independente.
+  if(which==="public"){
+    const pages=Math.max(1,Number(info.pages)||1);
+    const current=Math.max(1,Math.min(pages,Number(info.page)||1));
+    if(pages===1)return '<span class="page-info page-total">1 página</span>';
+    const visible=new Set([1,pages]);
+    for(let n=Math.max(1,current-1);n<=Math.min(pages,current+1);n++)visible.add(n);
+    const ordered=[...visible].sort((a,b)=>a-b);
+    let html='<button type="button" data-page="'+(current-1)+'" '+(current===1?"disabled":"")+' aria-label="Página anterior">‹</button>';
+    let previous=0;
+    for(const n of ordered){
+      if(n-previous===2){
+        html+='<button type="button" data-page="'+(n-1)+'" aria-label="Página '+(n-1)+'">'+(n-1)+'</button>';
+      }else if(n-previous>2 && previous!==0){
+        html+='<span class="page-gap" aria-hidden="true">…</span>';
+      }
+      const last=n===pages;
+      html+='<button type="button" data-page="'+n+'" class="'+(current===n?"active":"")+'" aria-label="'+(last?"Última página, "+n:"Página "+n)+'" '+(last?'title="Ir para a última página" ':'')+(current===n?'aria-current="page"':"")+'>'+n+'</button>';
+      previous=n;
+    }
+    html+='<button type="button" data-page="'+(current+1)+'" '+(current===pages?"disabled":"")+' aria-label="Próxima página">›</button>';
+    html+='<span class="page-info page-total">'+pages+' páginas</span>';
+    return html;
+  }
   if(info.pages<=1)return "";
   const count=Math.min(info.pages,5),start=Math.min(Math.max(1,info.page-2),Math.max(1,info.pages-4));
   let html='<button type="button" data-page="'+Math.max(1,info.page-1)+'" '+(info.page===1?"disabled":"")+' aria-label="Página anterior">‹</button>';

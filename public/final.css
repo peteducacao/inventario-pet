@@ -264,3 +264,16 @@ body:not(.admin-mode) .site-footer{margin-top:35px}
  body:not(.admin-mode) .inventory-section .catalog-numbers strong{font-size:13px}
  body:not(.admin-mode) .inventory-section .catalog-numbers span{font-size:7.8px}
 }
+
+/* Paginação do catálogo: priorizar páginas em vez de quantidade de itens. */
+#catalog-pagination .page-gap{font-size:14px;line-height:1;color:#8094a2;min-width:10px;text-align:center;user-select:none}
+#catalog-pagination .page-total{font-size:12px;white-space:nowrap;color:#687d8e;font-weight:650}
+@media(max-width:720px){
+  #catalog-pagination{gap:5px;padding-top:22px}
+  #catalog-pagination button{width:34px;height:36px;flex-shrink:0}
+  #catalog-pagination .page-total{flex-basis:100%;text-align:center;margin-top:6px;padding:0}
+}
+@media(max-width:390px){
+  #catalog-pagination{gap:4px}
+  #catalog-pagination button{width:32px;height:35px}
+}
