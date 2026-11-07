@@ -13,10 +13,10 @@ const clean = (v,max=120)=>String(v??"").trim().slice(0,max);
 const sha256 = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,"0")).join("");
 const randomHex = size => [...crypto.getRandomValues(new Uint8Array(size))].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();
 const publicUser = u => ({id:u.public_id,nome:u.nome,email:u.email||"",tag:u.papel,criado_em:u.criado_em,ativo:u.ativo===1,login:u.login||null,precisa_criar_login:!u.login,trocar_senha:!!u.must_change_password});
-const expiry = () => new Date(Date.now()+180*86400000).toISOString();
+const expiry = () => new Date(Date.now()+30*86400000).toISOString();
 const authCookie = "__Host_pet_identity";
 const cookieValue = req => (req.headers.get("cookie")||"").split(";").map(x=>x.trim()).find(x=>x.startsWith(authCookie+"="))?.slice(authCookie.length+1)||"";
-const setCookie = value => authCookie+"="+value+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=15552000";
+const setCookie = value => authCookie+"="+value+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000";
 const clearCookie = () => authCookie+"=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0";
 const brazilDate = () => new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const formatDateValid = x => {
@@ -42,9 +42,9 @@ async function addSession(db,id){
   await db.prepare("INSERT INTO usuario_sessoes(hash,usuario_id,expira_em) VALUES(?,?,?)").bind(await sha256(token),id,expiry()).run();
   return setCookie(token);
 }
-async function rate(db,req,tag,max,windowH=24) {
+async function rate(db,req,tag,max,windowH=24,globalScope=false) {
   const ip=clean(req.headers.get("CF-Connecting-IP")||"unknown",100);
-  const marker=await sha256("identity:"+tag+":"+ip+":"+new Date().toISOString().slice(0,10));
+  const marker=await sha256("identity:"+tag+":"+(globalScope?"geral":ip)+":"+new Date().toISOString().slice(0,10));
   const start=new Date(Date.now()-windowH*3600000).toISOString();
   const count=await db.prepare("SELECT COUNT(*) AS n FROM reserva_limites WHERE hash=? AND criado_em>=?").bind(marker,start).first();
   if((count?.n||0)>=max)return false;
@@ -79,6 +79,8 @@ const securityFields=async secret => {
   return {salt,hash};
 };
 const maybeDuplicate=e=>String(e?.message||e).includes("UNIQUE")||String(e?.message||e).includes("constraint failed");
+const duplicateEmailError=e=>String(e?.message||e).includes("EMAIL_JA_CADASTRADO");
+const emailInUse=(db,email,except=null)=>db.prepare("SELECT 1 AS n FROM usuarios WHERE lower(trim(email))=? AND id!=COALESCE(?,-1) LIMIT 1").bind(email,except).first();
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
@@ -90,6 +92,7 @@ async function register(req,env){
   if(!await rate(db,req,"cadastro",20))return error("Limite de cadastros atingido. Tente mais tarde.",429);
   const taken=await db.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first();
   if(taken)return error("Este nome de usuário já está em uso.",409);
+   if(await emailInUse(db,email))return error("Este e-mail já está cadastrado.",409);
   const {hash,salt}=await securityFields(password),time=now(),recoveryHash=await sha256(crypto.randomUUID());
   let user;
   for(let attempt=0;attempt<4;attempt++){
@@ -99,7 +102,8 @@ async function register(req,env){
       user=await db.prepare("SELECT * FROM usuarios WHERE id=?").bind(result.meta.last_row_id).first();
       break;
     }catch(e){
-      if(!maybeDuplicate(e))throw e;
+      if(duplicateEmailError(e))return error("Este e-mail já está cadastrado.",409);
+       if(!maybeDuplicate(e))throw e;
       const clash=await db.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first();
       if(clash)return error("Este nome de usuário já está em uso.",409);
     }
@@ -111,7 +115,7 @@ async function register(req,env){
 async function loginUser(req,env){
   const db=env.DB,b=await bodyJson(req,12000),login=username(b.login);
   if(!validUsername(login)||!validPassword(b.senha))return error("Login ou senha incorretos.",401);
-  if(!await rate(db,req,"login:"+login,12,1))return error("Muitas tentativas de login. Tente mais tarde.",429);
+  if(!await rate(db,req,"login:"+login,12,1)||!await rate(db,req,"login:"+login,80,1,true))return error("Muitas tentativas de login. Tente mais tarde.",429);
   const u=await db.prepare("SELECT * FROM usuarios WHERE login=? AND ativo=1").bind(login).first();
   if(!u||!await verifyPassword(b.senha,u))return error("Login ou senha incorretos.",401);
   const session=await addSession(db,u.id);
@@ -128,6 +132,7 @@ async function upgradeLegacy(req,env){
   if(!validUsername(login))return error("Escolha um login de 4 a 24 caracteres (letras, números, ponto, _ ou traço).");
   if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
   if(await env.DB.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first())return error("Este login já está em uso.",409);
+   if(await emailInUse(env.DB,email,user.id))return error("Este e-mail já está cadastrado.",409);
   const {hash,salt}=await securityFields(password);
   try {
     const applied=await env.DB.batch([
@@ -135,7 +140,7 @@ async function upgradeLegacy(req,env){
       env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
     ]);
     if(applied[0].meta?.changes!==1)return error("Conta já atualizada. Entre com login e senha.",409);
-  }catch(e){if(maybeDuplicate(e))return error("Este login já está em uso.",409);throw e;}
+  }catch(e){if(duplicateEmailError(e))return error("Este e-mail já está cadastrado.",409);if(maybeDuplicate(e))return error("Este login já está em uso.",409);throw e;}
   const session=await addSession(env.DB,user.id);
   const updated=await env.DB.prepare("SELECT * FROM usuarios WHERE id=?").bind(user.id).first();
   return respond({ok:true,usuario:publicUser(updated)},200,{"set-cookie":session});
