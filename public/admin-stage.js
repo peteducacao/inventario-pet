@@ -976,6 +976,25 @@ function adminSettings(root){
     '<p class="mail-template-help">Use <code>{nome}</code>, <code>{material}</code>, <code>{quantidade}</code>, <code>{prazo}</code>, <code>{registro}</code> e <code>{link}</code> nos textos.</p>'+
     '<div class="mail-template-preview"><strong>Prévia com dados fictícios</strong><p id="mail-template-preview-subject"></p><pre id="mail-template-preview-body"></pre></div>'+
     '<div class="mail-template-actions"><button type="button" class="primary-button" id="mail-template-save">Salvar texto deste modelo</button></div></section>';
+  const mailEvents=[["antes","1 dia antes da devolução"],["hoje","No dia da devolução"],["atraso2","2 dias de atraso"],["atraso7","7 dias de atraso"],["manual","Cobrança manual"]];
+  const scheduleEditor='<section class="admin-panel mail-schedule-panel"><div class="admin-section-head"><div><h2>Quando enviar e-mails?</h2>'+
+    '<p>Escolha os tipos de mensagem de cada tag. PETianes e Visitantes têm controles separados. A opção geral da tag, acima, também precisa estar ativada.</p></div></div>'+
+    '<form id="mail-event-form"><div class="mail-schedule-grid">'+
+    [["visitante","Visitantes","Solicitam reserva, que precisa ser aprovada e registrada como retirada."],["petiano","PETianes","Retiradas diretas; a tag fica sem e-mails por padrão."]].map(([tag,label,description])=>
+      '<div class="mail-schedule-card"><h3>'+label+'</h3><p>'+description+'</p>'+
+      mailEvents.map(([key,label])=>settingsToggle("mail-event-"+tag+"-"+key,label,"",true)).join("")+
+      '</div>').join("")+'</div>'+
+    '<p class="hint">Avisos automáticos só são gerados após a retirada real e na data correspondente. A cobrança manual depende de uma retirada ativa com prazo.</p>'+
+    '<div class="mail-template-actions"><button type="submit" class="primary-button" id="mail-event-save" disabled>Salvar regras por tag</button></div></form></section>';
+  const mailTest='<section class="admin-panel mail-test-panel"><div class="admin-section-head"><div><h2>Testar envio pelo Gmail</h2>'+
+    '<p>Envie uma cópia de teste para seu e-mail, sem alterar empréstimos ou notificar visitantes e PETianes.</p></div></div>'+
+    '<form id="mail-test-form"><div class="field-grid">'+
+    '<div class="field"><label for="mail-test-email">E-mail que receberá o teste</label><input id="mail-test-email" type="email" placeholder="seuemail@exemplo.com" maxlength="180" autocomplete="email" required></div>'+
+    '<div class="field"><label for="mail-test-type">Modelo de aviso</label><select id="mail-test-type">'+mailEvents.map(([key,label])=>'<option value="'+key+'">'+label+'</option>').join("")+'</select></div></div>'+
+    '<div class="mail-template-actions"><button type="submit" class="primary-button" id="mail-test-submit">Enviar e-mail de teste</button>'+
+    '<button type="button" class="outline-button" id="mail-check-now">Verificar avisos de hoje agora</button></div>'+
+    '<p class="hint" id="mail-test-feedback">Os testes entram na fila e são enviados pelo acionador do Apps Script (a cada cinco minutos). Para enviar imediatamente, execute processarFilaPET no Apps Script.</p>'+
+    '</form></section>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Configurações</h2></div></div>'+
     '<form id="admin-settings-form" class="settings-grid">'+
     '<div class="settings-block"><div class="field"><label for="v2-cleanup">Excluir empréstimos devolvidos após</label>'+
@@ -989,7 +1008,7 @@ function adminSettings(root){
     settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
     '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
-    emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
+    scheduleEditor+mailTest+emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
     '<button type="button" class="outline-button" id="v2-backup-import">Restaurar arquivo JSON</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
     '<button type="button" class="outline-button" id="v2-run-cleanup">Executar limpeza</button></div></section>';
@@ -1005,6 +1024,48 @@ function adminSettings(root){
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 
+
+  // Permissões por tipo e por tag: nenhum envio de e-mail ocorre ao salvar as opções.
+  const eventSave=$("#mail-event-save");
+  $("#mail-event-form").onsubmit=async event=>{
+    event.preventDefault();eventSave.disabled=true;eventSave.textContent="Salvando…";
+    const profiles={};
+    for(const tag of ["visitante","petiano"]){
+      profiles[tag]={};
+      for(const [key] of mailEvents)profiles[tag][key]=$("#mail-event-"+tag+"-"+key).checked;
+    }
+    try{const result=await api("/api/admin/mail/events","POST",{profiles});toast(result.mensagem||"Regras de e-mail atualizadas.");}
+    catch(error){toast(error.message,true);}
+    finally{eventSave.disabled=false;eventSave.textContent="Salvar regras por tag";}
+  };
+  api("/api/admin/mail/events").then(result=>{
+    if(!document.contains(root)||UI.adminTab!=="configuracoes")return;
+    for(const [tag,settings] of Object.entries(result.profiles||{})){
+      for(const [key,value] of Object.entries(settings.eventos||{})){
+        const input=$("#mail-event-"+tag+"-"+key);if(input)input.checked=!!value;
+      }
+    }
+    eventSave.disabled=false;
+  }).catch(error=>{toast("Não foi possível carregar as regras de e-mail: "+error.message,true);});
+  const statusMessage=$("#mail-test-feedback");
+  $("#mail-test-form").onsubmit=async event=>{
+    event.preventDefault();const button=$("#mail-test-submit");button.disabled=true;button.textContent="Colocando na fila…";
+    try{
+      const result=await api("/api/admin/mail/test","POST",{email:$("#mail-test-email").value.trim(),evento:$("#mail-test-type").value});
+      statusMessage.textContent="Teste preparado para "+result.destinatario+". O Apps Script enviará pelo próximo acionador (ou execute processarFilaPET para enviar agora).";
+      toast(result.mensagem||"Teste colocado na fila do Gmail.");
+    }catch(error){toast(error.message,true);statusMessage.textContent=error.message;}
+    finally{button.disabled=false;button.textContent="Enviar e-mail de teste";}
+  };
+  $("#mail-check-now").onclick=async()=>{
+    const button=$("#mail-check-now");button.disabled=true;button.textContent="Verificando…";
+    try{
+      const result=await api("/api/admin/mail/check-now","POST",{});
+      const summary="Verificados "+result.verificados+" empréstimos ativos com prazo. "+result.enfileirados+" aviso(s) novo(s) colocado(s) na fila para hoje.";
+      statusMessage.textContent=summary;toast(summary);
+    }catch(error){toast(error.message,true);statusMessage.textContent=error.message;}
+    finally{button.disabled=false;button.textContent="Verificar avisos de hoje agora";}
+  };
   // Editor de modelos: salvar um tipo por vez, mantendo a configuração dos destinatários.
   let mailTemplates=[],templateSelected="",templateChanged=false;
   const typeSelect=$("#mail-template-type"),subjectField=$("#mail-template-subject"),bodyField=$("#mail-template-body");
