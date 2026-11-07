@@ -24,7 +24,7 @@ const dayAdd=d=>{const z=new Date(today+"T12:00:00Z");z.setUTCDate(z.getUTCDate(
 const insert=(email,due,extra={})=>{
   const obj={email,due,sem_prazo:0,tipo:"reserva",...extra};
   const r=sqlite.prepare("INSERT INTO reservas(componente_id,nome_solicitante,email,quantidade,data_inicio,data_devolucao,status,tipo,sem_prazo) VALUES (?,?,?,1,?,?,'retirada',?,?)")
-    .run(item.id,"Visitante de Teste",obj.email,today,obj.due,obj.tipo,obj.sem_prazo);
+    .run(item.id,"Visitante de Teste",obj.email,obj.due<today?obj.due:today,obj.due,obj.tipo,obj.sem_prazo);
   return Number(r.lastInsertRowid);
 };
 const rid=insert("visita@example.com",dayAdd(-2));
