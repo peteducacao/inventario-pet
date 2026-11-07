@@ -139,7 +139,7 @@ Cloudflare cron de avisos → src/mail-bridge.js (validação)
 
 **Fila de pendentes:** `GET /api/admin/mail/log` retorna somente status `pendente` e `processando` para a janela, embora os enviados permaneçam em `mail_queue` no D1. O Apps Script consulta `/api/mail/next` e confirma com `/api/mail/ack`; mensagens deixam de ser válidas se o empréstimo já foi devolvido, mudou a data ou perdeu autorização. Mensagens concluídas continuam no banco para rastreabilidade.
 
-**Notificações internas:** aprovação, recusa e devolução criam avisos para a conta quando há vínculo à identidade. O Gmail, no código atual, **não** envia automaticamente confirmações transacionais de reserva, aprovação, recusa ou devolução.
+**Notificações internas:** aprovação, recusa e devolução administrativas podem criar avisos para a conta vinculada. **Exceção:** a devolução realizada pelo próprio PETiane em `/api/my/return` ou `/api/member/return` não cria notificação de confirmação, pois a ação já foi confirmada na interface. O endpoint `/api/notifications` também oculta de contas PETianes as antigas mensagens de auto-devolução com o título e texto originais, sem excluir registros do banco ou esconder mensagens de administração. O Gmail, no código atual, **não** envia automaticamente confirmações transacionais de reserva, aprovação, recusa ou devolução.
 
 ### Configurar ou reparar sem vazar segredos
 1. Cloudflare Worker: verifique a existência de `MAIL_BRIDGE_TOKEN` nos secrets do Worker e de `ADMIN_PASSWORD`, sem ler/copiar os valores para tickets.
