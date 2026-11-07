@@ -94,16 +94,25 @@ jobs:
           const result=await fetch(root+"/api/catalog",{headers:{"cache-control":"no-cache"}});
           if(!result.ok)throw Error("Catálogo inacessível: "+result.status);
           const data=await result.json();
-          const alkaline=(data.componentes||[]).filter(x=>x.grupo_variacoes==="Alcalina");
-          if(alkaline.length<2)throw Error("A família Alcalina não foi vinculada no catálogo público.");
-          const names=alkaline.map(x=>x.nome.toLocaleLowerCase("pt-BR"));
-          if(!names.some(x=>x.includes("palito"))||!names.some(x=>x.includes("normal")))
-            throw Error("Faltam opções de pilha normal/palito na família Alcalina.");
+          // O administrador pode renomear, reorganizar ou desvincular famílias.
+          // Nunca exigir um nome fixo (ex.: "Alcalina") para validar o deploy.
+          const groups=new Map();
+          for(const item of data.componentes||[]){
+            const key=String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR");
+            if(!key)continue;
+            if(!groups.has(key))groups.set(key,[]);
+            groups.get(key).push(item);
+          }
+          const families=[...groups.values()].filter(items=>items.length>=2);
+          for(const members of families){
+            const ids=new Set(members.map(x=>x.id));
+            if(ids.size!==members.length)throw Error("Há identificadores repetidos em uma família de variações.");
+          }
           const app=await fetch(root+"/final.js",{headers:{"cache-control":"no-cache"}});
           const js=await app.text();
           if(!app.ok||!js.includes("function openVariantChoices(")||!js.includes("data-open-variants"))
             throw Error("Seletor de modelos não foi publicado.");
-          console.log("FAMÍLIAS PUBLICADAS OK: Alcalina com "+alkaline.length+" modelos, seleção por toque e estoques distintos.");
+          console.log("FAMÍLIAS PUBLICADAS OK: seletor de modelos disponível, "+families.length+" famílias com múltiplas variações no catálogo atual.");
           NODE
       - name: Conferir acesso direto à página independente do Admin
         run: |
