@@ -488,3 +488,29 @@ body[data-loans-route="true"] .loans-page-panel{display:block;background:#fff;bo
  .bulk-visibility-modal #bulk-selected-count{margin:8px 0 3px}
  body[data-loans-route="true"] .loans-page-panel{margin-top:12px}
 }
+
+
+/* Modal de visibilidade: categoria + seleção guiada sem apertar o celular. */
+.bulk-category-picker{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;margin-bottom:4px}
+.bulk-category-picker .field{margin:0}
+.bulk-category-picker select{width:100%;min-width:0;min-height:43px;border:1px solid #d9e4eb;border-radius:11px;background:#fff;color:#294758;padding:9px 12px;font-size:12px}
+.bulk-category-picker button{min-height:43px;white-space:normal;text-align:center}
+.bulk-category-picker button:disabled{opacity:.5}
+.bulk-similar-hint{font-size:11px;color:#647d8d;margin:0 0 8px;line-height:1.35}
+.bulk-visibility-modal .admin-bulk-actions button[hidden],.bulk-similar-hint[hidden]{display:none!important}
+/* Atalho da atividade mais recente na visão geral. */
+.dashboard-last-change{display:flex;flex-direction:column;align-items:flex-start;gap:6px;margin-top:16px;padding:15px 17px;border:1px solid #dbe9ea;background:#f8fcfa;border-radius:14px;min-width:0}
+.dashboard-last-label{font-size:10px;font-weight:900;letter-spacing:.7px;text-transform:uppercase;color:#0a8d74}
+.dashboard-last-change strong{font-size:14px;line-height:1.3;color:#173649}
+.dashboard-last-change p{font-size:12px;color:#536e7b;margin:0;overflow-wrap:anywhere}
+.dashboard-last-change small{font-size:11px;color:#758b98}
+.dashboard-last-change button{margin-top:6px;font-size:12px}
+body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:grid;place-items:center;min-height:100dvh;padding:18px}
+@media(max-width:720px){
+ .bulk-category-picker{grid-template-columns:1fr;gap:7px;margin-bottom:7px}
+ .bulk-category-picker button{width:100%;min-height:39px}
+ .bulk-visibility-modal .admin-bulk-actions{margin-top:6px}
+ .bulk-visibility-modal .admin-bulk-actions button[hidden]{display:none!important}
+ .bulk-visibility-modal .admin-bulk-actions button:last-child{grid-column:auto}
+ .dashboard-last-change{padding:13px 14px}
+}
