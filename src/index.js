@@ -629,10 +629,11 @@ async function processRequest(req, env) {
       const result=await db.batch([
         db.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=?")
           .bind(r.quantidade,discarded,current,actor,"Devolução da reserva #"+id+(discarded?" • "+discarded+" unidade(s) descartada(s)":""),item.id,r.quantidade,discarded),
+        db.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=?").bind(discarded,item.id,discarded),
         db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'")
           .bind(current,actor,str(b.observacao,500),id)
       ]);
-      if(result[0].meta?.changes!==1||result[1].meta?.changes!==1)
+      if(result[0].meta?.changes!==1||result[2].meta?.changes!==1)
         return bad("Não foi possível confirmar a devolução. Confira o estoque.",409);
     } else return bad("Ação não permitida para o estado atual desta reserva.",409);
     // Registrar o resultado para o titular vinculado à reserva. A senha do Admin, por si,
