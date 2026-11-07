@@ -133,5 +133,19 @@ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM componentes WHERE import_
 assert.equal(sqlite.prepare("SELECT permitir_emprestimos FROM categorias WHERE id=?").get(filamentCat.id).permitir_emprestimos,0);
 assert.equal(sqlite.prepare("SELECT permitir_emprestimos FROM componentes WHERE id=?").get(blue.componente_id).permitir_emprestimos,0);
 assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=?").get(blue.componente_id).n,2);
+// A migração de correção libera todas as categorias e cores existentes sem perder dados.
+sqlite.exec(readFileSync("migrations/0017_reabrir_reservas_e_retiradas.sql","utf8"));
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM categorias WHERE arquivada=0 AND (permitir_petianos=0 OR permitir_visitantes=0)").get().n,0,"Categorias ativas devem oferecer as duas ações.");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM componentes WHERE arquivado=0 AND (permitir_petianos=0 OR permitir_visitantes=0)").get().n,0,"Materiais ativos devem oferecer ambas as ações.");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM filamentos WHERE permitir_petianos=0 OR permitir_visitantes=0").get().n,0,"Cores cadastradas devem oferecer reserva e retirada.");
+assert.equal(sqlite.prepare("SELECT quantidade FROM filamentos WHERE id=?").get(blue.id).quantidade,6,"Migração não deve alterar estoque.");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=?").get(blue.componente_id).n,2,"Migração não deve apagar empréstimos.");
+const newColor=await postAdmin("/api/admin/filaments",{acao:"criar",cor:"Roxo de teste",hexadecimal:"#9933CC",quantidade:2,visivel_visitante:true});
+assert.equal(newColor.status,200,JSON.stringify(newColor.body));
+const created=sqlite.prepare("SELECT permitir_petianos,permitir_visitantes,componente_id FROM filamentos WHERE cor='Roxo de teste'").get();
+assert.equal(created.permitir_petianos,1,"Novo filamento deve começar liberado para PETianes.");
+assert.equal(created.permitir_visitantes,1,"Novo filamento deve começar liberado para visitantes.");
+assert.equal(sqlite.prepare("SELECT permitir_petianos,permitir_visitantes FROM componentes WHERE id=?").get(created.componente_id).permitir_visitantes,1,"O material vinculado também deve permitir reserva.");
+
 console.log("EMPRÉSTIMOS OK: categoria, material, filamentos, reserva, retirada, devolução, bloqueio, estoque e restauração.");
 sqlite.close();
