@@ -300,7 +300,7 @@ function paintAdminMaterials(){
 /* Reservas: grupos mutuamente exclusivos. */
 function reservationGroup(r){
   if(r.status==="pendente")return "pendente";
-  if(r.status==="retirada"&&r.data_devolucao<localDate())return "atrasadas";
+  if(r.status==="retirada"&&!Number(r.sem_prazo)&&r.data_devolucao<localDate())return "atrasadas";
   if(r.status==="aprovada"||r.status==="retirada")return "ativas";
   return "concluidas";
 }
@@ -328,13 +328,14 @@ function reservationRow(r){
   const actions=r.status==="pendente"?'<button class="primary-button" type="button" data-res-do="aprovar" data-id="'+r.id+'">'+iconSvg("check",14)+' Aprovar</button><button type="button" class="danger-button" data-res-do="recusar" data-id="'+r.id+'">Recusar</button>':
     r.status==="aprovada"?'<button type="button" class="primary-button" data-res-do="retirar" data-id="'+r.id+'">Registrar retirada</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
     r.status==="retirada"?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>':"";
+  const mailAction=r.status==="retirada"&&r.email?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
   return '<div class="reservation-row">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb"></div>')+
     '<div><h3>#'+r.id+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3><small>'+esc(r.nome_solicitante)+' · '+r.quantidade+' un.'+(r.tipo==="retirada_direta"?" · PETiano":"")+'</small>'+
     (r.contato?'<small style="display:block">'+esc(r.contato)+'</small>':"")+
     (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+'</div>'+
     '<div class="reservation-date"><small>Retirada</small><strong>'+esc(formatDay(r.data_inicio))+'</strong></div>'+
-    '<div class="reservation-date"><small>Devolução</small><strong>'+esc(formatDay(r.data_devolucao))+'</strong></div>'+
-    '<span class="tag '+cls+'">'+tag+'</span><div class="reservation-actions">'+actions+'</div></div>';
+    '<div class="reservation-date"><small>Devolução</small><strong>'+(r.sem_prazo?'Sem prazo':esc(formatDay(r.data_devolucao)))+'</strong></div>'+
+    '<span class="tag '+cls+'">'+tag+'</span><div class="reservation-actions">'+actions+mailAction+'</div></div>';
 }
 function paintReservations(){
   const list=$("#admin-res-list");if(!list)return;
@@ -351,6 +352,12 @@ function paintReservations(){
 async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
   if(action==="devolver")return returnModal(r);
+  if(action==="cobrar"){
+    if(!await niceModalConfirm("Enviar cobrança pelo Gmail?", "O aviso será colocado na fila para envio a "+r.email+".", "Colocar na fila"))return;
+    try{await api("/api/admin/mail/queue","POST",{id});toast("Cobrança colocada na fila do Gmail.");}
+    catch(e){toast(e.message,true);}
+    return;
+  }
   const descriptions={aprovar:"Aprovar a reserva de "+r.nome_solicitante+"?",recusar:"Recusar ou cancelar esta reserva?",retirar:"Confirmar que o material foi entregue?"};
   if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar",action==="recusar"))return;
   try{
@@ -859,6 +866,11 @@ function adminSettings(root){
     '<div id="v2-custom-wrap" class="field" hidden><label for="v2-custom-days">Dias</label><input id="v2-custom-days" type="number" min="1" max="3650" value="'+attr(/^\d+$/.test(current)?current:"45")+'"></div>'+
     '<p>Somente reservas devolvidas são apagadas. Reservas pendentes e materiais em uso permanecem.</p></div>'+
     '<div class="settings-block"><strong>Dados do inventário</strong><p>'+esc(adminLastUpdate())+'</p><div class="field"><label><input type="checkbox" id="v2-demo" '+(cfg.modo_demo==="sim"?"checked":"")+'> Exibir modo de demonstração</label></div></div>'+
+    '<div class="settings-block"><strong>Notificações por Gmail</strong><p>O disparo automático depende da conexão com o Apps Script. A cobrança manual também respeita as permissões da tag.</p>'+
+    '<div class="field"><label><input type="checkbox" id="v2-mail-auto" '+(cfg.avisos_email==="sim"?"checked":"")+'> Ativar lembretes automáticos</label></div>'+
+    '<div class="field"><label><input type="checkbox" id="v2-mail-pet" '+(cfg.notificacoes_petianos==="sim"?"checked":"")+'> Notificar PETianes por e-mail (se houver e-mail e prazo)</label></div>'+
+    '<div class="field"><label><input type="checkbox" id="v2-mail-visitor" '+(cfg.notificacoes_visitantes!=="nao"?"checked":"")+'> Notificar visitantes por e-mail</label></div>'+
+    '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
     '<section class="admin-panel"><div class="admin-section-head"><h2>Backup</h2></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
@@ -871,8 +883,17 @@ function adminSettings(root){
     btn.disabled=true;
     try{
       await api("/api/admin/settings","POST",{limpeza_reservas:days,modo_demo:$("#v2-demo").checked?"sim":"nao"});
+      await api("/api/admin/mail/settings","POST",{avisos_email:$("#v2-mail-auto").checked?"sim":"nao",notificacoes_petianos:$("#v2-mail-pet").checked?"sim":"nao",notificacoes_visitantes:$("#v2-mail-visitor").checked?"sim":"nao"});
       await adminReload();adminBuild();toast("Configurações salvas.");
     }catch(error){toast(error.message,true);btn.disabled=false;}
+  };
+  $("#v2-mail-history").onclick=async()=>{
+    try{
+      const result=await api("/api/admin/mail/log");
+      const items=result.items||[];
+      const body='<div class="modal-main"><p class="notice">Conexão com o Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'</p><div class="admin-list">'+(items.length?items.map(x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.criado_em))+(x.ultimo_erro?" · "+esc(x.ultimo_erro):"")+'</small></div></div>').join(""):'<div class="empty-state">Nenhum e-mail registrado.</div>')+'</div></div>';
+      openModal("Histórico de notificações","Envios e cobranças do Inventário PET.",body);
+    }catch(e){toast(e.message,true);}
   };
   $("#v2-backup-download").onclick=async()=>{try{const result=await api("/api/admin/backup");saveDownload("backup-inventario-pet-"+localDate()+".json",JSON.stringify(result,null,2));toast("Backup preparado.");}catch(e){toast(e.message,true);}};
   $("#v2-backup-import").onclick=()=>$("#v2-backup-file").click();
