@@ -318,7 +318,8 @@ function setupFinalPublic(){
   $("#stats-toggle").onclick=()=>{UI.summaryMinimized=!UI.summaryMinimized;stored("pet_public_summary_closed",UI.summaryMinimized?"1":"0");finalRender();};
   $("#profile-button").onclick=openUserMenu;
   $("#notification-button").onclick=()=>{if(!state.identity){identityLoginModal();return;}openMyNotificationPopover();};
-  // O link href="/admin/" funciona em nova guia.
+  // app.js carrega um handler legado; links reais devem usar navegação nativa.
+  if($("#admin-button")?.tagName==="A")$("#admin-button").onclick=null;
   const menuButton=$("#public-menu-toggle");
   const drawer=$("#public-sidebar");
   const veil=$("#public-nav-overlay");
