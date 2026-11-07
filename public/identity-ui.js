@@ -40,7 +40,7 @@ function accountFields(prefix,nome=""){
     passwordField(prefix+"-confirm","Repetir senha","new-password");
 }
 function identityLoginModal(first=false){
-  openModal("Entrar no inventário","Use seu nome de usuário e sua senha. A tag Visitante ou PETiano continua vinculada à sua conta.",
+  openModal("Entrar no inventário","Use seu nome de usuário e sua senha. O cargo Visitante ou PETiano continua vinculada à sua conta.",
     '<form class="modal-main" id="identity-login-form">'+
     '<div class="field"><label for="identity-login">Nome de usuário</label><input id="identity-login" maxlength="24" autocapitalize="none" spellcheck="false" autocomplete="username" required placeholder="Ex.: sergio01"></div>'+
     passwordField("identity-login-password","Senha")+
@@ -71,7 +71,7 @@ function identityRegisterModal(first=false){
   if(state.identity?.precisa_criar_login)return identityUpgradeModal();
   openModal("Criar minha conta","Cada integrante tem seu próprio login. Toda conta nova começa como Visitante.",
     '<form class="modal-main" id="register-user-form">'+accountFields("reg",state.actor)+
-    '<p class="notice">A tag <strong>PETiano</strong> é liberada apenas por um administrador. Não é necessário anotar códigos de recuperação.</p>'+
+    '<p class="notice">O cargo <strong>PETiano</strong> é liberada apenas por um administrador. Não é necessário anotar códigos de recuperação.</p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="submit" class="primary-button" id="identity-register-submit" style="width:100%">Criar conta</button></div>'+
     '<div class="identity-separator">Já tem uma conta?</div><button type="button" class="outline-button" id="identity-register-login" style="width:100%">Entrar com login e senha</button></form>');
   wirePasswordVisibility();
@@ -91,8 +91,8 @@ function identityRegisterModal(first=false){
 function identityUpgradeModal(){
   const u=state.identity;if(!u)return identityLoginModal();
   if(!u.precisa_criar_login)return identityProfileModal();
-  openModal("Atualizar meu cadastro","Seu perfil antigo e sua tag serão preservados. Só precisamos configurar um login e senha.",
-    '<form class="modal-main" id="identity-upgrade-form"><p class="notice">Encontramos seu perfil de <strong>'+esc(u.nome)+'</strong> ('+esc(u.id)+'). Sua tag e suas movimentações não serão alteradas.</p>'+
+  openModal("Atualizar meu cadastro","Seu perfil antigo e seu cargo serão preservados. Só precisamos configurar um login e senha.",
+    '<form class="modal-main" id="identity-upgrade-form"><p class="notice">Encontramos seu perfil de <strong>'+esc(u.nome)+'</strong> ('+esc(u.id)+'). Seu cargo e suas movimentações não serão alterados.</p>'+
     '<div class="field"><label for="upgrade-email">E-mail</label><input type="email" id="upgrade-email" maxlength="180" required autocomplete="email" placeholder="seuemail@exemplo.com"></div>'+
     '<div class="field"><label for="upgrade-login">Escolha um nome de usuário</label><input id="upgrade-login" maxlength="24" minlength="4" autocapitalize="none" autocomplete="username" required placeholder="Ex.: sergio01"></div>'+
     '<p class="hint" style="margin:-9px 0 14px">De 4 a 24 caracteres, sem espaços nem acentos.</p>'+
@@ -150,10 +150,10 @@ function identityProfileModal(){
     '<div class="field"><label for="identity-my-login">Meu nome de usuário</label><input id="identity-my-login" readonly value="'+attr(u.login||"")+'"></div>'+
     '<div class="field"><label for="identity-my-email">Meu e-mail</label><input id="identity-my-email" readonly value="'+attr(u.email||"")+'"></div>'+
     '<div class="field"><label for="identity-public-id">Meu ID público</label><div class="copy-field"><input id="identity-public-id" readonly value="'+attr(u.id)+'"><button type="button" class="outline-button" id="identity-copy-id">Copiar ID</button></div><small class="hint">O administrador pode encontrar você pelo nome de usuário ou ID.</small></div>'+
-    (member?'<div class="notice"><strong>Tag PETiano ativa:</strong> você pode registrar retiradas e devoluções sem aprovação.</div>':'<div class="notice">Sua tag é Visitante. Solicitações de reserva aguardam aprovação do PET.</div>')+
+    (member?'<div class="notice"><strong>Cargo PETiano ativo:</strong> você pode registrar retiradas e devoluções sem aprovação.</div>':'<div class="notice">Seu cargo é Visitante. Solicitações de reserva aguardam aprovação do PET.</div>')+
     '<div class="identity-actions">'+(member?'<button type="button" class="primary-button" id="identity-open-withdraw">Registrar retirada</button>':'')+
     '<button type="button" class="outline-button" id="identity-my-items">Meus empréstimos e devoluções</button>'+
-    '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar minha tag</button>'+
+    '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar meu cargo</button>'+
     '<button type="button" class="outline-button" id="identity-email-edit">Alterar meu e-mail</button>'+
     '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button>'+
     '<button type="button" class="outline-button" id="identity-change-password">Alterar minha senha</button>'+
@@ -167,7 +167,7 @@ function identityProfileModal(){
       const r=await api("/api/identity/me");
       if(!r.usuario){setIdentity(null);identityLoginModal();toast("Sua sessão expirou. Entre novamente.",true);return;}
       const old=state.identity?.tag;setIdentity(r.usuario);identityProfileModal();
-      toast(r.usuario.tag===old?"Seu perfil já está atualizado.":"Sua tag foi atualizada!");
+      toast(r.usuario.tag===old?"Seu perfil já está atualizado.":"Seu cargo foi atualizado!");
     }catch(error){toast(error.message,true);}
   };
   $("#identity-change-password").onclick=()=>identityChangePasswordModal(false);
@@ -178,11 +178,11 @@ function identityProfileModal(){
 function identityEmailModal(required=false){
   const u=state.identity;if(!u)return identityLoginModal();
   openModal(required?"Complete seu cadastro":"Alterar e-mail",required?
-    "Seu login e sua tag continuam iguais. Informe um e-mail para utilizarmos nas reservas e nos empréstimos.":
+    "Seu login e seu cargo continuam iguais. Informe um e-mail para utilizarmos nas reservas e nos empréstimos.":
     "Este endereço será utilizado nas comunicações do Inventário PET.",
     '<form class="modal-main" id="identity-email-form">'+
     '<div class="field"><label for="identity-email-value">E-mail</label><input type="email" id="identity-email-value" maxlength="180" required autocomplete="email" value="'+attr(u.email||"")+'" placeholder="seuemail@exemplo.com"></div>'+
-    '<p class="notice">O cadastro do e-mail não ativa cobranças para PETianes; isso depende da configuração da tag.</p>'+
+    '<p class="notice">O cadastro do e-mail não ativa cobranças para PETianes; isso depende da configuração do cargo.</p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0">'+
     (required?'':'<button type="button" class="secondary-button" id="identity-email-cancel">Cancelar</button>')+
     '<button type="submit" class="primary-button" id="identity-email-submit">Salvar e-mail</button></div></form>');
@@ -207,7 +207,7 @@ function identityRenameModal(){
   };
 }
 async function memberWithdrawModal(initialId){
-  if(state.identity?.tag!=="petiano"){toast("Aguarde a liberação da tag PETiano pelo administrador.",true);return identityProfileModal();}
+  if(state.identity?.tag!=="petiano"){toast("Aguarde a liberação do cargo PETiano pelo administrador.",true);return identityProfileModal();}
   if(!state.identity.email)return identityEmailModal(true);
   const all=borrowableItems();
   if(!all.length){toast("Não há materiais liberados para retirada.",true);return;}
@@ -218,7 +218,7 @@ async function memberWithdrawModal(initialId){
     '<div class="field"><label for="member-item">Material</label><select id="member-item" required>'+all.map(x=>'<option value="'+x.id+'" '+(x.id===initial.id?"selected":"")+'>'+esc(x.nome)+'</option>').join("")+'</select></div>'+
     '<div class="field-grid"><div class="field"><label for="member-qty">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="member-qty" data-delta="-1">−</button><input id="member-qty" type="number" min="1" max="1000" value="1" required><button type="button" class="step" data-target="member-qty" data-delta="1">+</button></div></div>'+
     '<div class="field"><label for="member-due">Previsão de devolução (opcional)</label><input type="date" id="member-due" min="'+today+'"></div></div>'+
-    '<p class="hint">E-mail da conta: '+esc(state.identity.email)+'. A notificação depende das regras da tag PETiane.</p>'+
+    '<p class="hint">E-mail da conta: '+esc(state.identity.email)+'. A notificação depende das regras do cargo PETiane.</p>'+
     '<p id="member-availability" class="reservation-availability">Consultando disponibilidade…</p>'+
     '<div class="field"><label for="member-note">Observação (opcional)</label><textarea id="member-note" maxlength="500" placeholder="Onde ou para qual atividade será utilizado?"></textarea></div>'+
     '<div class="modal-footer" style="border:0;padding:14px 0 0"><button type="button" class="secondary-button" id="member-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-submit">Confirmar retirada</button></div></form>';
@@ -271,7 +271,7 @@ async function memberHistoryModal(){
 function memberReturnModal(loan){
   if(!loan)return memberHistoryModal();
   const body='<form id="member-return-form" class="modal-main"><p>Confirmar a devolução de <strong>'+loan.quantidade+' unidade(s) de '+esc(loan.componente_nome)+'</strong>?</p>'+
-    '<div class="field"><label for="member-broken">Unidades que voltaram com defeito</label><div class="stepper"><button type="button" class="step" data-target="member-broken" data-delta="-1">−</button><input id="member-broken" type="number" min="0" max="'+loan.quantidade+'" value="0" required><button type="button" class="step" data-target="member-broken" data-delta="1">+</button></div></div>'+
+    '<div class="field"><label for="member-discard">Unidades descartadas (opcional)</label><div class="stepper"><button type="button" class="step" data-target="member-discard" data-delta="-1">−</button><input id="member-discard" type="number" min="0" max="'+loan.quantidade+'" value="0" required><button type="button" class="step" data-target="member-discard" data-delta="1">+</button></div><small>Unidades descartadas saem da quantidade total; as demais ficam disponíveis.</small></div>'+
     '<div class="field"><label for="member-return-note">Observações (opcional)</label><textarea id="member-return-note" maxlength="500" placeholder="Condição do material"></textarea></div>'+
     '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">Confirmar devolução</button></div></form>';
   openModal("Devolver material","Seu estoque será atualizado imediatamente.",body);
@@ -282,7 +282,7 @@ function memberReturnModal(loan){
   $("#member-return-form").onsubmit=async e=>{
     e.preventDefault();const btn=$("#member-return-submit");btn.disabled=true;
     try{
-      await api("/api/my/return","POST",{id:loan.id,defeituosos:Number($("#member-broken").value),observacao:$("#member-return-note").value});
+      await api("/api/my/return","POST",{id:loan.id,descartados:Number($("#member-discard").value),observacao:$("#member-return-note").value});
       await publicReload();toast("Devolução registrada!");
       if(document.body.dataset.loansRoute==="true"){closeModal();await openMyLoans();}
       else {closeModal();await openMyLoans();}
@@ -291,7 +291,7 @@ function memberReturnModal(loan){
 }
 let userSearch="";
 async function renderAdminUsers(target){
-  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Usuários e tags</h3><p>Todo perfil começa como visitante. Somente o administrador libera a tag PETiano.</p></div></div><div class="loading-placeholder">Carregando usuários…</div></section>';
+  target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Usuários e cargos</h3><p>Todo perfil começa como visitante. Somente o administrador libera o cargo PETiano.</p></div></div><div class="loading-placeholder">Carregando usuários…</div></section>';
   try{
     const r=await api("/api/admin/users");
     if(!document.contains(target)||state.tab!=="usuarios")return;
@@ -321,11 +321,11 @@ function renderAdminUserList(target,users){
       const u=users.find(x=>x.id===btn.dataset.userId);
       if(!u)return;
       const tag=btn.dataset.userTag;
-      if(!confirm((tag==="petiano"?"Conceder":"Remover")+" a tag PETiano de "+u.nome+" ("+u.id+")?"))return;
+      if(!confirm((tag==="petiano"?"Conceder":"Remover")+" o cargo PETiano de "+u.nome+" ("+u.id+")?"))return;
       btn.disabled=true;
       try{
         await api("/api/admin/users","POST",{id:u.id,tag});
-        toast("Tag atualizada para "+(tag==="petiano"?"PETiano":"Visitante")+".");
+        toast("Cargo atualizado para "+(tag==="petiano"?"PETiano":"Visitante")+".");
         await renderAdminUsers(target);
       }catch(error){toast(error.message,true);btn.disabled=false;}
     });
@@ -371,7 +371,7 @@ function adminShowTemporaryPassword(result){
 }
 function adminDeleteUserModal(u){
   openModal("Excluir usuário","Confirme a exclusão de "+u.nome+" · "+u.id,
-    '<div class="modal-main"><p class="notice warning"><strong>Esta exclusão é permanente.</strong> O perfil, a tag e as sessões serão encerrados. O histórico das movimentações concluídas será preservado para controle patrimonial.</p>'+
+    '<div class="modal-main"><p class="notice warning"><strong>Esta exclusão é permanente.</strong> O perfil, o cargo e as sessões serão encerrados. O histórico das movimentações concluídas será preservado para controle patrimonial.</p>'+
     '<p style="font-size:13px">Se houver uma reserva ou retirada ainda em andamento, a exclusão será bloqueada até que ela seja finalizada.</p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="button" class="secondary-button" id="admin-delete-cancel">Cancelar</button><button type="button" class="danger-button" id="admin-delete-confirm">Excluir definitivamente</button></div></div>');
   $("#admin-delete-cancel").onclick=adminModal;
