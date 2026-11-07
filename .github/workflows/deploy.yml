@@ -151,7 +151,7 @@ jobs:
           const admin=async(path,method="GET",body)=>get(path,{method,headers:{cookie},...(body===undefined?{}:{body:JSON.stringify(body)})});
           const stamp=Date.now(), name="E2E TEMP "+stamp;
           const cat=catalog.categorias[0], itemPayload={categoria_id:cat.id,nome:name,imagem:"",patrimonio:"TESTE",identificacao:"",quantidade:3,em_uso:0,com_defeito:0,mostrar_quantidade:true,mostrar_em_uso:true,mostrar_defeito:true,descricao_defeito:"",responsavel:"Teste automatizado"};
-          let id=null, resId=null, phase="none";
+          let id=null, resId=null, userId=null, phase="none";
           try{
             await admin("/api/admin/item","POST",itemPayload);
             const state=(await admin("/api/admin/state")).d;
@@ -160,7 +160,14 @@ jobs:
             const start=new Date(Date.now()+3*86400000).toISOString().slice(0,10),end=new Date(Date.now()+5*86400000).toISOString().slice(0,10);
             const avail=(await get("/api/availability?id="+id+"&inicio="+start+"&fim="+end)).d;
             if(avail.disponiveis!==3)throw Error("Disponibilidade inconsistente");
-            await get("/api/reservations",{method:"POST",body:JSON.stringify({componente_id:id,quantidade:1,data_inicio:start,data_devolucao:end,nome_solicitante:"Visitante de teste",email:"teste-inventario@example.com"})});
+            // Uma sessão administrativa não pode solicitar reservas em nome de um usuário.
+            const account=await get("/api/identity/register",{method:"POST",body:JSON.stringify({
+              nome:"Visitante de teste",login:"e2e_"+stamp.toString(36),senha:"TesteSeguroPET!"+stamp
+            })});
+            userId=account.d.usuario?.id;
+            const userCookie=account.r.headers.get("set-cookie")?.split(";")[0];
+            if(!userId||!userCookie)throw Error("Usuário temporário de teste não recebeu sessão pessoal");
+            await get("/api/reservations",{method:"POST",headers:{cookie:userCookie},body:JSON.stringify({componente_id:id,quantidade:1,data_inicio:start,data_devolucao:end,email:"e2e@example.com"})});
             const pending=(await admin("/api/admin/state")).d.reservas.find(r=>r.componente_id===id&&r.status==="pendente");
             if(!pending)throw Error("Pedido de reserva não chegou ao administrador");
             resId=pending.id;
@@ -179,6 +186,10 @@ jobs:
                 if(!resId||phase!=="none") await admin("/api/admin/item?id="+id,"DELETE");
                 else { const r=await admin("/api/admin/state"); const x=r.d.reservas.find(r=>r.componente_id===id&&r.status==="pendente"); if(x){await admin("/api/admin/reservation","POST",{id:x.id,acao:"recusar",responsavel:"Teste automático"});} await admin("/api/admin/item?id="+id,"DELETE"); }
               }catch(error){ console.error("AVISO: falha na limpeza do teste:",error.message); }
+            }
+            if(userId){
+              try{await admin("/api/admin/users/delete","POST",{id:userId});}
+              catch(error){console.error("AVISO: falha ao excluir conta temporária do teste:",error.message);}
             }
           }
           NODE

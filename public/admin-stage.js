@@ -33,6 +33,8 @@ function adminModal(){
   $("#admin-stage").classList.remove("admin-loading");
   document.body.classList.add("admin-mode");
   stored("pet_admin_open","1");
+  // Não transformar acesso ao Admin em sessão pessoal.
+  if(document.body.dataset.adminRoute==="true")sessionStorage.setItem("pet_check_identity_after_admin","1");
   state.tab=UI.adminTab;
   adminBuild();
 }

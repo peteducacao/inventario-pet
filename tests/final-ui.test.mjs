@@ -25,7 +25,7 @@ const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal
 const identity={id:"PET-AABBCCDDEEFF",nome:"Pessoa teste",tag:"visitante",login:"teste01",
   ativo:true,trocar_senha:false,precisa_criar_login:false};
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-function build(isAdmin,alreadyAdmin=false){
+function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdmin=false){
   const errors=[];
   const vc=new VirtualConsole();
   vc.on("jsdomError",e=>errors.push(String(e)));
@@ -43,7 +43,7 @@ function build(isAdmin,alreadyAdmin=false){
     let status=200,body={ok:true};
     if(path==="/api/catalog")body=visitorCatalog;
     else if(path==="/api/filaments")body={ok:true,filamentos:[colors[0]]};
-    else if(path==="/api/identity/me")body={ok:true,usuario:identity};
+    else if(path==="/api/identity/me")body={ok:true,usuario:identityLoggedIn?identity:null};
     else if(path==="/api/notifications")body={notificacoes:[],nao_lidas:0};
     else if(path==="/api/admin/state"){
       if(adminAuthenticated)body=fullAdmin;
@@ -64,6 +64,7 @@ function build(isAdmin,alreadyAdmin=false){
     else {status=404;body={error:"Rota simulada não encontrada: "+path};}
     return {ok:status<400,status,json:async()=>body};
   };
+  if(returningFromAdmin)w.sessionStorage.setItem("pet_check_identity_after_admin","1");
   w.eval(scripts+"\nwindow.__pageButtons=pageButtons;window.__adminTestState=state;");
   const click=async(sel)=>{
     const el=d.querySelector(sel);
@@ -145,6 +146,25 @@ await click("#modal-root [data-close]");
 assert.deepEqual(publicUI.errors,[],"Erros do catálogo.");
 publicUI.dom.window.close();
 
+const adminOnlyUser=build(false,true,false,true);
+await wait(240);
+assert.equal(adminOnlyUser.d.querySelector("#profile-name").textContent,"Entrar","Admin não deve fingir que alguém entrou como PETiane.");
+assert.ok(adminOnlyUser.d.querySelector("#post-admin-personal-login"),"Ao retornar do Admin sem conta deve solicitar o login pessoal.");
+assert.match(adminOnlyUser.d.querySelector("#modal-root").textContent,/sessão administrativa/,"Explicar que as duas autenticações são distintas.");
+assert.equal(adminOnlyUser.w.sessionStorage.getItem("pet_check_identity_after_admin"),null,"Aviso deve aparecer uma vez só.");
+await adminOnlyUser.click("#post-admin-personal-login");
+assert.ok(adminOnlyUser.d.querySelector("#identity-login"),"O aviso deve abrir o formulário real da conta pessoal.");
+assert.deepEqual(adminOnlyUser.errors,[],"Erros ao retornar do Admin sem conta pessoal.");
+adminOnlyUser.dom.window.close();
+
+const userAlreadyLogged=build(false,true,true,true);
+await wait(240);
+assert.equal(userAlreadyLogged.d.querySelector("#profile-name").textContent,identity.nome,"Conta já autenticada deve ser reconhecida após retorno do Admin.");
+assert.equal(userAlreadyLogged.d.querySelector("#post-admin-personal-login"),null,"Não solicitar novo login quando conta já está conectada.");
+assert.deepEqual(userAlreadyLogged.errors,[],"Erros com conta pessoal já autenticada.");
+userAlreadyLogged.dom.window.close();
+
+
 const refreshed=build(true,true);
 await wait(180);
 assert.equal(refreshed.d.querySelector("#v2-admin-password"),null,"Sessão válida não pode exibir login brevemente ao atualizar.");
@@ -169,6 +189,7 @@ ad.querySelector("#v2-admin-password").value="senha-de-teste";
 ad.querySelector("#v2-admin-login").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
 await wait(180);
 assert.ok(ad.querySelector(".admin-layout"),"Admin separado não abriu.");
+assert.equal(aw.sessionStorage.getItem("pet_check_identity_after_admin"),"1","Ao entrar no Admin marcar checagem de identidade pessoal no retorno.");
 assert.equal(ad.querySelector(".admin-overview.three")?.children.length,3,"Painel precisa ter três indicadores.");
 assert.ok(ad.querySelector("#dashboard-recent-log"),"Últimas alterações precisam estar dentro da visão geral.");
 assert.equal(ad.querySelector(".admin-shortcuts"),null,"Atalhos fixos devem sair da visão geral.");

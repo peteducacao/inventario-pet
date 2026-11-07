@@ -469,6 +469,9 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     $("#offline-alert").hidden=true;
     render();
     if(document.body.dataset.loansRoute==="true")openMyLoans();
+    const returnedFromAdmin=sessionStorage.getItem("pet_check_identity_after_admin")==="1";
+    if(returnedFromAdmin)sessionStorage.removeItem("pet_check_identity_after_admin");
+    if(returnedFromAdmin&&!state.identity&&typeof showReturnFromAdminIdentityNotice==="function")showReturnFromAdminIdentityNotice();
     if(state.identity?.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
     else if(state.identity?.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
   }catch(error){
