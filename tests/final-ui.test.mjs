@@ -143,7 +143,6 @@ publicUI.dom.window.close();
 
 const refreshed=build(true,true);
 await wait(180);
-console.log("ADMIN REFRESH DIAG",refreshed.d.querySelector("#v2-admin-login")?.textContent.slice(0,500),refreshed.w.__adminTestState.admin?.componentes?.length,refreshed.errors);
 assert.equal(refreshed.d.querySelector("#v2-admin-password"),null,"Sessão válida não pode exibir login brevemente ao atualizar.");
 assert.ok(refreshed.d.querySelector(".admin-layout"),"Sessão válida deve ir diretamente ao painel após verificar.");
 assert.deepEqual(refreshed.errors,[],"Erros ao recarregar com sessão administrativa válida.");
