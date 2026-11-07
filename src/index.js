@@ -314,8 +314,8 @@ async function processRequest(req, env) {
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
     if(action==="criar"){
       const position=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
-      const pet=b.permitir_petianos===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_petianos===true);
-      const visitor=b.permitir_visitantes===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_visitantes===true);
+      const pet=b.permitir_petianos===undefined?Number(b.permitir_emprestimos!==false):Number(b.permitir_petianos===true);
+      const visitor=b.permitir_visitantes===undefined?Number(b.permitir_emprestimos!==false):Number(b.permitir_visitantes===true);
       const enabled=Number(!!(pet||visitor));
       await db.batch([
         db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled,pet,visitor),
