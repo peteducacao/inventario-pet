@@ -83,6 +83,9 @@ docs/GUIA_TECNICO.md               Este guia
 ### Reorganização do catálogo (07/11/2026)
 A migration `migrations/0018_reorganizar_robotica_equipamentos.sql` renomeia **Eletrônica** para **Robótica** e transfere os notebooks e tablets (incluindo os registros originalmente nas categorias **Tablets** e **Notebooks**) para a categoria **Equipamentos**, já existente. A migração conserva o identificador dos materiais, patrimônio, identificações, quantidade total, em uso, defeitos, reservas e permissões individuais. As categorias que ficaram vazias são **arquivadas**, não excluídas, e a ação é registrada no histórico administrativo. Não criar uma nova categoria Eletrônica nem duplicar tablets/notebooks. O catálogo também restaura o filtro “Todos” quando um filtro persistido se referir a uma categoria que deixou de aparecer.
 
+### Editar nomes das famílias de variações
+Na lista de materiais do Admin, cada item que tem `grupo_variacoes` exibe o controle **Renomear grupo**. Esse controle abre o modal com o nome atual e a quantidade de materiais vinculados, e chama `POST /api/admin/variations/rename` com `grupo_atual` e `novo_nome`. A API exige sessão de administrador, valida nomes, bloqueia colisão com outro grupo existente, atualiza `grupo_variacoes` para todos os materiais vinculados em uma única operação de banco e registra a mudança no `historico_admin`. Ela não altera o nome, as quantidades, o patrimônio, as imagens ou as reservas dos materiais. É diferente da operação de **Vincular variações** (`POST /api/admin/variations`), que seleciona manualmente quais materiais pertencem a uma família.
+
 ## 4. Fluxos reais de empréstimo e devolução
 
 ### Visitante

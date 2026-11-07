@@ -101,6 +101,22 @@ assert.ok((await call("/api/filaments","GET",null,loginUser.cookie)).body.filame
 const link=await postAdmin("/api/admin/variations",{ids:[one.id,two.id],grupo:"Resistores",responsavel:"Teste de variações"});
 assert.equal(link.status,200,JSON.stringify(link.body));
 assert.equal(db.prepare("SELECT grupo_variacoes FROM componentes WHERE id=?").get(two.id).grupo_variacoes,"Resistores");
+const beforeRename=db.prepare("SELECT id,nome,patrimonio,identificacao,quantidade,em_uso,com_defeito,grupo_variacoes FROM componentes WHERE id IN (?,?) ORDER BY id").all(one.id,two.id);
+const renameBody={grupo_atual:"Resistores",novo_nome:"Resistências",responsavel:"Admin de teste"};
+assert.equal((await post("/api/admin/variations/rename",renameBody)).status,401,"Renomear grupos exige autenticação Admin.");
+assert.equal((await postAdmin("/api/admin/variations/rename",{...renameBody,novo_nome:"x"})).status,400,"Nome do grupo muito curto deve ser rejeitado.");
+assert.equal((await postAdmin("/api/admin/variations/rename",{...renameBody,grupo_atual:"Grupo inexistente"})).status,404,"Grupo inexistente não deve ser criado.");
+const renamed=await postAdmin("/api/admin/variations/rename",renameBody);
+assert.equal(renamed.status,200,JSON.stringify(renamed.body));
+assert.equal(renamed.body.alterados,2,"Renomear deve atualizar toda a família, não um único material.");
+const afterRename=db.prepare("SELECT id,nome,patrimonio,identificacao,quantidade,em_uso,com_defeito,grupo_variacoes FROM componentes WHERE id IN (?,?) ORDER BY id").all(one.id,two.id);
+assert.deepEqual(afterRename.map(x=>({...x,grupo_variacoes:"Resistores"})),beforeRename.map(x=>({...x})),"Somente o título do grupo pode ser modificado.");
+assert.ok(afterRename.every(x=>x.grupo_variacoes==="Resistências"),"Todos os materiais devem receber o novo nome de família.");
+assert.equal((await postAdmin("/api/admin/variations/rename",renameBody)).status,404,"Um grupo antigo já renomeado não deve voltar a ser usado.");
+const repeat=await postAdmin("/api/admin/variations/rename",{grupo_atual:"Resistências",novo_nome:"Resistências"});
+assert.equal(repeat.status,200);
+assert.equal(repeat.body.alterados,0,"Salvar o mesmo nome não deve alterar o banco.");
+assert.ok(db.prepare("SELECT COUNT(*) AS n FROM historico_admin WHERE acao='Renomeou grupo de variações'").get().n>=1,"Alteração deve aparecer no histórico.");
 assert.equal(db.prepare("SELECT quantidade FROM componentes WHERE id=?").get(one.id).quantidade,originalQuantity);
 // Foto individual por variação: só altera imagem, preserva grupo e estoque.
 const photo="data:image/png;base64,"+Buffer.from("imagem-de-teste").toString("base64");

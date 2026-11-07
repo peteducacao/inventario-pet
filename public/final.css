@@ -698,3 +698,16 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .admin-users-counter span{font-size:9px}
  .admin-users-counter strong{font-size:22px}
 }
+
+
+/* Nome de família editável diretamente na lista de Materiais, inclusive no celular. */
+.admin-group-inline{display:flex;flex-wrap:wrap;align-items:center;gap:5px 9px;margin-top:6px;min-width:0;color:#647d8a;font-size:11px;line-height:1.45}
+.admin-group-inline span{min-width:0;overflow-wrap:anywhere}
+.admin-group-inline span strong{color:#386a7b;font-weight:750}
+.admin-group-rename{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:29px;padding:4px 9px;border:1px solid #b9d9dc;background:#effafa;border-radius:9px;color:#177c77;font-size:11px;font-weight:750;cursor:pointer;white-space:normal;text-align:center}
+.admin-group-rename:hover{background:#daf4ef;border-color:#65beb3}
+.admin-group-rename:focus-visible{outline:2px solid #15997f;outline-offset:2px}
+@media(max-width:720px){
+ .admin-group-inline{gap:6px}
+ .admin-group-rename{min-height:32px;padding:6px 9px}
+}

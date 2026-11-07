@@ -246,6 +246,24 @@ async function processRequest(req, env) {
     await auditLog(db,show?"Liberou exibição":"Restringiu exibição","material",null,changes.length+" materiais: "+changes.map(x=>x.nome).slice(0,16).join(", "),body.responsavel);
     return j({ok:true,alterados:changes.length,inalterados:objects.length-changes.length});
   }
+  if(path==="/api/admin/variations/rename" && method==="POST"){
+    const body=await input(req,2000);
+    const current=str(body.grupo_atual,80),next=str(body.novo_nome,80);
+    if(current.length<2||next.length<2)return bad("Informe os nomes atual e novo do grupo (mínimo de 2 caracteres).");
+    const norm=value=>String(value||"").trim().toLocaleLowerCase("pt-BR");
+    const groups=await results(db,"SELECT id,grupo_variacoes FROM componentes WHERE TRIM(grupo_variacoes)<>''");
+    const affected=groups.filter(x=>norm(x.grupo_variacoes)===norm(current));
+    if(!affected.length)return bad("Este grupo não foi encontrado. Atualize o painel e tente novamente.",404);
+    if(groups.some(x=>norm(x.grupo_variacoes)===norm(next)&&norm(x.grupo_variacoes)!==norm(current)))
+      return bad("Já existe outro grupo com esse nome. Escolha um nome diferente para evitar juntar famílias.",409);
+    if(affected.every(x=>x.grupo_variacoes===next))return j({ok:true,alterados:0});
+    const actor=str(body.responsavel,100)||"Admin",stamp=now();
+    const updated=await db.prepare("UPDATE componentes SET grupo_variacoes=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id IN ("+affected.map(()=>"?").join(",")+")")
+      .bind(next,stamp,actor,"Grupo de variações: "+current+" → "+next,...affected.map(x=>x.id)).run();
+    await auditLog(db,"Renomeou grupo de variações","material",null,
+      current+" → "+next+" · "+(updated.meta?.changes||0)+" materiais",actor);
+    return j({ok:true,alterados:updated.meta?.changes||0});
+  }
   if(path==="/api/admin/variations" && method==="POST"){
     const body=await input(req,12000),ids=Array.isArray(body.ids)?body.ids.map(Number):[];
     if(!ids.length||ids.length>150||ids.some(x=>!Number.isSafeInteger(x)||x<1)||new Set(ids).size!==ids.length)return bad("Selecione os materiais que serão vinculados.");
