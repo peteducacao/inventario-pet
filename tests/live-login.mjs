@@ -21,7 +21,7 @@ const admin=await send("/api/login",{senha:process.env.ADMIN_PASSWORD});
 assert.equal(admin.status,200,"Login admin indisponível");
 let profile=null;
 try{
-  const signup=await send("/api/identity/register",{nome:"TESTE AUTOMATICO - excluir",email:"teste-automatico@example.com",login:newLogin,senha:password});
+  const signup=await send("/api/identity/register",{nome:"TESTE AUTOMATICO - excluir",email:newLogin+"@example.com",login:newLogin,senha:password});
   assert.equal(signup.status,201,"Cadastro público falhou: "+JSON.stringify(signup.data));
   profile=signup.data.usuario;
   assert.equal(profile.login,newLogin);
