@@ -786,12 +786,12 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
       '<input type="checkbox" aria-label="Selecionar '+attr(x.nome)+' para alterar" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+info+'</label>';
     const hasCustomPhoto=/^data:image\//i.test(String(x.imagem||""));
     const alreadyLinked=Boolean(x.grupo_variacoes)&&String(x.grupo_variacoes).trim().toLocaleLowerCase("pt-BR")===String(targetGroup).trim().toLocaleLowerCase("pt-BR");
-    return '<div class="admin-bulk-row variant-photo-row '+(selected.has(x.id)?'is-selected':'')+'">'+
+    return '<div class="admin-bulk-row variant-photo-row '+(selected.has(x.id)?'is-selected ':'')+(alreadyLinked?'is-linked':'')+'">'+
       '<label class="variant-photo-select"><input type="checkbox" data-bulk-id="'+x.id+'" aria-label="Incluir '+attr(x.nome)+' na seleção da família" '+(selected.has(x.id)?'checked':'')+'>'+
       '<img class="variant-photo-thumb" src="'+attr(itemImage(x))+'" alt="Imagem de '+attr(x.nome)+'">'+
       '<span class="bulk-row-details"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
       (x.grupo_variacoes?' · Família atual: '+esc(x.grupo_variacoes):' · Sem grupo')+'</small>'+
-      (selected.has(x.id)?'<span class="variant-linked-label">'+(alreadyLinked?'✓ Já vinculado':'✓ Marcado para vincular')+'</span>':'')+'</span></label>'+
+      (alreadyLinked?'<span class="variant-linked-label is-existing">✓ Já vinculado</span>':selected.has(x.id)?'<span class="variant-linked-label is-pending">✓ Selecionado para vincular</span>':'')+'</span></label>'+
       '<button type="button" class="variant-photo-upload" data-variant-photo="'+x.id+'" aria-label="Enviar foto para '+attr(x.nome)+'">'+
       (hasCustomPhoto?'Trocar foto':'Enviar foto')+'</button>'+
       '<input type="file" accept="image/png,image/jpeg,image/webp" data-variant-file="'+x.id+'" hidden>'+
@@ -945,7 +945,7 @@ function openVariantLinker(currentId){
     '<div class="admin-bulk-actions"><button class="outline-button small-button" type="button" id="variant-similar">Sugerir semelhantes ('+model.similar.length+')</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-all">Selecionar resultados</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-none">Limpar seleção</button></div>'+
-    '<p class="variant-linked-info">Materiais já vinculados ao grupo aparecem <strong>marcados</strong>. Para adicionar, marque outros materiais. Para retirar vínculos, use <strong>Desvincular marcados</strong> e confira a confirmação.</p>'+
+    '<p class="variant-linked-info"><strong>Verde: já vinculado ao grupo salvo.</strong> Azul: selecionado agora para vincular. Ao escolher outra família, os vínculos já salvos dela serão marcados automaticamente. Desmarcar não desvincula: para remover um vínculo, selecione o material e use <strong>Desvincular marcados</strong>.</p>'+
     '<div class="admin-bulk-list" id="variant-list"></div><p class="hint" id="variant-selected"></p>'+
     '<div class="modal-footer" style="border:0;padding:14px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button type="button" class="outline-button" id="variant-create">Cadastrar nova variação</button>'+
@@ -993,7 +993,18 @@ function openVariantLinker(currentId){
     });
   };
   $("#variant-search").oninput=draw;
-  $("#variant-group-name").oninput=draw;
+  const loadGroupSelection=()=>{
+    const name=String($("#variant-group-name").value||"").trim().toLocaleLowerCase("pt-BR");
+    model.selected.clear();
+    if(name){
+      for(const item of model.all){
+        if(String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===name)model.selected.add(item.id);
+      }
+    }
+    draw();
+  };
+  $("#variant-group-name").onchange=loadGroupSelection;
+  $("#variant-group-name").oninput=loadGroupSelection;
   $("#variant-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
   $("#variant-check-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
   $("#variant-check-none").onclick=()=>{model.selected.clear();draw();};
