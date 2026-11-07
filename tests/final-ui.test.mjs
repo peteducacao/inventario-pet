@@ -56,7 +56,7 @@ function build(isAdmin){
     else {status=404;body={error:"Rota simulada não encontrada: "+path};}
     return {ok:status<400,status,json:async()=>body};
   };
-  w.eval(scripts);
+  w.eval(scripts+"\nwindow.__pageButtons=pageButtons;");
   const click=async(sel)=>{
     const el=d.querySelector(sel);
     assert.ok(el,"Controle ausente: "+sel);
@@ -68,6 +68,12 @@ function build(isAdmin){
 const publicUI=build(false);
 await wait(280);
 const {w,d,click}=publicUI;
+const p=w.__pageButtons({page:7,pages:18,total:216},"public");
+assert.match(p,/18 páginas/,"Quantidade de páginas deve estar visível.");
+assert.match(p,/data-page="18"/,"O último número de página deve aparecer.");
+assert.match(p,/title="Ir para a última página"/,"Atalho para última página deve ser explícito.");
+assert.doesNotMatch(p,/216 itens/,"Contagem de itens não deve aparecer no catálogo.");
+assert.match(w.__pageButtons({page:18,pages:18,total:216},"public"),/aria-current="page"/);
 assert.equal(d.body.classList.contains("catalog-loading"),false,"Catálogo ficou preso no carregamento.");
 assert.equal(d.querySelector("#search").closest(".catalog-toolbar")!==null,true,"Busca não está junto à ordenação.");
 assert.equal(d.querySelector("#search-mobile"),null,"Busca duplicada não deveria existir.");
