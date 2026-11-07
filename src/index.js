@@ -56,7 +56,9 @@ function validateItem(data) {
     unidade: str(data.unidade||"unidades", 40),
     visivel_visitante: data.visivel_visitante === undefined ? 1 : (data.visivel_visitante ? 1 : 0),
     grupo_variacoes: str(data.grupo_variacoes,80),
-    permitir_emprestimos: data.permitir_emprestimos===undefined?1:(data.permitir_emprestimos?1:0)
+    permitir_petianos: data.permitir_petianos===undefined?(data.permitir_emprestimos===undefined?1:Number(!!data.permitir_emprestimos)):Number(!!data.permitir_petianos),
+    permitir_visitantes: data.permitir_visitantes===undefined?(data.permitir_emprestimos===undefined?1:Number(!!data.permitir_emprestimos)):Number(!!data.permitir_visitantes),
+    permitir_emprestimos: (data.permitir_petianos===undefined && data.permitir_visitantes===undefined)?(data.permitir_emprestimos===undefined?1:Number(!!data.permitir_emprestimos)):Number(!!(data.permitir_petianos||data.permitir_visitantes))
   };
   if (!x.nome) throw new Error("Informe o nome do material.");
   if ([x.quantidade, x.em_uso, x.com_defeito].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
@@ -64,8 +66,8 @@ function validateItem(data) {
   if (x.imagem && !(/^\/img\/[a-zA-Z0-9_.-]+\.(svg|webp|jpg|jpeg|png)$/.test(x.imagem) || /^https:\/\//.test(x.imagem) || /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(x.imagem))) throw new Error("A imagem deve ser uma foto válida.");
   return x;
 }
-const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes","permitir_emprestimos"];
-const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações",permitir_emprestimos:"Permissão de reservas e retiradas" };
+const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes","permitir_emprestimos","permitir_petianos","permitir_visitantes"];
+const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações",permitir_emprestimos:"Empréstimos",permitir_petianos:"Retirada para PETianes",permitir_visitantes:"Retirada para visitantes" };
 function changes(before, after) {
   if (!before) return "Material cadastrado";
   const diffs = fields.filter(key => String(before[key] ?? "") !== String(after[key] ?? "")).map(key => key === "imagem" ? "Fotografia atualizada" : names[key] + ": " + str(before[key] ?? "—", 42) + " → " + str(after[key] ?? "—", 42));
@@ -73,7 +75,7 @@ function changes(before, after) {
 }
 const isPETiano = user => user?.papel === "petiano" && !!user.login && !user.must_change_password;
 const isFilamentMirror = item => /^FILAMENTO-\d+$/.test(String(item?.import_key||""));
-const borrowable = (item,cat) => !!item && !!cat && Number(item.permitir_emprestimos)!==0 && Number(cat.permitir_emprestimos)!==0 && Number(cat.arquivada)!==1;
+const borrowable = (item,cat,member=false) => !!item && !!cat && Number(cat.arquivada)!==1 && Number(item[member?"permitir_petianos":"permitir_visitantes"])===1 && Number(cat[member?"permitir_petianos":"permitir_visitantes"])===1;
 const allowedToSee = (item, category, member) => !!category && Number(category.arquivada)!==1 && (member || (Number(item.visivel_visitante ?? 1) === 1 && Number(category.visivel_visitante ?? 1) === 1));
 async function auditLog(db, action, type, id, description, actor="Admin"){
   try{
@@ -142,7 +144,7 @@ async function processRequest(req, env) {
   if(path==="/api/filaments" && method==="GET"){
     const user=await currentIdentity(req,db);
     const member=isPETiano(user);
-    const sql="SELECT f.id,f.cor,f.hexadecimal,f.quantidade,f.ordem,f.atualizado_em,f.visivel_visitante,f.permitir_emprestimos,f.componente_id,c.em_uso,c.com_defeito,cat.id AS categoria_id,cat.permitir_emprestimos AS categoria_permite FROM filamentos f JOIN componentes c ON c.id=f.componente_id JOIN categorias cat ON cat.id=c.categoria_id WHERE c.arquivado=0 AND cat.arquivada=0"+(member?"":" AND f.visivel_visitante=1 AND cat.visivel_visitante=1")+" ORDER BY f.ordem,f.cor COLLATE NOCASE";
+    const sql="SELECT f.id,f.cor,f.hexadecimal,f.quantidade,f.ordem,f.atualizado_em,f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,f.componente_id,c.em_uso,c.com_defeito,cat.id AS categoria_id,cat.permitir_emprestimos AS categoria_permite,cat.permitir_petianos AS categoria_petianos,cat.permitir_visitantes AS categoria_visitantes FROM filamentos f JOIN componentes c ON c.id=f.componente_id JOIN categorias cat ON cat.id=c.categoria_id WHERE c.arquivado=0 AND cat.arquivada=0"+(member?"":" AND f.visivel_visitante=1 AND cat.visivel_visitante=1")+" ORDER BY f.ordem,f.cor COLLATE NOCASE";
     const filamentos=await results(db,sql);
     return j({ok:true,filamentos});
   }
@@ -150,9 +152,9 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id")), a = url.searchParams.get("inicio"), b = url.searchParams.get("fim");
     if (!dateOK(a) || !dateOK(b) || a > b) return bad("Período inválido.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(await currentIdentity(req,db)))) return bad("Material não encontrado.", 404);
-    if(!borrowable(item,category))return bad("Reservas e retiradas desativadas para este material.",409);
+    if(!borrowable(item,category,isPETiano(await currentIdentity(req,db))))return bad("Retirada não autorizada para este perfil, categoria ou material.",409);
     return j({ disponiveis:Math.max(0, baseAvailable(item) - await maxReserved(db,id,a,b)) });
   }
   if (path === "/api/reservations" && method === "POST") {
@@ -171,9 +173,9 @@ async function processRequest(req, env) {
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(identity))) return bad("Material não encontrado.",404);
-    if(!borrowable(item,category))return bad("Reservas e retiradas desativadas para este material.",409);
+    if(!borrowable(item,category,isPETiano(identity)))return bad("Retirada não autorizada para este perfil, categoria ou material.",409);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
     await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id) VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now(),identity.id).run();
