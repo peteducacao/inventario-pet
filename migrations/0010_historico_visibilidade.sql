@@ -3,6 +3,8 @@
 ALTER TABLE categorias ADD COLUMN visivel_visitante INTEGER NOT NULL DEFAULT 1 CHECK(visivel_visitante IN (0,1));
 ALTER TABLE componentes ADD COLUMN visivel_visitante INTEGER NOT NULL DEFAULT 1 CHECK(visivel_visitante IN (0,1));
 ALTER TABLE filamentos ADD COLUMN visivel_visitante INTEGER NOT NULL DEFAULT 1 CHECK(visivel_visitante IN (0,1));
+ALTER TABLE componentes ADD COLUMN grupo_variacoes TEXT NOT NULL DEFAULT '';
+ALTER TABLE categorias ADD COLUMN arquivada INTEGER NOT NULL DEFAULT 0 CHECK(arquivada IN (0,1));
 
 CREATE TABLE IF NOT EXISTS historico_admin (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
