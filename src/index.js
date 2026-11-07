@@ -158,8 +158,8 @@ async function processRequest(req, env) {
     const quantidade = Number(body.quantidade);
     const nome = identity.nome;
     const contato = str(body.contato, 140);
-    const email = str(body.email, 180).toLowerCase();
-    if (!validEmail(email) || (identity?.papel !== "petiano" && !email)) return bad("Visitantes precisam informar um e-mail válido.");
+    const email = str(identity.email,180).toLowerCase();
+    if (!email || !validEmail(email)) return bad("Cadastre um e-mail válido em Minha conta antes de reservar materiais.",409);
     const inicio = str(body.data_inicio, 10), fim = str(body.data_devolucao, 10);
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
