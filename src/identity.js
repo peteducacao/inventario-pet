@@ -181,10 +181,11 @@ async function withdraw(req,env,user){
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)return error("Material ou quantidade inválidos.");
   if(due&&(!formatDateValid(due)||due<brazilDate()))return error("Informe uma data de devolução válida.");
   if(!validEmail(email))return error("Cadastre seu e-mail em Minha conta antes de retirar materiais.");
-  const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade,arquivado,categoria_id FROM componentes WHERE id=?").bind(id).first();
+  const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade,arquivado,categoria_id,permitir_emprestimos FROM componentes WHERE id=?").bind(id).first();
   if(!item)return error("Material não encontrado.",404);
-  const cat=await env.DB.prepare("SELECT arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first();
+  const cat=await env.DB.prepare("SELECT arquivada,permitir_emprestimos FROM categorias WHERE id=?").bind(item.categoria_id).first();
   if(item.arquivado===1||cat?.arquivada===1)return error("Material arquivado. Procure o administrador.",409);
+  if(!cat||Number(cat.permitir_emprestimos)===0||Number(item.permitir_emprestimos)===0)return error("Retirada desativada para esta categoria ou material.",409);
   if(item.quantidade-item.em_uso-item.com_defeito<quantity)return error("Estoque insuficiente para retirada.",409);
   const stamp=now(),actor=user.nome+" ("+user.public_id+")",today=brazilDate();
   const fields=["componente_id","nome_solicitante","contato","email","quantidade","data_inicio","data_devolucao","status","observacao","solicitado_em","retirado_em","responsavel_admin","usuario_id","tipo","sem_prazo"];
