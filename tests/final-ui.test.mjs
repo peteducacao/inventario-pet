@@ -4,6 +4,8 @@ import {JSDOM,VirtualConsole} from "jsdom";
 
 const scripts=["app.js","identity-ui.js","component-art.js","final.js","admin-stage.js"]
   .map(name=>readFileSync("public/"+name,"utf8")).join("\n;\n");
+assert.doesNotMatch(readFileSync("public/admin-stage.js","utf8"),/(?<!\$)\$\([^\n]*?\)\.forEach\(/,
+  "A função $ seleciona apenas um elemento; listas de botões devem usar $ para não quebrar o painel.");
 const one={id:1,categoria_id:1,nome:"Resistor 100Ω",imagem:"",grupo_variacoes:"Resistores",
   quantidade:15,em_uso:0,com_defeito:0,mostrar_quantidade:1,mostrar_em_uso:1,mostrar_defeito:1,
   visivel_visitante:1,permitir_petianos:1,permitir_visitantes:1,arquivado:0,patrimonio:"",identificacao:"",ultima_alteracao:"2026-11-06T10:00:00Z"};
