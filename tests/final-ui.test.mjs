@@ -446,15 +446,35 @@ const clearMaterialsSearch=ad.querySelector("#admin-material-search");
 clearMaterialsSearch.value="";
 clearMaterialsSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
 await wait(20);
-assert.ok(ad.querySelector('[data-admin-group="Arduino"] .admin-family-models'),"Admin deve mostrar variações.");
+assert.equal(ad.querySelector("[data-admin-group]"),null,"Materiais nunca exibem grupos ou botão Ver variações.");
+assert.equal(ad.querySelector(".admin-family-models"),null,"Ver variações é exclusivo do catálogo.");
+assert.equal(ad.querySelectorAll("#admin-material-list .material-row").length,6,
+  "A primeira página deve listar os componentes individuais, sem agrupamento.");
+assert.match(ad.querySelector("#admin-individual-count").textContent,/7 materiais encontrados/,
+  "Sete componentes aparecem na contagem total, inclusive os vinculados.");
+assert.ok(ad.querySelector('#admin-material-pages [data-page="2"]'),
+  "O sétimo material deve estar acessível pela paginação.");
+assert.ok(ad.querySelector('#admin-material-list [data-item-edit="3"]'),
+  "Arduino Uno vinculado deve ter edição própria na lista.");
 const adminSearch=ad.querySelector("#admin-material-search"),espAdmin=fullAdmin.componentes.find(x=>x.id===3),previous=espAdmin.nome;
 espAdmin.nome="ESP 32 DevKit";
 for(const term of ["esp32","ESP 32","esp-32"]){
   adminSearch.value=term;adminSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
   await wait(25);
-  assert.ok(ad.querySelector('[data-admin-group="Arduino"]'),"Busca encontra grupo por "+term);
+  assert.equal(ad.querySelectorAll("#admin-material-list .material-row").length,1,
+    "Busca no Admin exibe apenas o componente correspondente para "+term);
+  assert.ok(ad.querySelector('#admin-material-list [data-item-edit="3"]'),
+    "Busca deve deixar o componente pronto para editar: "+term);
+  assert.equal(ad.querySelector("[data-admin-group]"),null,"Busca não pode exibir grupo.");
 }
-espAdmin.nome=previous;adminSearch.value="";adminSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+espAdmin.nome=previous;
+adminSearch.value="Arduino";adminSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(20);
+assert.ok(ad.querySelector('#admin-material-list [data-item-edit="3"]'),
+  "Pesquisar Arduino mostra Arduino Uno mesmo estando vinculado.");
+assert.equal(ad.querySelectorAll("#admin-material-list .material-row").length,1);
+assert.equal(ad.querySelector(".admin-family-models"),null);
+adminSearch.value="";adminSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
 await wait(30);
 await adminClick("#admin-bulk-visibility");
 assert.ok(ad.querySelector("#bulk-category"),"Filtro de categoria obrigatório.");
@@ -518,8 +538,10 @@ await wait(90);
 assert.equal(fullAdmin.grupos_variacoes.some(x=>x.nome==="Vínculo Vazio"),false,"Apagar grupo vazio não apaga materiais.");
 await adminClick("#modal-root [data-close]");
 await adminClick('[data-admin-tab="materiais"]');
-assert.equal(ad.querySelector('[data-admin-group="Resistores"]').querySelectorAll("[data-group-model]").length,3);
-await adminClick('[data-admin-group="Resistores"] [data-item-edit="1"]');
+assert.equal(ad.querySelector("[data-admin-group]"),null);
+assert.ok(ad.querySelector('#admin-material-list [data-item-edit="1"]'));
+assert.ok(ad.querySelector('#admin-material-list [data-item-edit="2"]'));
+await adminClick('#admin-material-list [data-item-edit="1"]');
 assert.ok(ad.querySelector("#i-name"));
 assert.ok(ad.querySelector("#i-quantity"));
 assert.ok(ad.querySelector("#i-photo"));
