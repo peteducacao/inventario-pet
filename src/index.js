@@ -508,6 +508,7 @@ async function processRequest(req, env) {
       results(db,"SELECT * FROM conciliacao_experimentos_backup ORDER BY material_id")
     ]);
     return j({formato:"inventario-pet-v2",gerado_em:now(),...data,
+      componentes:await results(db,"SELECT * FROM componentes ORDER BY id"),
       historico,conciliacao_experimentos_vinculos,conciliacao_experimentos_backup},
       200,{"content-disposition":'attachment; filename="backup-inventario-pet.json"'});
   }
@@ -524,19 +525,22 @@ async function processRequest(req, env) {
       ||!b.componentes.every(x=>Number.isSafeInteger(x.id)&&Number.isSafeInteger(x.categoria_id))
       ||!b.reservas.every(x=>Number.isSafeInteger(x.id)&&Number.isSafeInteger(x.componente_id)))
       return bad("O backup tem registros inválidos.");
+    if(!v2 || !Array.isArray(b.filamentos))return bad("Use um backup completo v2 com filamentos para preservar os estoques.",409);
     const activeUsers=new Set((await results(db,"SELECT id FROM usuarios")).map(x=>Number(x.id)));
     // Reposição única e atômica das tabelas do inventário. Contas/senhas de
     // usuários não são exportadas nem apagadas nesta operação.
     const ops=[
       db.prepare("DELETE FROM reservas"),
+      db.prepare("DELETE FROM filamentos"),
       db.prepare("DELETE FROM componentes"),
       db.prepare("DELETE FROM categorias"),
       db.prepare("DELETE FROM configuracoes")
     ];
     for (const c of b.categorias){
-      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada) VALUES(?,?,?,?,?)")
-        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0));
+      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) VALUES(?,?,?,?,?,?)")
+        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0,c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):(c.permitir_emprestimos?1:0)));
     }
+    ops.push(db.prepare("INSERT OR IGNORE INTO categorias(nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) SELECT 'Filamentos',COALESCE(MAX(ordem),0)+1,1,0,0 FROM categorias"));
     const materialFields=[...fields,"arquivado","import_key"];
     for (const raw of b.componentes){
       const v=validateItem({...raw,mostrar_quantidade:raw.mostrar_quantidade??1,
@@ -567,11 +571,16 @@ async function processRequest(req, env) {
     if (!cfg.limpeza_reservas)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
     if (!cfg.limpeza_historico)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_historico','nunca')"));
     if(v2&&Array.isArray(b.filamentos)){
-      ops.push(db.prepare("DELETE FROM filamentos"));
+      const knownMirrors=new Set(b.componentes.map(x=>Number(x.id)));
       for(const color of b.filamentos)ops.push(db.prepare(
-        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES(?,?,?,?,?,?,?)"
+        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,componente_id) VALUES(?,?,?,?,?,?,?,?,?)"
       ).bind(color.id,str(color.cor,55),str(color.hexadecimal,7),Number(color.quantidade)||0,
-        Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1));
+        Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1,
+        color.permitir_emprestimos?1:0,knownMirrors.has(Number(color.componente_id))?Number(color.componente_id):null));
+      // Backups antigos não possuíam vínculo: reconstruir os materiais espelhados
+      // depois de restaurar as cores, preservando todas as quantidades e históricos.
+      ops.push(db.prepare("INSERT OR IGNORE INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.atualizado_em FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.componente_id IS NULL"));
+      ops.push(db.prepare("UPDATE filamentos SET componente_id=(SELECT c.id FROM componentes c WHERE c.import_key='FILAMENTO-'||filamentos.id) WHERE componente_id IS NULL"));
     }
     if(v2&&Array.isArray(b.historico)){
       ops.push(db.prepare("DELETE FROM historico_admin"));
