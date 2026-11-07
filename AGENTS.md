@@ -31,6 +31,7 @@
 13. Commit no GitHub ≠ site publicado. Confirme que o workflow de deploy da `main` terminou **success** para o mesmo SHA antes de dizer que foi publicado.
 14. Ordene cards no catálogo por **título exibido**, após agrupar as variações, para respeitar A–Z/Z–A (ex.: Arduino antes de Pilha Alcalina). Busca de materiais no catálogo e Admin deve aceitar `ESP32` mesmo se o nome salvo for `ESP 32`, ignorando separadores, acentos e caixa. No catálogo público, a busca por modelo deve preservar o grupo completo; no Admin, deve localizar o componente individual para edição.
 15. Alterou fluxo ou infraestrutura? Atualize a Ajuda, o guia técnico e os testes correspondentes na mesma PR.
+16. Contas pessoais: nunca exigir 2FA ou classes obrigatórias de caracteres na senha; exibir força fraca/média/forte e oferecer confirmação ao escolher senha fraca. E-mail obrigatório e único de modo insensível à caixa; preservar dados de eventuais contas legadas com e-mail repetido, sem consolidação automática. Recuperação de senha por e-mail com token aleatório e hash, uso único, validade 30 min, resposta sem enumeração e limite 1 solicitação por 15 min/conta; alterar e-mail exige senha atual, encerra sessões anteriores e notifica endereço antigo. Sessão pessoal 30 dias, independente do Admin. Login pessoal normal volta ao catálogo sem abrir Minha conta. Ajuda somente no menu do painel Admin (URL estática do manual permanece pública).
 
 ## Como modificar com segurança
 1. Consulte `AGENTS.md`, `docs/GUIA_TECNICO.md`, o código do recurso, migrações e testes antes de editar.
@@ -48,4 +49,4 @@
 - Filamento: categoria e cor habilitadas → reservar/retirar → atualizar rolos corretamente.
 - Gmail: evento e permissões → fila → Apps Script → ACK → e-mail enviado some dos pendentes, sem apagar registro.
 - Reservas: limpeza automática só das concluídas; reset total protegido contra empréstimos ativos e com backup.
-- Login Admin protegido na navegação direta; Ajuda pública em `/ajuda/` e menu Ajuda do painel.
+- Login Admin protegido na navegação direta; Ajuda no menu autenticado do painel Admin (sem atalhos no catálogo ou barra externa). A URL da documentação permanece acessível diretamente para publicação/visualização; ocultar o atalho não é controle de acesso.

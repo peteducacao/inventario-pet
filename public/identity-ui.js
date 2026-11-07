@@ -19,8 +19,35 @@ async function copyValue(value,field){
   catch{if(field){field.focus();field.select();}toast("Selecione o texto para copiar.");}
 }
 function passwordField(id,label,autocomplete="current-password"){
-  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>';
+  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>'+(autocomplete==="new-password"?'<div id="'+id+'-strength" class="hint" style="margin:5px 0 12px" aria-live="polite"></div>':"");
 }
+function passwordRating(value){
+  const pass=String(value||"");
+  if(!pass)return null;
+  const groups=[/[a-z]/.test(pass),/[A-Z]/.test(pass),/[0-9]/.test(pass),/[^a-zA-Z0-9]/.test(pass)].filter(Boolean).length;
+  const unique=new Set(pass).size;
+  if(pass.length<7||unique<4||/^(.)\1+$/.test(pass)||/(123456|password|senha123|qwerty|abc123|admin123)/i.test(pass))return "fraca";
+  if(pass.length>=12&&groups>=2&&unique>=7)return "forte";
+  if(pass.length>=8&&unique>=5)return "média";
+  return "fraca";
+}
+function confirmWeakPassword(value){
+  if(passwordRating(value)!=="fraca")return true;
+  return confirm("Sua senha foi classificada como FRACA. Ela pode ser descoberta com maior facilidade e colocar seus empréstimos e dados da conta em risco. Deseja continuar com essa senha mesmo assim?");
+}
+function wirePasswordStrength(){
+  document.querySelectorAll('input[autocomplete="new-password"]').forEach(input=>{
+    const box=$("#"+input.id+"-strength");if(!box)return;
+    const update=()=>{
+      const rating=passwordRating(input.value);
+      box.textContent=rating?"Força da senha: "+rating.toUpperCase()+(rating==="fraca"?" · Maior risco de acesso indevido.":""):"A força da sua senha aparecerá aqui.";
+      box.style.color=rating==="forte"?"#167245":rating==="média"?"#916004":rating==="fraca"?"#b42318":"";
+    };
+    input.addEventListener("input",update);
+    update();
+  });
+}
+
 function wirePasswordVisibility(){
   $$("[data-password-show]").forEach(btn=>btn.onclick=()=>{
     const input=$("#"+btn.dataset.passwordShow);
@@ -30,6 +57,7 @@ function wirePasswordVisibility(){
     btn.textContent=show?"Ocultar":"Mostrar";
     btn.setAttribute("aria-label",show?"Ocultar senha":"Mostrar senha");
   });
+  wirePasswordStrength();
 }
 function accountFields(prefix,nome=""){
   return '<div class="field"><label for="'+prefix+'-name">Nome completo</label><input id="'+prefix+'-name" maxlength="80" required autocomplete="name" placeholder="Como podemos chamar você?" value="'+attr(nome)+'"></div>'+
@@ -39,6 +67,45 @@ function accountFields(prefix,nome=""){
     passwordField(prefix+"-password","Criar senha","new-password")+
     passwordField(prefix+"-confirm","Repetir senha","new-password");
 }
+function identityRecoveryModal(){
+  openModal("Recuperar senha","Informe o e-mail cadastrado para receber um link de recuperação.",
+    '<form class="modal-main" id="identity-recovery-form">'+
+    '<div class="field"><label for="identity-recovery-email">E-mail da conta</label><input type="email" id="identity-recovery-email" maxlength="180" autocomplete="email" required placeholder="seuemail@exemplo.com"></div>'+
+    '<p class="hint">Se o cadastro existir, enviaremos um link que expira em 30 minutos. Confira também a caixa de spam.</p>'+
+    '<button type="submit" class="primary-button" id="identity-recovery-submit" style="width:100%">Enviar link</button>'+
+    '<button type="button" class="outline-button" id="identity-recovery-back" style="width:100%;margin-top:10px">Voltar ao login</button></form>');
+  $("#identity-recovery-back").onclick=()=>identityLoginModal(true);
+  $("#identity-recovery-form").onsubmit=async e=>{
+    e.preventDefault();
+    const btn=$("#identity-recovery-submit");btn.disabled=true;btn.textContent="Solicitando…";
+    try{
+      const r=await api("/api/identity/recover","POST",{email:$("#identity-recovery-email").value.trim()});
+      $("#identity-recovery-form").innerHTML='<p class="notice">'+esc(r.mensagem)+'</p><button type="button" class="primary-button" id="identity-recovery-return" style="width:100%">Voltar ao login</button>';
+      $("#identity-recovery-return").onclick=()=>identityLoginModal(true);
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Enviar link";}
+  };
+}
+function identityResetFromEmailModal(token){
+  if(!/^[A-F0-9]{64}$/.test(String(token||""))){identityLoginModal();toast("Link de recuperação inválido.",true);return;}
+  openModal("Definir nova senha","O link de recuperação pode ser utilizado uma única vez.",
+    '<form class="modal-main" id="identity-email-reset-form">'+
+    passwordField("identity-email-reset-password","Nova senha","new-password")+
+    passwordField("identity-email-reset-confirm","Repetir nova senha","new-password")+
+    '<button type="submit" class="primary-button" id="identity-email-reset-submit" style="width:100%">Salvar nova senha</button></form>');
+  wirePasswordVisibility();
+  $("#identity-email-reset-form").onsubmit=async e=>{
+    e.preventDefault();
+    const pass=$("#identity-email-reset-password").value;
+    if(pass!==$("#identity-email-reset-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword(pass))return;
+    const btn=$("#identity-email-reset-submit");btn.disabled=true;btn.textContent="Redefinindo…";
+    try{
+      await api("/api/identity/reset-by-email","POST",{token,nova_senha:pass});
+      setIdentity(null);identityLoginModal(true);toast("Senha redefinida. Entre com a nova senha.");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar nova senha";}
+  };
+}
+
 function identityLoginModal(first=false){
   openModal("Entrar no inventário","Use seu nome de usuário e sua senha. O cargo Visitante ou PETiano continua vinculada à sua conta.",
     '<form class="modal-main" id="identity-login-form">'+
@@ -48,11 +115,7 @@ function identityLoginModal(first=false){
     '<div class="modal-footer" style="border:0;padding:12px 0 0"><button type="submit" class="primary-button" id="identity-login-submit" style="width:100%">Entrar</button></div>'+
     '<div class="identity-separator">Primeiro acesso?</div><button type="button" class="outline-button" id="identity-open-register" style="width:100%">Criar minha conta</button></form>');
   wirePasswordVisibility();
-  $("#identity-forgot").onclick=()=>{
-    openModal("Esqueci minha senha","Recuperação de acesso pelo PET.",
-      '<div class="modal-main"><p>Peça a um administrador do PET para encontrar seu cadastro na aba <strong>Usuários</strong> e clicar em <strong>Redefinir senha</strong>.</p><p class="notice">O administrador vai gerar uma senha temporária e informar seu nome de usuário. Você deverá escolher uma senha definitiva ao entrar.</p><button type="button" class="primary-button" id="identity-forgot-back" style="width:100%">Voltar ao login</button></div>');
-    $("#identity-forgot-back").onclick=identityLoginModal;
-  };
+  $("#identity-forgot").onclick=identityRecoveryModal;
   $("#identity-open-register").onclick=()=>identityRegisterModal(true);
   $("#identity-login-form").onsubmit=async e=>{
     e.preventDefault();
@@ -80,10 +143,11 @@ function identityRegisterModal(first=false){
     e.preventDefault();
     const senha=$("#reg-password").value;
     if(senha!==$("#reg-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword(senha))return;
     const btn=$("#identity-register-submit");btn.disabled=true;btn.textContent="Criando conta…";
     try{
       const r=await api("/api/identity/register","POST",{nome:$("#reg-name").value,email:$("#reg-email").value.trim(),login:$("#reg-login").value,senha});
-      setIdentity(r.usuario);identityProfileModal();toast("Conta criada com sucesso!");
+      setIdentity(r.usuario);closeModal();toast("Conta criada com sucesso!");
     }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Criar conta";}
   };
   if(first)$("#reg-name")?.focus();
@@ -102,10 +166,11 @@ function identityUpgradeModal(){
   wirePasswordVisibility();
   $("#identity-upgrade-form").onsubmit=async e=>{
     e.preventDefault();if($("#upgrade-password").value!==$("#upgrade-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword($("#upgrade-password").value))return;
     const btn=$("#identity-upgrade-form button[type=submit]");btn.disabled=true;
     try{
       const r=await api("/api/identity/upgrade","POST",{login:$("#upgrade-login").value,email:$("#upgrade-email").value.trim(),senha:$("#upgrade-password").value});
-      setIdentity(r.usuario);identityProfileModal();toast("Sua conta antiga foi atualizada!");
+      setIdentity(r.usuario);closeModal();toast("Sua conta antiga foi atualizada!");
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }
@@ -127,10 +192,11 @@ function identityChangePasswordModal(force=false){
   $("#identity-change-form").onsubmit=async e=>{
     e.preventDefault();const password=$("#identity-new-password").value;
     if(password!==$("#identity-new-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword(password))return;
     const btn=$("#identity-change-submit");btn.disabled=true;
     try{
       const r=await api("/api/identity/password","POST",{nova_senha:password,senha_atual:must?"":$("#identity-old-password").value});
-      setIdentity(r.usuario);identityProfileModal();toast("Senha atualizada com sucesso!");
+      setIdentity(r.usuario);closeModal();toast("Senha atualizada com sucesso!");
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }
@@ -182,6 +248,8 @@ function identityEmailModal(required=false){
     "Este endereço será utilizado nas comunicações do Inventário PET.",
     '<form class="modal-main" id="identity-email-form">'+
     '<div class="field"><label for="identity-email-value">E-mail</label><input type="email" id="identity-email-value" maxlength="180" required autocomplete="email" value="'+attr(u.email||"")+'" placeholder="seuemail@exemplo.com"></div>'+
+    passwordField("identity-email-current-password","Confirme sua senha atual")+
+
     '<p class="notice">O cadastro do e-mail não ativa cobranças para PETianes; isso depende da configuração do cargo.</p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0">'+
     (required?'':'<button type="button" class="secondary-button" id="identity-email-cancel">Cancelar</button>')+
@@ -190,8 +258,8 @@ function identityEmailModal(required=false){
   $("#identity-email-form").onsubmit=async e=>{
     e.preventDefault();const btn=$("#identity-email-submit");btn.disabled=true;btn.textContent="Salvando…";
     try{
-      const r=await api("/api/identity/email","POST",{email:$("#identity-email-value").value.trim()});
-      setIdentity(r.usuario);identityProfileModal();toast("E-mail atualizado com sucesso.");
+      const r=await api("/api/identity/email","POST",{email:$("#identity-email-value").value.trim(),senha_atual:$("#identity-email-current-password").value});
+      setIdentity(r.usuario);closeModal();toast("E-mail atualizado com sucesso.");
     }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar e-mail";}
   };
 }

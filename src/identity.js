@@ -13,10 +13,10 @@ const clean = (v,max=120)=>String(v??"").trim().slice(0,max);
 const sha256 = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,"0")).join("");
 const randomHex = size => [...crypto.getRandomValues(new Uint8Array(size))].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();
 const publicUser = u => ({id:u.public_id,nome:u.nome,email:u.email||"",tag:u.papel,criado_em:u.criado_em,ativo:u.ativo===1,login:u.login||null,precisa_criar_login:!u.login,trocar_senha:!!u.must_change_password});
-const expiry = () => new Date(Date.now()+180*86400000).toISOString();
+const expiry = () => new Date(Date.now()+30*86400000).toISOString();
 const authCookie = "__Host_pet_identity";
 const cookieValue = req => (req.headers.get("cookie")||"").split(";").map(x=>x.trim()).find(x=>x.startsWith(authCookie+"="))?.slice(authCookie.length+1)||"";
-const setCookie = value => authCookie+"="+value+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=15552000";
+const setCookie = value => authCookie+"="+value+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=2592000";
 const clearCookie = () => authCookie+"=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0";
 const brazilDate = () => new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const formatDateValid = x => {
@@ -42,9 +42,9 @@ async function addSession(db,id){
   await db.prepare("INSERT INTO usuario_sessoes(hash,usuario_id,expira_em) VALUES(?,?,?)").bind(await sha256(token),id,expiry()).run();
   return setCookie(token);
 }
-async function rate(db,req,tag,max,windowH=24) {
+async function rate(db,req,tag,max,windowH=24,globalScope=false) {
   const ip=clean(req.headers.get("CF-Connecting-IP")||"unknown",100);
-  const marker=await sha256("identity:"+tag+":"+ip+":"+new Date().toISOString().slice(0,10));
+  const marker=await sha256("identity:"+tag+":"+(globalScope?"geral":ip)+":"+new Date().toISOString().slice(0,10));
   const start=new Date(Date.now()-windowH*3600000).toISOString();
   const count=await db.prepare("SELECT COUNT(*) AS n FROM reserva_limites WHERE hash=? AND criado_em>=?").bind(marker,start).first();
   if((count?.n||0)>=max)return false;
@@ -79,6 +79,56 @@ const securityFields=async secret => {
   return {salt,hash};
 };
 const maybeDuplicate=e=>String(e?.message||e).includes("UNIQUE")||String(e?.message||e).includes("constraint failed");
+const duplicateEmailError=e=>String(e?.message||e).includes("EMAIL_JA_CADASTRADO");
+const emailInUse=(db,email,except=null)=>db.prepare("SELECT 1 AS n FROM usuarios WHERE lower(trim(email))=? AND id!=COALESCE(?,-1) LIMIT 1").bind(email,except).first();
+const RECOVERY_REPLY={ok:true,mensagem:"Se existir uma conta ativa com esse e-mail, você receberá instruções de recuperação."};
+async function enqueueIdentityNotice(db,id,email,subject,message,type="aviso",recoveryHash=null){
+  await db.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,?,?,?,?,?,?)")
+    .bind(id,type,recoveryHash,email,subject,message,now()).run();
+}
+async function requestPasswordRecovery(req,env){
+  const payload=await bodyJson(req,3000),email=clean(payload.email,180).toLowerCase();
+  // Não revelar se este endereço pertence a uma conta.
+  if(!validEmail(email))return respond(RECOVERY_REPLY);
+  if(!await rate(env.DB,req,"recuperar",12,24))return respond(RECOVERY_REPLY);
+  const found=await rows(env.DB,"SELECT id,email FROM usuarios WHERE lower(trim(email))=? AND ativo=1 AND login IS NOT NULL LIMIT 2",[email]);
+  if(found.length!==1)return respond(RECOVERY_REPLY);
+  const u=found[0],start=new Date(Date.now()-15*60000).toISOString();
+  const recent=await env.DB.prepare("SELECT 1 AS n FROM identity_recovery_tokens WHERE usuario_id=? AND criado_em>? LIMIT 1").bind(u.id,start).first();
+  if(recent)return respond(RECOVERY_REPLY);
+  const secret=randomHex(32),hash=await sha256(secret),expires=new Date(Date.now()+30*60000).toISOString();
+  const link="https://inventario-pet.pet-educacao.workers.dev/#redefinir="+secret;
+  const mail="Uma recuperação de senha foi solicitada para sua conta do Inventário PET Educação.\n\nAbra este link para definir outra senha (válido por 30 minutos e apenas uma vez):\n"+link+"\n\nSe não solicitou, ignore a mensagem. Sua senha atual continua válida.";
+  await env.DB.batch([
+    env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=? WHERE usuario_id=? AND usado_em IS NULL").bind(now(),u.id),
+    env.DB.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='' WHERE usuario_id=? AND tipo='recuperacao' AND situacao IN ('pendente','processando')").bind(u.id),
+    env.DB.prepare("INSERT INTO identity_recovery_tokens(hash,usuario_id,criado_em,expira_em) VALUES(?,?,?,?)").bind(hash,u.id,now(),expires),
+    env.DB.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,'recuperacao',?,?,?,?,?)").bind(u.id,hash,email,"Recuperar senha - Inventário PET",mail,now())
+  ]);
+  return respond(RECOVERY_REPLY);
+}
+
+async function completePasswordRecovery(req,env){
+  const payload=await bodyJson(req,12000),secret=String(payload.token||""),password=payload.nova_senha;
+  if(!/^[A-F0-9]{64}$/.test(secret)||!validPassword(password))return error("Link inválido ou expirado.",400);
+  if(!await rate(env.DB,req,"redefinir-senha",35,1))return error("Muitas tentativas. Tente mais tarde.",429);
+  const hash=await sha256(secret);
+  const token=await env.DB.prepare("SELECT r.usuario_id,u.email FROM identity_recovery_tokens r JOIN usuarios u ON u.id=r.usuario_id WHERE r.hash=? AND r.usado_em IS NULL AND r.expira_em>? AND u.ativo=1 AND u.login IS NOT NULL").bind(hash,now()).first();
+  if(!token)return error("Link inválido, expirado ou já utilizado.",400);
+  const {salt,hash:passHash}=await securityFields(password);
+  // Um único pedido pode consumir o token, mesmo se houver acessos simultâneos.
+  const marked=await env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=? WHERE hash=? AND usado_em IS NULL AND expira_em>?").bind(now(),hash,now()).run();
+  if(marked.meta?.changes!==1)return error("Link inválido, expirado ou já utilizado.",400);
+  await env.DB.batch([
+    env.DB.prepare("UPDATE usuarios SET password_hash=?,password_salt=?,password_iterations=?,must_change_password=0,atualizado_em=? WHERE id=?").bind(passHash,salt,ITERATIONS,now(),token.usuario_id),
+    env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(token.usuario_id),
+    env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=COALESCE(usado_em,?) WHERE usuario_id=?").bind(now(),token.usuario_id),
+    env.DB.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='' WHERE usuario_id=? AND tipo='recuperacao' AND situacao IN ('pendente','processando')").bind(token.usuario_id)
+  ]);
+  if(validEmail(token.email))await enqueueIdentityNotice(env.DB,token.usuario_id,token.email,"Senha redefinida - Inventário PET","A senha da sua conta do Inventário PET Educação foi redefinida. Se não reconhece essa ação, procure imediatamente a equipe do PET.");
+  return respond({ok:true,mensagem:"Senha redefinida. Entre com seu login e a nova senha."});
+}
+
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
@@ -90,6 +140,7 @@ async function register(req,env){
   if(!await rate(db,req,"cadastro",20))return error("Limite de cadastros atingido. Tente mais tarde.",429);
   const taken=await db.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first();
   if(taken)return error("Este nome de usuário já está em uso.",409);
+   if(await emailInUse(db,email))return error("Este e-mail já está cadastrado.",409);
   const {hash,salt}=await securityFields(password),time=now(),recoveryHash=await sha256(crypto.randomUUID());
   let user;
   for(let attempt=0;attempt<4;attempt++){
@@ -99,7 +150,8 @@ async function register(req,env){
       user=await db.prepare("SELECT * FROM usuarios WHERE id=?").bind(result.meta.last_row_id).first();
       break;
     }catch(e){
-      if(!maybeDuplicate(e))throw e;
+      if(duplicateEmailError(e))return error("Este e-mail já está cadastrado.",409);
+       if(!maybeDuplicate(e))throw e;
       const clash=await db.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first();
       if(clash)return error("Este nome de usuário já está em uso.",409);
     }
@@ -111,7 +163,7 @@ async function register(req,env){
 async function loginUser(req,env){
   const db=env.DB,b=await bodyJson(req,12000),login=username(b.login);
   if(!validUsername(login)||!validPassword(b.senha))return error("Login ou senha incorretos.",401);
-  if(!await rate(db,req,"login:"+login,12,1))return error("Muitas tentativas de login. Tente mais tarde.",429);
+  if(!await rate(db,req,"login:"+login,12,1)||!await rate(db,req,"login:"+login,80,1,true))return error("Muitas tentativas de login. Tente mais tarde.",429);
   const u=await db.prepare("SELECT * FROM usuarios WHERE login=? AND ativo=1").bind(login).first();
   if(!u||!await verifyPassword(b.senha,u))return error("Login ou senha incorretos.",401);
   const session=await addSession(db,u.id);
@@ -128,6 +180,7 @@ async function upgradeLegacy(req,env){
   if(!validUsername(login))return error("Escolha um login de 4 a 24 caracteres (letras, números, ponto, _ ou traço).");
   if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
   if(await env.DB.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first())return error("Este login já está em uso.",409);
+   if(await emailInUse(env.DB,email,user.id))return error("Este e-mail já está cadastrado.",409);
   const {hash,salt}=await securityFields(password);
   try {
     const applied=await env.DB.batch([
@@ -135,7 +188,7 @@ async function upgradeLegacy(req,env){
       env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
     ]);
     if(applied[0].meta?.changes!==1)return error("Conta já atualizada. Entre com login e senha.",409);
-  }catch(e){if(maybeDuplicate(e))return error("Este login já está em uso.",409);throw e;}
+  }catch(e){if(duplicateEmailError(e))return error("Este e-mail já está cadastrado.",409);if(maybeDuplicate(e))return error("Este login já está em uso.",409);throw e;}
   const session=await addSession(env.DB,user.id);
   const updated=await env.DB.prepare("SELECT * FROM usuarios WHERE id=?").bind(user.id).first();
   return respond({ok:true,usuario:publicUser(updated)},200,{"set-cookie":session});
@@ -154,6 +207,7 @@ async function changePassword(req,env){
     env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(u.id)
   ]);
   const session=await addSession(env.DB,u.id);
+  if(u.email)await enqueueIdentityNotice(env.DB,u.id,u.email,"Senha alterada - Inventário PET","A senha da sua conta do Inventário PET Educação foi alterada. Se não reconhece essa ação, procure imediatamente a equipe do PET.");
   return respond({ok:true,usuario:{...publicUser(u),trocar_senha:false}},200,{"set-cookie":session});
 }
 async function updateEmail(req,env,user){
@@ -161,8 +215,20 @@ async function updateEmail(req,env,user){
   if(!user.login||user.must_change_password)return error("Finalize o acesso à sua conta antes de cadastrar o e-mail.",403);
   const b=await bodyJson(req,3000),email=clean(b.email,180).toLowerCase();
   if(!validEmail(email))return error("Informe um e-mail válido.");
-  await env.DB.prepare("UPDATE usuarios SET email=?,atualizado_em=? WHERE id=?").bind(email,now(),user.id).run();
-  return respond({ok:true,usuario:{...publicUser(user),email}});
+  if(!await verifyPassword(b.senha_atual,user))return error("Senha atual incorreta.",401);
+  if(await emailInUse(env.DB,email,user.id))return error("Este e-mail já está cadastrado.",409);
+  const previous=clean(user.email,180).toLowerCase();
+  try{
+    await env.DB.batch([
+      env.DB.prepare("UPDATE usuarios SET email=?,atualizado_em=? WHERE id=?").bind(email,now(),user.id),
+      env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id),
+      env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=? WHERE usuario_id=? AND usado_em IS NULL").bind(now(),user.id),
+      env.DB.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='' WHERE usuario_id=? AND tipo='recuperacao' AND situacao IN ('pendente','processando')").bind(user.id)
+    ]);
+  }catch(e){if(duplicateEmailError(e)||maybeDuplicate(e))return error("Este e-mail já está cadastrado.",409);throw e;}
+  const session=await addSession(env.DB,user.id);
+  if(previous&&previous!==email)await enqueueIdentityNotice(env.DB,user.id,previous,"E-mail alterado - Inventário PET","O e-mail associado à sua conta do Inventário PET Educação foi alterado. Se não reconhece esta ação, procure imediatamente a equipe do PET.");
+  return respond({ok:true,usuario:{...publicUser(user),email}},200,{"set-cookie":session});
 }
 async function rename(req,env,user){
   if(!user)return error("Cadastre seu perfil antes de editar o nome.",401);
@@ -294,8 +360,10 @@ export async function identityAPI(req,env,adminAuth){
   if(path==="/api/identity/login"&&method==="POST")return loginUser(req,env);
   if(path==="/api/identity/upgrade"&&method==="POST")return upgradeLegacy(req,env);
   if(path==="/api/identity/password"&&method==="POST")return changePassword(req,env);
+  if(path==="/api/identity/recover"&&method==="POST")return requestPasswordRecovery(req,env);
+  if(path==="/api/identity/reset-by-email"&&method==="POST")return completePasswordRecovery(req,env);
   if(path==="/api/identity/email"&&method==="POST")return updateEmail(req,env,await loggedIn(req,db));
-  if(path==="/api/identity/recover" || path==="/api/identity/recovery-code")return error("Recuperação antiga encerrada. Use login e senha ou solicite redefinição ao administrador.",410);
+  if(path==="/api/identity/recovery-code")return error("Código antigo desativado. Utilize recuperação por e-mail.",410);
   if(path==="/api/identity/me"&&method==="GET"){
     const u=await loggedIn(req,db);
     return respond({ok:true,usuario:u?publicUser(u):null});

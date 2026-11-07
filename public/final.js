@@ -313,10 +313,12 @@ function finalAccount(){
   openModal("Minha conta","",'<div class="modal-main">'+
     '<div class="identity-profile-head"><span class="identity-avatar">'+esc(u.nome[0].toUpperCase())+'</span><div><strong>'+esc(u.nome)+'</strong><span class="tag '+cls+'">'+(u.tag==="petiano"?"PETiano":"Visitante")+'</span></div></div>'+
     '<div class="field-grid">'+inputField("v2-account-name","Nome",u.nome,{max:80})+inputField("v2-account-login","Login",u.login,{max:24})+'</div>'+
-    '<div class="identity-actions"><button type="button" class="secondary-button" id="v2-change-name">Alterar nome</button><button type="button" class="outline-button" id="v2-change-password">Alterar senha</button><button type="button" class="outline-button" id="v2-refresh-role">Atualizar tag</button></div>'+
+    '<div class="field" style="margin-top:12px"><label>Meu e-mail</label><input readonly value="'+attr(u.email||"")+'"></div>'+ 
+    '<div class="identity-actions"><button type="button" class="secondary-button" id="v2-change-name">Alterar nome</button><button type="button" class="outline-button" id="v2-change-email">Alterar e-mail</button><button type="button" class="outline-button" id="v2-change-password">Alterar senha</button><button type="button" class="outline-button" id="v2-refresh-role">Atualizar cargo</button></div>'+
     '</div>');
   $("#v2-account-login").readOnly=true;$("#v2-account-name").readOnly=true;
   $("#v2-change-name").onclick=identityRenameModal;
+  $("#v2-change-email").onclick=()=>identityEmailModal(false);
   $("#v2-change-password").onclick=()=>identityChangePasswordModal(false);
   $("#v2-refresh-role").onclick=async()=>{
     try{const r=await api("/api/identity/me");if(r.usuario){setIdentity(r.usuario);finalAccount();toast("Conta atualizada!");}else{setIdentity(null);identityLoginModal();}}catch(e){toast(e.message,true);}

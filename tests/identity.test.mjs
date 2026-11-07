@@ -5,7 +5,7 @@ import {identityAPI} from "../src/identity.js";
 
 const db=new DatabaseSync(":memory:");
 db.exec("PRAGMA foreign_keys=ON");
-for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql"]){
+for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql","0022_seguranca_contas_email_recuperacao.sql"]){
   db.exec(readFileSync("migrations/"+f,"utf8"));
 }
 class Prepared {
@@ -70,7 +70,7 @@ assert.equal((await registration("Teste","tester4","")).status,400,"Senha vazia 
 assert.equal((await registration("Teste","tester5","9".repeat(2049))).status,400,"Limite técnico evita sobrecarga.");
 assert.equal((await call("/api/identity/me")).body.usuario,null);
 assert.equal((await call("/api/identity/me","GET",null,"__Host_pet_identity="+a.body.usuario.id)).body.usuario,null);
-assert.equal((await post("/api/identity/recover",{id:a.body.usuario.id,codigo:"REC-SIMPLES"})).status,410,"Código antigo não pode autenticar.");
+assert.equal((await post("/api/identity/recover",{id:a.body.usuario.id,codigo:"REC-SIMPLES"})).status,200,"A recuperação deve responder sem revelar se existe conta; não deve autenticar pelo código antigo.");
 assert.equal((await post("/api/identity/recovery-code",{})).status,410);
 assert.equal((await post("/api/identity/login",{login:"sergio01",senha:"SenhaErrada2026"})).status,401);
 const loginA=await post("/api/identity/login",{login:"SERGIO01",senha:senhaA});
@@ -187,6 +187,40 @@ assert.equal(legacyWithoutSession.status,401,"Migração não pode usar ID sozin
 const legacyReset=await post("/api/admin/users/password",{id:"PET-AABBCCDDEEFF",login:"petianoantigo"},"",true);
 assert.equal(legacyReset.status,200);
 assert.equal((await post("/api/identity/login",{login:"petianoantigo",senha:legacyReset.body.senha_temporaria})).body.usuario.trocar_senha,true);
+
+
+// Segurança de conta sem tocar dados reais: email único, reautenticação e recuperação por Gmail.
+const duplicateEmail=await post("/api/identity/register",{nome:"Outra pessoa",email:"SERGIO02@EXAMPLE.COM",login:"outra-pessoa",senha:"1"});
+assert.equal(duplicateEmail.status,409,"Mesmo e-mail, ainda que em maiúsculas, não pode criar outra conta.");
+assert.equal((await post("/api/identity/email",{email:"novo-sergio02@example.com",senha_atual:"errada"},loginB.cookie)).status,401,"Trocar e-mail exige senha atual.");
+assert.equal((await post("/api/identity/email",{email:"testelonga@example.com",senha_atual:senhaB},loginB.cookie)).status,409,"E-mail de outra conta não pode ser utilizado.");
+const updatedEmail=await post("/api/identity/email",{email:"novo-sergio02@example.com",senha_atual:senhaB},loginB.cookie);
+assert.equal(updatedEmail.status,200,JSON.stringify(updatedEmail.body));
+assert.equal(updatedEmail.body.usuario.email,"novo-sergio02@example.com");
+assert.equal((await call("/api/identity/me","GET",null,loginB.cookie)).body.usuario,null,"Troca de e-mail encerra sessões anteriores.");
+assert.ok(db.prepare("SELECT id FROM identity_mail_queue WHERE destinatario='sergio02@example.com' AND tipo='aviso'").get(),"A troca deve avisar o e-mail antigo.");
+const newLogin=await post("/api/identity/login",{login:"sergio02",senha:senhaB});
+assert.equal(newLogin.status,200);
+const unknownRecover=await post("/api/identity/recover",{email:"ninguem@exemplo.com"});
+const validRecover=await post("/api/identity/recover",{email:"novo-sergio02@example.com"});
+assert.equal(unknownRecover.status,200);
+assert.equal(validRecover.status,200);
+assert.deepEqual(unknownRecover.body,validRecover.body,"Recuperação não pode revelar existência da conta.");
+const recoveryMail=db.prepare("SELECT mensagem,recovery_hash FROM identity_mail_queue WHERE tipo='recuperacao' AND destinatario='novo-sergio02@example.com'").get();
+assert.ok(recoveryMail,"Recuperação deve entrar na fila, sem enviar e-mail real no teste.");
+const linkToken=recoveryMail.mensagem.match(/#redefinir=([A-F0-9]{64})/);
+assert.ok(linkToken,"O e-mail deve conter link temporário forte.");
+assert.notEqual(recoveryMail.recovery_hash,linkToken[1],"O token deve ficar armazenado como hash.");
+await post("/api/identity/recover",{email:"novo-sergio02@example.com"});
+assert.equal(db.prepare("SELECT COUNT(*) AS n FROM identity_recovery_tokens WHERE usuario_id=(SELECT id FROM usuarios WHERE login='sergio02')").get().n,1,"Não enviar spam ao solicitar repetidamente em 15 minutos.");
+assert.equal((await post("/api/identity/reset-by-email",{token:"F".repeat(64),nova_senha:"7"})).status,400);
+const validReset=await post("/api/identity/reset-by-email",{token:linkToken[1],nova_senha:"7"});
+assert.equal(validReset.status,200,JSON.stringify(validReset.body));
+assert.equal((await call("/api/identity/me","GET",null,newLogin.cookie)).body.usuario,null,"Reset invalida sessões antigas.");
+assert.equal((await post("/api/identity/reset-by-email",{token:linkToken[1],nova_senha:"8"})).status,400,"Link não deve ser reutilizado.");
+assert.equal((await post("/api/identity/login",{login:"sergio02",senha:senhaB})).status,401);
+assert.equal((await post("/api/identity/login",{login:"sergio02",senha:"7"})).status,200,"Nova senha simples é permitida por escolha do usuário.");
+assert.ok(db.prepare("SELECT id FROM identity_mail_queue WHERE assunto LIKE 'Senha redefinida%'").get(),"A alteração de senha precisa produzir aviso de segurança.");
 
 console.log("LOGIN OK: conta única, PBKDF2 com sal, tags, retiradas, troca de senha, reset admin, bloqueio temporário, exclusão e migração legada.");
 db.close();

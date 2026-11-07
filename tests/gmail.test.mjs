@@ -4,7 +4,7 @@ import {DatabaseSync} from "node:sqlite";
 import {queueManual,generateDailyEmails,mailBridgeAPI,mailAdminAPI} from "../src/mail-bridge.js";
 const sqlite=new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
-for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0011_conciliar_experimentos.sql","0012_linkar_variacoes_iniciais.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql"]){
+for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0011_conciliar_experimentos.sql","0012_linkar_variacoes_iniciais.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql","0022_seguranca_contas_email_recuperacao.sql"]){
   sqlite.exec(readFileSync("migrations/"+f,"utf8"));
 }
 class Statement {
@@ -117,6 +117,25 @@ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_
 assert.equal((await queueManual(DB,tomorrowDue)).ok,false,"O bloqueio da cobrança manual deve ser aplicado mesmo quando aviso automático está ligado.");
 visitors.manual=true;
 assert.equal((await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}})).status,200);
+
+// Mesmo transporte autenticado do Gmail: mensagens de conta são separadas das cobranças.
+const recoveryHash="a".repeat(64),created=new Date().toISOString(),expiry=new Date(Date.now()+20*60000).toISOString();
+sqlite.prepare("INSERT INTO identity_recovery_tokens(hash,usuario_id,criado_em,expira_em) VALUES(?,?,?,?)").run(recoveryHash,petUser,created,expiry);
+const personalId=Number(sqlite.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,'recuperacao',?,?,?,?,?)")
+  .run(petUser,recoveryHash,"pet@example.com","Recuperar senha - teste","Link de teste",created).lastInsertRowid);
+const personalNext=await(await call("/api/mail/next")).json();
+assert.equal(personalNext.item.id,"conta-"+personalId,"A fila de contas usa IDs separados dos empréstimos.");
+assert.equal(personalNext.item.to,"pet@example.com");
+assert.equal((await call("/api/mail/ack",token,{id:personalNext.item.id,lock:personalNext.item.lock,ok:true})).status,200);
+const sentPersonal=sqlite.prepare("SELECT situacao,mensagem FROM identity_mail_queue WHERE id=?").get(personalId);
+assert.equal(sentPersonal.situacao,"enviado");
+assert.equal(sentPersonal.mensagem,"","O conteúdo sensível do link não deve permanecer no histórico após envio.");
+sqlite.prepare("UPDATE identity_recovery_tokens SET expira_em=? WHERE hash=?").run(new Date(Date.now()-5000).toISOString(),recoveryHash);
+const expiredId=Number(sqlite.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,'recuperacao',?,?,?,?,?)")
+  .run(petUser,recoveryHash,"pet@example.com","Expirado","Link expirado",created).lastInsertRowid);
+await call("/api/mail/next");
+assert.equal(sqlite.prepare("SELECT situacao FROM identity_mail_queue WHERE id=?").get(expiredId).situacao,"cancelado","Nunca enviar link expirado.");
+
 console.log("AGENDAMENTO POR TAG OK: visitantes/PETianes, pré-vencimento e cobrança manual.");
 console.log("MODELOS GMAIL OK: salvar, prévia, validação, edição manual e não duplicação.");
 console.log("GMAIL OK: segurança, fila, preferência por tag, prazos, duplicação e devolução.");

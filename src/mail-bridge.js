@@ -181,6 +181,20 @@ export async function mailBridgeAPI(req,env){
   if(path==="/api/mail/status" && req.method==="GET")return reply({ok:true,servico:"Gmail bridge",autenticado:true});
   if(path==="/api/mail/next"&&req.method==="GET"){
     const deadline=new Date(Date.now()-15*60000).toISOString();
+    // Recuperações e avisos da conta compartilham o Apps Script, sem se misturar às cobranças.
+    const accountCandidates=await rows(db,"SELECT id,usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem FROM identity_mail_queue WHERE situacao='pendente' OR (situacao='processando' AND processado_em<?) ORDER BY id ASC LIMIT 20",[deadline]);
+    for(const item of accountCandidates){
+      if(item.tipo==="recuperacao"){
+        const valid=await db.prepare("SELECT 1 AS n FROM identity_recovery_tokens WHERE hash=? AND usuario_id=? AND usado_em IS NULL AND expira_em>?").bind(item.recovery_hash,item.usuario_id,iso()).first();
+        if(!valid){
+          await db.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='',ultimo_erro='Recuperação expirada ou cancelada' WHERE id=? AND situacao IN ('pendente','processando')").bind(item.id).run();
+          continue;
+        }
+      }
+      const lock=crypto.randomUUID();
+      const marked=await db.prepare("UPDATE identity_mail_queue SET situacao='processando',processado_em=?,token_reserva=?,tentativa=tentativa+1 WHERE id=? AND (situacao='pendente' OR (situacao='processando' AND processado_em<?))").bind(iso(),lock,item.id,deadline).run();
+      if(marked.meta?.changes===1)return reply({ok:true,item:{id:"conta-"+item.id,to:item.destinatario,subject:item.assunto,body:item.mensagem,lock}});
+    }
     const candidates=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,mensagem,prazo_referencia FROM mail_queue WHERE situacao='pendente' OR (situacao='processando' AND processado_em<?) ORDER BY id ASC LIMIT 20",[deadline]);
     for(const item of candidates){
       const row=item.reserva_id?await current(db,item.reserva_id):null;
@@ -198,6 +212,15 @@ export async function mailBridgeAPI(req,env){
   if(path==="/api/mail/ack"&&req.method==="POST"){
     let b;
     try{b=await req.json();}catch{return fail("Dados inválidos.");}
+    const accountId=/^conta-(\d+)$/.exec(String(b?.id||""));
+    if(accountId){
+      const id=Number(accountId[1]),lock=clean(b?.lock,100);
+      if(!Number.isSafeInteger(id)||id<1||!lock)return fail("Confirmação inválida.");
+      const sent=b.ok===true;
+      const updated=await db.prepare("UPDATE identity_mail_queue SET situacao=?,enviado_em=?,ultimo_erro=?,mensagem='',token_reserva=NULL WHERE id=? AND situacao='processando' AND token_reserva=?")
+        .bind(sent?"enviado":"erro",sent?iso():null,sent?null:clean(b.error,250)||"Falha no Gmail",id,lock).run();
+      return updated.meta?.changes===1?reply({ok:true}):fail("Confirmação expirada.",409);
+    }
     const id=Number(b?.id),lock=clean(b?.lock,100);
     if(!Number.isSafeInteger(id)||id<1||!lock)return fail("Confirmação inválida.");
     const sent=b.ok===true;
