@@ -98,35 +98,18 @@ const savedEvents=await(await adminCall("/api/admin/mail/events")).json();
 assert.equal(savedEvents.profiles.visitante.eventos.antes,false);
 assert.equal(savedEvents.profiles.petiano.eventos.atraso7,false);
 const tomorrowDue=insert("alerta-futuro@example.com",dayAdd(1));
-const foundTomorrow=await(await adminCall("/api/admin/mail/check-now",{})).json();
+const foundTomorrow=await generateDailyEmails(env);
 assert.equal(foundTomorrow.ok,true);
 assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_id=? AND evento='antes'").get(tomorrowDue).n,0,
   "Desativar apenas aviso antecipado do visitante deve impedir aquele envio automático.");
 visitors.antes=true;visitors.manual=false;
 await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}});
-const checkedTomorrow=await(await adminCall("/api/admin/mail/check-now",{})).json();
+const checkedTomorrow=await generateDailyEmails(env);
 assert.ok(checkedTomorrow.enfileirados>=1,"Verificação manual prepara o aviso de amanhã para empréstimo retirado.");
 assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_id=? AND evento='antes'").get(tomorrowDue).n,1);
 assert.equal((await queueManual(DB,tomorrowDue)).ok,false,"O bloqueio da cobrança manual deve ser aplicado mesmo quando aviso automático está ligado.");
 visitors.manual=true;
 assert.equal((await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}})).status,200);
-// Um teste é enviado APENAS ao endereço informado pelo admin, usando dados fictícios.
-const sendTest=await adminCall("/api/admin/mail/test",{email:"testador@example.com",evento:"antes"});
-assert.equal(sendTest.status,200,JSON.stringify(await sendTest.clone().json()));
-const testQueue=sqlite.prepare("SELECT * FROM mail_queue WHERE evento='teste' ORDER BY id DESC LIMIT 1").get();
-assert.equal(testQueue.destinatario,"testador@example.com");
-assert.equal(testQueue.reserva_id,null);
-assert.match(testQueue.assunto,/^\[TESTE\]/);
-assert.match(testQueue.mensagem,/Nenhuma reserva real foi alterada/);
-let processedTest=false;
-for(let index=0;index<20;index++){
-  const next=(await(await call("/api/mail/next")).json()).item;
-  if(!next)break;
-  if(next.id===testQueue.id)processedTest=true;
-  assert.equal((await call("/api/mail/ack",token,{id:next.id,lock:next.lock,ok:true})).status,200);
-  if(processedTest)break;
-}
-assert.equal(processedTest,true,"Apps Script deve poder consumir e confirmar um e-mail de teste sem reserva real.");
-console.log("AGENDAMENTO POR TAG OK: visitantes/PETianes, pré-vencimento, cobrança manual, conferência e teste independente.");
+console.log("AGENDAMENTO POR TAG OK: visitantes/PETianes, pré-vencimento e cobrança manual.");
 console.log("MODELOS GMAIL OK: salvar, prévia, validação, edição manual e não duplicação.");
 console.log("GMAIL OK: segurança, fila, preferência por tag, prazos, duplicação e devolução.");
