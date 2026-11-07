@@ -306,10 +306,21 @@ function openMyNotificationPopover(){
   $("#v2-mark-all").onclick=async()=>{try{await api("/api/notifications/read","POST",{todos:true});await refreshNotifications();openMyNotificationPopover();openMyNotificationPopover();}catch(e){toast(e.message,true)}};
 }
 async function refreshNotifications(){
+  const identityId=state.identity?.id;
+  if(!identityId){
+    UI.notifications=[];
+    const b=$("#notification-count");if(b){b.hidden=true;b.textContent="0";}
+    return false;
+  }
   try{
-    const r=await api("/api/notifications");UI.notifications=r.notificacoes||[];
-    const b=$("#notification-count");b.hidden=!r.nao_lidas;b.textContent=String(Math.min(99,r.nao_lidas||0));
-  }catch(error){console.warn("Falha em notificações:",error.message);}
+    const r=await api("/api/notifications");
+    // Evitar dados do usuário anterior quando a conta muda durante a requisição.
+    if(state.identity?.id!==identityId)return false;
+    UI.notifications=r.notificacoes||[];
+    const b=$("#notification-count");
+    if(b){b.hidden=!r.nao_lidas;b.textContent=String(Math.min(99,r.nao_lidas||0));}
+    return true;
+  }catch(error){console.warn("Falha em notificações:",error.message);return false;}
 }
 function setupFinalPublic(){
   render=finalRender;
@@ -337,7 +348,12 @@ function setupFinalPublic(){
   };
   $("#stats-toggle").onclick=()=>{UI.summaryMinimized=!UI.summaryMinimized;stored("pet_public_summary_closed",UI.summaryMinimized?"1":"0");finalRender();};
   $("#profile-button").onclick=openUserMenu;
-  $("#notification-button").onclick=()=>{if(!state.identity){identityLoginModal();return;}openMyNotificationPopover();};
+  $("#notification-button").onclick=async()=>{
+    if(!state.identity){identityLoginModal();return;}
+    if(!$("#notification-popover").hidden){openMyNotificationPopover();return;}
+    await refreshNotifications();
+    openMyNotificationPopover();
+  };
   // app.js carrega um handler legado; links reais devem usar navegação nativa.
   if($("#admin-button")?.tagName==="A")$("#admin-button").onclick=null;
   const menuButton=$("#public-menu-toggle");
@@ -370,8 +386,9 @@ function setupFinalPublic(){
     if(!event.target.closest("#profile-button,.pop-menu"))closeUserMenu();
     if(!event.target.closest("#notification-button,#notification-popover"))$("#notification-popover").hidden=true;
   });
-  // O carregamento inicial sincronizado ocorre em app.js.
-  if(state.identity)refreshNotifications();
+  // O carregamento inicial ocorre em app.js; atualizar também ao voltar ao navegador.
+  window.addEventListener("focus",()=>{if(state.identity)refreshNotifications();});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state.identity)refreshNotifications();});
   setInterval(()=>{if(state.identity)refreshNotifications()},90000);
   // Admin possui endereço independente.
 }
