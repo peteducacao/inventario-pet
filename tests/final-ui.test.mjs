@@ -359,8 +359,9 @@ assert.equal(adminUI.variationRenameRequests[0].novo_nome,"Pilhas");
 assert.ok(fullAdmin.componentes.filter(x=>x.grupo_variacoes==="Pilhas").length===3,
   "Todas as três variações devem ser renomeadas sem mudar seu cadastro.");
 assert.ok(!ad.querySelector("#rename-group-form"),"Ao concluir o salvamento, o modal deve fechar.");
-groupSearch.value="";
-groupSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+const freshSearch=ad.querySelector("#admin-material-search");
+freshSearch.value="";
+freshSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
 await wait(25);
 await adminClick("#admin-bulk-visibility");
 assert.ok(ad.querySelector("#bulk-only-members"),"Visibilidade em lote não está disponível.");
