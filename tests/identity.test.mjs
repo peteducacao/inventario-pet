@@ -5,7 +5,7 @@ import {identityAPI} from "../src/identity.js";
 
 const db=new DatabaseSync(":memory:");
 db.exec("PRAGMA foreign_keys=ON");
-for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0013_gmail_queue.sql","0014_email_usuarios.sql"]){
+for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql"]){
   db.exec(readFileSync("migrations/"+f,"utf8"));
 }
 class Prepared {

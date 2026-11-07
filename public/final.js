@@ -118,10 +118,16 @@ function finalCard(original,siblings=[]){
   const grouped=siblings.length>1;
   const x=selection||original;
   if(x._filament){
+    const free=Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0));
+    const enabled=Number(x.permitir_emprestimos)!==0&&Number(x.categoria_permite)!==0&&Number(x.componente_id)>0;
+    const member=identityIsMember();
     return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
       '<div class="filament-art" style="--filament-color:'+attr(x.hexadecimal)+'"><div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div></div>'+
       '<div class="catalog-body"><span class="catalog-category">Filamentos</span><h3>'+esc(x.cor)+'</h3>'+
-      '<div class="filament-quantity">Quantidade <strong>'+Number(x.quantidade)+'</strong></div></div></article>';
+      '<div class="filament-quantity"><span>Quantidade <strong>'+Number(x.quantidade)+'</strong></span><span>Em uso <strong>'+Number(x.em_uso||0)+'</strong></span></div>'+
+      '<div class="filament-quantity"><span>Disponíveis</span><strong>'+free+'</strong></div>'+
+      '<button type="button" class="primary-button '+(member?"withdraw-button":"reserve-card-button")+'"'+(enabled&&free?' data-reserve-item="'+Number(x.componente_id)+'"':' disabled')+'>'+
+      (enabled?(free?(member?"Retirar":"Reservar"):"Sem estoque"):"Somente consulta")+'</button></div></article>';
   }
   const showGroupTotals=grouped&&!selection;
   // Antes de escolher o modelo, mostrar a soma da família sem confundir
@@ -132,7 +138,7 @@ function finalCard(original,siblings=[]){
   const free=showGroupTotals?siblings.reduce((n,v)=>n+stock(v),0):stock(x);
   const status=free===0?"Sem estoque":used>free?"Em uso":"Disponível";
   const type=free===0?"empty":used>free?"busy":"";
-  const img=itemImage(x),canWithdraw=identityIsMember();
+  const img=itemImage(x),canWithdraw=identityIsMember(),loanOK=typeof borrowableItem==="function"?borrowableItem(x):true;
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
@@ -143,8 +149,8 @@ function finalCard(original,siblings=[]){
   const photoLabel=grouped?'Escolher variação de '+original.grupo_variacoes:'Ampliar ilustração de '+x.nome;
   const action=groupedAction?
     '<button type="button" class="primary-button variant-main-button" data-open-variants="'+attr(groupKey)+'">'+iconSvg("box",16)+' Escolher modelo</button>':
-    '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0?"disabled":"")+'>'+
-    iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>';
+    '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0||!loanOK?"disabled":"")+'>'+
+    iconSvg(canWithdraw?"logout":"calendar",16)+' '+(!loanOK?"Somente consulta":canWithdraw?"Retirar":"Reservar")+'</button>';
   return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" '+imageAction+' aria-label="'+attr(photoLabel)+'">'+
     '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
@@ -179,16 +185,21 @@ function openVariantChoices(groupKey){
 }
 function finalRender(){
   if(!$("#category-sections"))return;
+  // Converter o antigo filtro local "filaments" para a categoria persistida no banco.
+  if(UI.category==="filaments"){
+    const category=(state.data.categorias||[]).find(c=>c.nome==="Filamentos");
+    UI.category=category?String(category.id):"all";stored("pet_public_category",UI.category);
+  }
   state.filter=UI.category;
   $("#demo-notice").hidden=!state.data.demonstracao;
-  const ordinary=(state.data.componentes||[]).filter(x=>!isArchived(x));
-  const colorItems=(UI.filaments||[]).map(x=>({...x,_filament:true,nome:x.cor,categoria_id:"filaments",em_uso:0,com_defeito:0,mostrar_quantidade:1}));
+  const ordinary=(state.data.componentes||[]).filter(x=>!isArchived(x)&&!/^FILAMENTO-\d+$/.test(String(x.import_key||"")));
+  const colorItems=(UI.filaments||[]).map(x=>({...x,_filament:true,nome:"Filamento - "+x.cor,mostrar_quantidade:1}));
   const items=[...ordinary,...colorItems];
   $("#stat-items").textContent=moneyless(items.length);
-  $("#stat-stock").textContent=moneyless(ordinary.reduce((s,x)=>s+stock(x),0)+colorItems.reduce((s,x)=>s+Number(x.quantidade),0));
-  $("#stat-used").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.em_uso||0),0));
-  $("#stat-broken").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.com_defeito||0),0));
-  $("#category-filters").innerHTML=[{id:"all",nome:"Todos"},...(state.data.categorias||[]).filter(c=>ordinary.some(x=>x.categoria_id===c.id)),{id:"filaments",nome:"Filamentos"}].map(c=>
+  $("#stat-stock").textContent=moneyless(ordinary.reduce((s,x)=>s+stock(x),0)+colorItems.reduce((s,x)=>s+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0)),0));
+  $("#stat-used").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.em_uso||0),0)+colorItems.reduce((s,x)=>s+Number(x.em_uso||0),0));
+  $("#stat-broken").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.com_defeito||0),0)+colorItems.reduce((s,x)=>s+Number(x.com_defeito||0),0));
+  $("#category-filters").innerHTML=[{id:"all",nome:"Todos"},...(state.data.categorias||[]).filter(c=>ordinary.some(x=>x.categoria_id===c.id)||colorItems.some(x=>Number(x.categoria_id)===Number(c.id)))].map(c=>
     '<button type="button" class="chip '+(String(UI.category)===String(c.id)?"active":"")+'" data-category="'+attr(c.id)+'">'+esc(c.nome)+'</button>').join("");
   const q=(state.query||"").toLocaleLowerCase("pt-BR").trim();
   const filtered=items.filter(x=>(UI.category==="all"||String(x.categoria_id)===String(UI.category))&&

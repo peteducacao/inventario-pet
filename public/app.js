@@ -88,14 +88,20 @@ function profileModal(first=false){if(state.identity)return identityProfileModal
 function dateInput(name,label,value,min=""){return '<div class="field"><label for="'+name+'">'+label+'</label><input type="date" id="'+name+'" value="'+attr(value||"")+'" '+(min?'min="'+attr(min)+'"':"")+' required></div>'}
 function inputField(name,label,value="",opts={}){return '<div class="field"><label for="'+name+'">'+esc(label)+'</label><input id="'+name+'" name="'+name+'" type="'+(opts.type||"text")+'" '+(opts.required?"required":"")+' maxlength="'+(opts.max||140)+'" placeholder="'+attr(opts.placeholder||"")+'" value="'+attr(value)+'"></div>'}
 function selectField(id,label,options,selected,first=false){return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><select id="'+id+'">'+(first?'<option value="">Selecione</option>':"")+options.map(x=>'<option value="'+attr(x.value)+'" '+(String(selected)===String(x.value)?"selected":"")+'>'+esc(x.label)+'</option>').join("")+'</select></div>'}
+function borrowableItem(item){
+  if(!item || Number(item.permitir_emprestimos)===0 || Number(item.arquivado)===1)return false;
+  const cat=(state.data?.categorias||[]).find(c=>Number(c.id)===Number(item.categoria_id));
+  return !!cat && Number(cat.permitir_emprestimos)!==0 && Number(cat.arquivada)!==1;
+}
+function borrowableItems(){return (state.data?.componentes||[]).filter(borrowableItem);}
 async function reserveModal(itemId){
   if(!state.identity){identityLoginModal();return;}
   if(state.identity&&!state.identity.email){identityEmailModal(true);return;}
-  const cats=state.data.categorias;
-  if(!state.data.componentes.length){toast("Ainda não há materiais cadastrados.",true);return;}
-  const item=byId(itemId)||state.data.componentes[0];
+  const cats=state.data.categorias,available=borrowableItems();
+  if(!available.length){toast("Não há materiais liberados para reserva.",true);return;}
+  const item=available.find(x=>x.id===itemId)||available[0];
   const date=localDate();
-  const catopts=cats.filter(c=>state.data.componentes.some(x=>x.categoria_id===c.id)).map(c=>({value:c.id,label:c.nome}));
+  const catopts=cats.filter(c=>available.some(x=>x.categoria_id===c.id)).map(c=>({value:c.id,label:c.nome}));
   const body='<form id="reservation-form" class="modal-main"><div class="field-grid">'+selectField("r-category","Categoria",catopts,item.categoria_id)+
     '<div class="field"><label for="r-item">Material</label><select id="r-item" required></select></div></div>'+
     '<div class="field-grid"><div class="field"><label for="r-qty">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="r-qty" data-delta="-1">−</button><input id="r-qty" type="number" min="1" max="1000" value="1" required><button type="button" class="step" data-target="r-qty" data-delta="1">+</button></div></div><div class="field"></div></div>'+
@@ -115,7 +121,7 @@ async function reserveModal(itemId){
   $("[data-close2]").onclick=closeModal;
   let watch=0;
   function fillItems(selected){
-    const options=state.data.componentes.filter(x=>x.categoria_id===Number($("#r-category").value));
+    const options=available.filter(x=>x.categoria_id===Number($("#r-category").value));
     $("#r-item").innerHTML=options.map(x=>'<option value="'+x.id+'">'+esc(x.nome)+'</option>').join("");
     if(selected)$("#r-item").value=String(selected);
     checkAvailability();
@@ -242,6 +248,7 @@ function itemEditor(id){
     })()+
     '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
     '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade",x?.quantidade||0)+stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
+    switchInput("i-loans","Permitir reservas e retiradas",x?Number(x.permitir_emprestimos)!==0:true,"O bloqueio da categoria prevalece. Você também pode liberar uma categoria inteira.")+
     '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
     '<details class="editor-advanced"><summary>Opções avançadas de exibição dos números</summary>'+
       switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
@@ -291,7 +298,7 @@ function itemEditor(id){
       imagem:image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),
       com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,
       mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
-      visivel_visitante:$("#i-public").checked,grupo_variacoes:$("#i-variation-family").value,
+      visivel_visitante:$("#i-public").checked,permitir_emprestimos:$("#i-loans").checked,grupo_variacoes:$("#i-variation-family").value,
       descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{await api("/api/admin/item","POST",body);$("#item-form")?.dispatchEvent(new Event("pet:item-saved"));await adminReload();adminModal();toast("Material salvo!");}
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar material";}

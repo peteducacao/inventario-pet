@@ -55,7 +55,8 @@ function validateItem(data) {
     observacoes: str(data.observacoes, 1200),
     unidade: str(data.unidade||"unidades", 40),
     visivel_visitante: data.visivel_visitante === undefined ? 1 : (data.visivel_visitante ? 1 : 0),
-    grupo_variacoes: str(data.grupo_variacoes,80)
+    grupo_variacoes: str(data.grupo_variacoes,80),
+    permitir_emprestimos: data.permitir_emprestimos===undefined?1:(data.permitir_emprestimos?1:0)
   };
   if (!x.nome) throw new Error("Informe o nome do material.");
   if ([x.quantidade, x.em_uso, x.com_defeito].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
@@ -63,14 +64,16 @@ function validateItem(data) {
   if (x.imagem && !(/^\/img\/[a-zA-Z0-9_.-]+\.(svg|webp|jpg|jpeg|png)$/.test(x.imagem) || /^https:\/\//.test(x.imagem) || /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(x.imagem))) throw new Error("A imagem deve ser uma foto válida.");
   return x;
 }
-const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes"];
-const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações" };
+const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes","permitir_emprestimos"];
+const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações",permitir_emprestimos:"Permissão de reservas e retiradas" };
 function changes(before, after) {
   if (!before) return "Material cadastrado";
   const diffs = fields.filter(key => String(before[key] ?? "") !== String(after[key] ?? "")).map(key => key === "imagem" ? "Fotografia atualizada" : names[key] + ": " + str(before[key] ?? "—", 42) + " → " + str(after[key] ?? "—", 42));
   return diffs.join(" | ") || "Cadastro confirmado";
 }
 const isPETiano = user => user?.papel === "petiano" && !!user.login && !user.must_change_password;
+const isFilamentMirror = item => /^FILAMENTO-\d+$/.test(String(item?.import_key||""));
+const borrowable = (item,cat) => !!item && !!cat && Number(item.permitir_emprestimos)!==0 && Number(cat.permitir_emprestimos)!==0 && Number(cat.arquivada)!==1;
 const allowedToSee = (item, category, member) => !!category && Number(category.arquivada)!==1 && (member || (Number(item.visivel_visitante ?? 1) === 1 && Number(category.visivel_visitante ?? 1) === 1));
 async function auditLog(db, action, type, id, description, actor="Admin"){
   try{
@@ -79,8 +82,9 @@ async function auditLog(db, action, type, id, description, actor="Admin"){
   }catch(error){console.error("Erro ao registrar histórico administrativo",String(error).slice(0,200));}
 }
 async function catalog(db, isAdmin = false, member = false) {
-  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada FROM categorias ORDER BY ordem,nome");
+  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos FROM categorias ORDER BY ordem,nome");
   let items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
+  if(isAdmin)items=items.filter(item=>!isFilamentMirror(item));
   if (!isAdmin) {
     if (!member){
       const publicIds=new Set(cats.filter(c=>Number(c.visivel_visitante)!==0).map(c=>c.id));
@@ -96,7 +100,7 @@ async function catalog(db, isAdmin = false, member = false) {
 async function state(db) {
   const data = await catalog(db, true);
   data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id ORDER BY r.solicitado_em DESC LIMIT 1500");
-  data.filamentos = await results(db,"SELECT * FROM filamentos ORDER BY ordem,cor COLLATE NOCASE");
+  data.filamentos = await results(db,"SELECT f.*,c.em_uso,c.com_defeito FROM filamentos f LEFT JOIN componentes c ON c.id=f.componente_id ORDER BY f.ordem,f.cor COLLATE NOCASE");
   const config = await results(db, "SELECT chave,valor FROM configuracoes");
   data.configuracoes = Object.fromEntries(config.map(x => [x.chave, x.valor]));
   data.ultima_atualizacao = data.componentes.reduce((best,item)=>item.ultima_alteracao>best?item.ultima_alteracao:best,"");
@@ -137,15 +141,18 @@ async function processRequest(req, env) {
   }
   if(path==="/api/filaments" && method==="GET"){
     const user=await currentIdentity(req,db);
-    const filamentos=await results(db,isPETiano(user)?"SELECT id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante FROM filamentos ORDER BY ordem,cor COLLATE NOCASE":"SELECT id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante FROM filamentos WHERE visivel_visitante=1 ORDER BY ordem,cor COLLATE NOCASE");
+    const member=isPETiano(user);
+    const sql="SELECT f.id,f.cor,f.hexadecimal,f.quantidade,f.ordem,f.atualizado_em,f.visivel_visitante,f.permitir_emprestimos,f.componente_id,c.em_uso,c.com_defeito,cat.id AS categoria_id,cat.permitir_emprestimos AS categoria_permite FROM filamentos f JOIN componentes c ON c.id=f.componente_id JOIN categorias cat ON cat.id=c.categoria_id WHERE c.arquivado=0 AND cat.arquivada=0"+(member?"":" AND f.visivel_visitante=1 AND cat.visivel_visitante=1")+" ORDER BY f.ordem,f.cor COLLATE NOCASE";
+    const filamentos=await results(db,sql);
     return j({ok:true,filamentos});
   }
   if (path === "/api/availability" && method === "GET") {
     const id = requireId(url.searchParams.get("id")), a = url.searchParams.get("inicio"), b = url.searchParams.get("fim");
     if (!dateOK(a) || !dateOK(b) || a > b) return bad("Período inválido.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante,arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(await currentIdentity(req,db)))) return bad("Material não encontrado.", 404);
+    if(!borrowable(item,category))return bad("Reservas e retiradas desativadas para este material.",409);
     return j({ disponiveis:Math.max(0, baseAvailable(item) - await maxReserved(db,id,a,b)) });
   }
   if (path === "/api/reservations" && method === "POST") {
@@ -164,8 +171,9 @@ async function processRequest(req, env) {
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante,arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(identity))) return bad("Material não encontrado.",404);
+    if(!borrowable(item,category))return bad("Reservas e retiradas desativadas para este material.",409);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
     await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id) VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now(),identity.id).run();
@@ -249,35 +257,61 @@ async function processRequest(req, env) {
     return j({ok:true,vinculados:objects.length});
   }
   if(path==="/api/admin/filaments" && method==="POST"){
-    const b=await input(req,2500),acao=str(b.acao,20);
-    if(acao==="excluir"){
-      const id=requireId(b.id);
-      const old=await db.prepare("SELECT cor FROM filamentos WHERE id=?").bind(id).first();
-      const result=await db.prepare("DELETE FROM filamentos WHERE id=?").bind(id).run();
-      if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
-      await auditLog(db,"Excluiu","filamento",id,old?.cor||"Filamento");
+    const b=await input(req,3000),action=str(b.acao,20);
+    if(action==="excluir"){
+      const id=requireId(b.id),old=await db.prepare("SELECT * FROM filamentos WHERE id=?").bind(id).first();
+      if(!old)return bad("Cor não encontrada.",404);
+      const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=? AND status IN ('pendente','aprovada','retirada')").bind(old.componente_id).first();
+      if(active?.n)return bad("Há empréstimos ativos ou pendentes desta cor. Conclua-os antes de excluir.",409);
+      await db.batch([
+        db.prepare("DELETE FROM filamentos WHERE id=?").bind(id),
+        db.prepare("UPDATE componentes SET arquivado=1,permitir_emprestimos=0 WHERE id=?").bind(old.componente_id)
+      ]);
+      await auditLog(db,"Excluiu","filamento",id,old.cor+" (histórico preservado)");
       return j({ok:true});
     }
-    if(acao==="ordenar"){
+    if(action==="ordenar"){
       if(!Array.isArray(b.ordem)||b.ordem.length>500||b.ordem.some(x=>!Number.isSafeInteger(Number(x))||Number(x)<1)||new Set(b.ordem.map(Number)).size!==b.ordem.length)return bad("Ordem inválida.");
-      if(b.ordem.length){
-        await db.batch(b.ordem.map((id,i)=>db.prepare("UPDATE filamentos SET ordem=? WHERE id=?").bind(i,Number(id))));
-      }
+      if(b.ordem.length)await db.batch(b.ordem.map((id,i)=>db.prepare("UPDATE filamentos SET ordem=? WHERE id=?").bind(i,Number(id))));
       return j({ok:true});
     }
-    if(acao!=="criar" && acao!=="editar")return bad("Ação inválida.");
+    if(action==="emprestimos"){
+      const id=requireId(b.id),permit=b.permitir_emprestimos===true?1:0;
+      if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
+      const f=await db.prepare("SELECT id,cor,componente_id FROM filamentos WHERE id=?").bind(id).first();
+      if(!f)return bad("Filamento não encontrado.",404);
+      await db.batch([
+        db.prepare("UPDATE filamentos SET permitir_emprestimos=? WHERE id=?").bind(permit,id),
+        db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE id=?").bind(permit,f.componente_id)
+      ]);
+      await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(permit?"Liberados":"Bloqueados"));
+      return j({ok:true});
+    }
+    if(action!=="criar"&&action!=="editar")return bad("Ação inválida.");
     const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
-    if(acao==="criar"){
-      const x=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
-      const saved=await db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES(?,?,?,?,?,?)").bind(cor,hexadecimal,q,x.proximo,now(),show).run();
-      await auditLog(db,"Cadastrou","filamento",saved.meta?.last_row_id,cor+" · "+q+" unidades");
+    if(action==="criar"){
+      const position=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
+      const enabled=b.permitir_emprestimos===true?1:0;
+      await db.batch([
+        db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos) VALUES(?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled),
+        db.prepare("INSERT INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,? FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.cor=?").bind(now(),cor),
+        db.prepare("UPDATE filamentos SET componente_id=(SELECT id FROM componentes WHERE import_key='FILAMENTO-'||filamentos.id) WHERE cor=?").bind(cor)
+      ]);
+      await auditLog(db,"Cadastrou","filamento",null,cor+" · "+q+" rolo(s)");
     }else{
-      const id=requireId(b.id);
-      const old=await db.prepare("SELECT * FROM filamentos WHERE id=?").bind(id).first();
-      const result=await db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,now(),id).run();
-      if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
-      await auditLog(db,"Editou","filamento",id,(old?.cor||"Filamento")+" → "+cor+" · quantidade "+(old?.quantidade??"—")+" → "+q+" · exibição "+(show?"Todos":"PETianes"));
+      const id=requireId(b.id),old=await db.prepare("SELECT * FROM filamentos WHERE id=?").bind(id).first();
+      if(!old)return bad("Filamento não encontrado.",404);
+      const component=await db.prepare("SELECT em_uso,com_defeito FROM componentes WHERE id=?").bind(old.componente_id).first();
+      if(!component)return bad("Vínculo do filamento não encontrado.",409);
+      const approved=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(old.componente_id).first();
+      if(q<Number(component.em_uso)+Number(component.com_defeito)+Number(approved?.n||0))return bad("A quantidade não cobre os materiais emprestados, com defeito e já aprovados.",409);
+      const enabled=b.permitir_emprestimos===undefined?Number(old.permitir_emprestimos):(b.permitir_emprestimos?1:0);
+      await db.batch([
+        db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,enabled,now(),id),
+        db.prepare("UPDATE componentes SET nome=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,ultima_alteracao=? WHERE id=?").bind("Filamento - "+cor,q,show,enabled,now(),old.componente_id)
+      ]);
+      await auditLog(db,"Editou","filamento",id,old.cor+" → "+cor+" · "+old.quantidade+" → "+q+" rolo(s)");
     }
     return j({ok:true});
   }
@@ -288,7 +322,8 @@ async function processRequest(req, env) {
     if(typeof b.imagem!=="string"||b.imagem.length>110000||
       (b.imagem!==""&&!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(b.imagem)))
       return bad("A foto deve ser PNG, JPEG ou WEBP válido.");
-    const old=await db.prepare("SELECT id,nome,imagem FROM componentes WHERE id=? AND arquivado=0").bind(id).first();
+    const old=await db.prepare("SELECT id,nome,imagem,import_key FROM componentes WHERE id=? AND arquivado=0").bind(id).first();
+    if(isFilamentMirror(old))return bad("Edite filamentos pela aba Filamentos.",409);
     if(!old)return bad("Material não encontrado.",404);
     if(old.imagem===b.imagem)return j({ok:true,sem_alteracao:true});
     const actor=str(b.responsavel,100)||"Admin";
@@ -301,10 +336,12 @@ async function processRequest(req, env) {
     const body = await input(req);
     const item = validateItem(body);
     const id = body.id ? requireId(body.id) : null;
-    const categoria = await db.prepare("SELECT id FROM categorias WHERE id=? AND arquivada=0").bind(item.categoria_id).first();
+    const categoria = await db.prepare("SELECT id,nome FROM categorias WHERE id=? AND arquivada=0").bind(item.categoria_id).first();
+    if(categoria?.nome==="Filamentos")return bad("Cadastre as cores pela aba Filamentos.",409);
     if (!categoria) return bad("Categoria não encontrada.");
     const old = id ? await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first() : null;
     if (id && !old) return bad("Material não encontrado.",404);
+    if(isFilamentMirror(old))return bad("Edite esta cor pela aba Filamentos.",409);
     const available = baseAvailable(item);
     if (id && (await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(id).first()).n > available) return bad("As quantidades não cobrem as reservas já aprovadas.",409);
     const actor = str(body.responsavel,100) || "PETiane";
@@ -323,7 +360,8 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id"));
     const active = await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=? AND status IN ('pendente','aprovada','retirada')").bind(id).first();
     if (active.n) return bad("Existem reservas ativas deste material. Finalize-as antes de excluir.",409);
-    const old=await db.prepare("SELECT nome FROM componentes WHERE id=?").bind(id).first();
+    const old=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
+    if(isFilamentMirror(old))return bad("Altere este filamento na aba Filamentos.",409);
     await db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
       .bind(now(),"Admin","Material arquivado",id).run();
     await auditLog(db,"Arquivou","material",id,old?.nome||"Material");
@@ -331,27 +369,44 @@ async function processRequest(req, env) {
   }
   if(path==="/api/admin/item/unarchive" && method==="POST"){
     const b=await input(req,1500),id=requireId(b.id);
-    const old=await db.prepare("SELECT nome FROM componentes WHERE id=?").bind(id).first();
+    const old=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
+    if(isFilamentMirror(old))return bad("Altere este filamento na aba Filamentos.",409);
     await db.prepare("UPDATE componentes SET arquivado=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(now(),"Admin","Material restaurado",id).run();
     await auditLog(db,"Restaurou","material",id,old?.nome||"Material");
     return j({ok:true});
   }
   if (path === "/api/admin/category" && method === "POST") {
     const b = await input(req,9000),name=str(b.nome,80),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
+    if(b.acao==="emprestimos"){
+      const id=requireId(b.id);
+      if(typeof b.permitir_emprestimos!=="boolean")return bad("Informe a permissão desejada.");
+      const cat=await db.prepare("SELECT nome,arquivada FROM categorias WHERE id=?").bind(id).first();
+      if(!cat||cat.arquivada)return bad("Categoria não encontrada.",404);
+      const enabled=b.permitir_emprestimos?1:0;
+      await db.batch([
+        db.prepare("UPDATE categorias SET permitir_emprestimos=? WHERE id=?").bind(enabled,id),
+        db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE categoria_id=?").bind(enabled,id),
+        db.prepare("UPDATE filamentos SET permitir_emprestimos=? WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(enabled,id)
+      ]);
+      await auditLog(db,"Alterou empréstimos","categoria",id,cat.nome+" · Todos os itens "+(enabled?"liberados":"bloqueados"));
+      return j({ok:true});
+    }
     if (b.acao === "criar") {
-      if (!name) return bad("Informe o nome da categoria.");
+      if (!name || name.toLowerCase()==="filamentos") return bad("Informe outro nome para a nova categoria.");
       const saved=await db.prepare("INSERT INTO categorias(nome,ordem,visivel_visitante,arquivada) VALUES(?,?,?,0)").bind(name,Number(b.ordem)||0,show).run();
       await auditLog(db,"Cadastrou","categoria",saved.meta?.last_row_id,name);
     } else if (b.acao === "editar") {
       if (!name) return bad("Informe o nome da categoria.");
       const id=requireId(b.id),old=await db.prepare("SELECT nome FROM categorias WHERE id=?").bind(id).first();
       if(!old)return bad("Categoria inexistente.",404);
+      if(old.nome==="Filamentos" && name!==old.nome)return bad("A categoria Filamentos não pode ser renomeada porque usa um estoque próprio.",409);
       await db.prepare("UPDATE categorias SET nome=?,visivel_visitante=? WHERE id=?").bind(name,show,id).run();
       await auditLog(db,"Editou","categoria",id,old.nome+" → "+name+" · exibição "+(show?"Todos":"PETianes"));
     } else if (b.acao === "excluir") {
       const id=requireId(b.id);
       const category=await db.prepare("SELECT nome FROM categorias WHERE id=? AND arquivada=0").bind(id).first();
       if(!category)return bad("Categoria não encontrada.",404);
+      if(category.nome==="Filamentos")return bad("A categoria Filamentos é permanente. Exclua cores na aba Filamentos.",409);
       if(b.confirmacao!==category.nome)return bad("Confirme digitando exatamente o nome da categoria.",400);
       const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas r JOIN componentes c ON r.componente_id=c.id WHERE c.categoria_id=? AND r.status IN ('pendente','aprovada','retirada')").bind(id).first();
       if(active.n)return bad("Há reservas ou retiradas abertas. Finalize-as antes de excluir a categoria e seus materiais.",409);
@@ -377,6 +432,15 @@ async function processRequest(req, env) {
       if (queries.length) await db.batch(queries);
     } else return bad("Ação inválida.");
     return j({ ok:true });
+  }
+  if(path==="/api/admin/item/loans" && method==="POST"){
+    const b=await input(req,2000),id=requireId(b.id);
+    if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
+    const item=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
+    if(!item||isFilamentMirror(item))return bad("Material não encontrado ou pertence à aba Filamentos.",404);
+    await db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE id=?").bind(b.permitir_emprestimos?1:0,id).run();
+    await auditLog(db,"Alterou empréstimos","material",id,item.nome+" · "+(b.permitir_emprestimos?"Liberados":"Bloqueados"));
+    return j({ok:true});
   }
   if (path === "/api/admin/reservation" && method === "POST") {
     const b = await input(req,8000), id = requireId(b.id), action = str(b.acao,30);
@@ -444,6 +508,7 @@ async function processRequest(req, env) {
       results(db,"SELECT * FROM conciliacao_experimentos_backup ORDER BY material_id")
     ]);
     return j({formato:"inventario-pet-v2",gerado_em:now(),...data,
+      componentes:await results(db,"SELECT * FROM componentes ORDER BY id"),
       historico,conciliacao_experimentos_vinculos,conciliacao_experimentos_backup},
       200,{"content-disposition":'attachment; filename="backup-inventario-pet.json"'});
   }
@@ -460,19 +525,22 @@ async function processRequest(req, env) {
       ||!b.componentes.every(x=>Number.isSafeInteger(x.id)&&Number.isSafeInteger(x.categoria_id))
       ||!b.reservas.every(x=>Number.isSafeInteger(x.id)&&Number.isSafeInteger(x.componente_id)))
       return bad("O backup tem registros inválidos.");
+    if(!v2 || !Array.isArray(b.filamentos))return bad("Use um backup completo v2 com filamentos para preservar os estoques.",409);
     const activeUsers=new Set((await results(db,"SELECT id FROM usuarios")).map(x=>Number(x.id)));
     // Reposição única e atômica das tabelas do inventário. Contas/senhas de
     // usuários não são exportadas nem apagadas nesta operação.
     const ops=[
       db.prepare("DELETE FROM reservas"),
+      db.prepare("DELETE FROM filamentos"),
       db.prepare("DELETE FROM componentes"),
       db.prepare("DELETE FROM categorias"),
       db.prepare("DELETE FROM configuracoes")
     ];
     for (const c of b.categorias){
-      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada) VALUES(?,?,?,?,?)")
-        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0));
+      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) VALUES(?,?,?,?,?,?)")
+        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0,c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):(c.permitir_emprestimos?1:0)));
     }
+    ops.push(db.prepare("INSERT OR IGNORE INTO categorias(nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) SELECT 'Filamentos',COALESCE(MAX(ordem),0)+1,1,0,0 FROM categorias"));
     const materialFields=[...fields,"arquivado","import_key"];
     for (const raw of b.componentes){
       const v=validateItem({...raw,mostrar_quantidade:raw.mostrar_quantidade??1,
@@ -503,11 +571,16 @@ async function processRequest(req, env) {
     if (!cfg.limpeza_reservas)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
     if (!cfg.limpeza_historico)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_historico','nunca')"));
     if(v2&&Array.isArray(b.filamentos)){
-      ops.push(db.prepare("DELETE FROM filamentos"));
+      const knownMirrors=new Set(b.componentes.map(x=>Number(x.id)));
       for(const color of b.filamentos)ops.push(db.prepare(
-        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES(?,?,?,?,?,?,?)"
+        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,componente_id) VALUES(?,?,?,?,?,?,?,?,?)"
       ).bind(color.id,str(color.cor,55),str(color.hexadecimal,7),Number(color.quantidade)||0,
-        Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1));
+        Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1,
+        color.permitir_emprestimos?1:0,knownMirrors.has(Number(color.componente_id))?Number(color.componente_id):null));
+      // Backups antigos não possuíam vínculo: reconstruir os materiais espelhados
+      // depois de restaurar as cores, preservando todas as quantidades e históricos.
+      ops.push(db.prepare("INSERT OR IGNORE INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.atualizado_em FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.componente_id IS NULL"));
+      ops.push(db.prepare("UPDATE filamentos SET componente_id=(SELECT c.id FROM componentes c WHERE c.import_key='FILAMENTO-'||filamentos.id) WHERE componente_id IS NULL"));
     }
     if(v2&&Array.isArray(b.historico)){
       ops.push(db.prepare("DELETE FROM historico_admin"));

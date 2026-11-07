@@ -220,16 +220,25 @@ function quantityCell(name,num,clazz=""){
 function adminMaterialRow(x){
   const available=stock(x),isHidden=isArchived(x);
   const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
+  const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
+  const enabled=Number(x.permitir_emprestimos)!==0&&Number(cat?.permitir_emprestimos)!==0;
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
-    '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small></div>'+
+    '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
+    '<small class="loan-indicator '+(enabled?"enabled":"disabled")+'">'+(enabled?"Reservas liberadas":"Somente consulta")+'</small></div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
     '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
-    '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
+    '<div class="material-actions"><button type="button" class="square-action loan-permission-action '+(Number(x.permitir_emprestimos)!==0?"enabled":"")+'" title="'+(Number(x.permitir_emprestimos)!==0?"Bloquear reservas deste material":"Liberar reservas deste material")+'" aria-label="Alternar reservas deste material" data-item-loans="'+x.id+'">'+(Number(x.permitir_emprestimos)!==0?"✓":"×")+'</button><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
     '<button class="square-action" type="button" title="Editar" aria-label="Editar" data-item-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
     '<button class="square-action '+(isHidden?"":"danger")+'" type="button" title="'+(isHidden?"Restaurar":"Arquivar")+'" data-item-archive="'+x.id+'">'+iconSvg(isHidden?"back":"trash")+'</button></div></div>';
 }
 function wireMaterialActions(root){
+  $$("[data-item-loans]",root).forEach(b=>b.onclick=async()=>{
+    const x=(state.admin.componentes||[]).find(x=>x.id===Number(b.dataset.itemLoans));if(!x)return;
+    const enabled=Number(x.permitir_emprestimos)===0;
+    try{await api("/api/admin/item/loans","POST",{id:x.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Empréstimo liberado para este material.":"Empréstimo bloqueado para este material.");}
+    catch(error){toast(error.message,true);}
+  });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
   $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
@@ -479,35 +488,40 @@ async function adminToggleTag(id){
 /* Categorias: arraste no desktop, use setas no celular. */
 function adminCategories(root){
   const cats=(state.admin.categorias||[]).filter(x=>!x.arquivada);
-  const archived=(state.admin.categorias||[]).filter(x=>x.arquivada);
   const itemCounts=cat=>{
+    if(cat.nome==="Filamentos")return (state.admin.filamentos||[]).length+" cores cadastradas";
     const items=state.admin.componentes.filter(x=>x.categoria_id===cat.id);
     const active=items.filter(x=>!isArchived(x)).length;
     return active+' ativos'+(items.length-active?' · '+(items.length-active)+' arquivados':'');
   };
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Organize e defina quem pode acessar cada categoria.</p></div>'+
-    '<div class="buttons"><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
+    '<div class="buttons"><button class="outline-button" type="button" id="v2-category-backup" title="Localizar a importação de backup JSON">Restaurar backup JSON</button><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
     '<div class="category-list" id="v2-category-list">'+cats.map((cat,i)=>
     '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
     '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
     '<small class="tag '+(Number(cat.visivel_visitante)===0?'pending':'')+'">'+(Number(cat.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
+    '<button type="button" class="outline-button small-button category-loan-toggle '+(Number(cat.permitir_emprestimos)===0?"blocked":"allowed")+'" data-cat-loans="'+cat.id+'">'+(Number(cat.permitir_emprestimos)===0?"Liberar todos":"Bloquear todos")+'</button>'+
     '<div class="actions"><button type="button" class="square-action" data-cat-up="'+cat.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
     '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
     '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
     '<button type="button" class="square-action danger" data-cat-delete="'+cat.id+'" aria-label="Excluir categoria e seus materiais">'+iconSvg("trash")+'</button></div></div>').join("")+'</div>'+
-    (archived.length?'<details class="editor-advanced"><summary>Categorias excluídas ('+archived.length+')</summary><div class="category-list">'+archived.map(cat=>
-      '<div class="category-row archived"><strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small><button class="outline-button small-button" type="button" data-cat-restore="'+cat.id+'">Restaurar categoria</button></div>').join("")+'</div></details>':'')+
     '</section>';
   $("#v2-new-category").onclick=()=>editCategory();
+  $("#v2-category-backup").onclick=()=>{
+    selectAdminTab("configuracoes");
+    const button=$("#v2-backup-import");if(button){button.scrollIntoView({behavior:"smooth",block:"center"});button.focus();}
+  };
+  $$("[data-cat-loans]",root).forEach(b=>b.onclick=async()=>{
+    const cat=state.admin.categorias.find(c=>Number(c.id)===Number(b.dataset.catLoans));if(!cat)return;
+    const enabled=Number(cat.permitir_emprestimos)===0;
+    if(!await niceModalConfirm(enabled?"Liberar categoria inteira?":"Bloquear categoria inteira?",(enabled?"Todos os materiais":"Todos os materiais")+" de "+cat.nome+" terão reservas e retiradas "+(enabled?"liberadas":"bloqueadas")+". As reservas em andamento serão preservadas.",enabled?"Liberar todos":"Bloquear todos",!enabled))return;
+    try{await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Categoria e todos os itens liberados.":"Categoria e todos os itens bloqueados.");}
+    catch(e){toast(e.message,true);}
+  });
   $$("[data-cat-up]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
   $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
   $$("[data-cat-edit]",root).forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
   $$("[data-cat-delete]",root).forEach(b=>b.onclick=()=>adminDeleteCategory(Number(b.dataset.catDelete)));
-  $$("[data-cat-restore]",root).forEach(b=>b.onclick=async()=>{
-    if(!await niceModalConfirm("Restaurar categoria?","Os materiais anteriormente arquivados continuarão arquivados até serem restaurados individualmente.","Restaurar"))return;
-    try{await api("/api/admin/category","POST",{acao:"restaurar",id:Number(b.dataset.catRestore)});await adminReload();adminBuild();toast("Categoria restaurada.");}
-    catch(error){toast(error.message,true);}
-  });
   let dragged=null;
   $$("[data-category-id]",root).forEach(el=>{
     el.ondragstart=e=>{dragged=Number(el.dataset.categoryId);el.classList.add("dragging");e.dataTransfer.effectAllowed="move";};
@@ -550,7 +564,7 @@ function adminDeleteCategory(id){
     }catch(error){toast(error.message,true);button.disabled=false;}
   };
 }
-/* Filamentos: só cor e quantidade, sem patrimônio nem empréstimo. */
+/* Filamentos: cores e estoque próprios, com reservas via componente vinculado. */
 const FILAMENT_PALETTE=[
   ["Preto","#24272C"],["Branco","#F4F5F1"],["Vermelho","#D83741"],
   ["Azul","#2A69D6"],["Verde","#2EAC6C"],["Amarelo","#F5D442"],
@@ -559,29 +573,39 @@ const FILAMENT_PALETTE=[
 ];
 function adminFilaments(root){
   const list=state.admin.filamentos||[];
-  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Filamentos</h2><p>Organize as cores e quantidades do PET.</p></div>'+
+  const category=(state.admin.categorias||[]).find(x=>x.nome==="Filamentos");
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Filamentos</h2><p>Organize cores, quantidades e autorizações. A liberação da categoria inteira fica na aba Categorias.</p></div>'+
     '<div class="buttons"><button class="primary-button" id="filament-add" type="button">'+iconSvg("plus",16)+' Adicionar cor</button></div></div>'+
     '<div class="filament-admin-grid">'+(list.length?list.map(x=>
     '<div class="filament-admin-card">'+
       '<span class="filament-color-dot" style="background:'+attr(x.hexadecimal)+'" aria-hidden="true"></span>'+
-      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Quantidade: <b>'+Number(x.quantidade)+'</b></small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+'</small></div>'+
-      '<div class="filament-admin-buttons"><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
+      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+' · '+(Number(x.permitir_emprestimos)!==0&&Number(category?.permitir_emprestimos)!==0?'Empréstimo liberado':'Somente consulta')+'</small></div>'+
+      '<div class="filament-admin-buttons"><button type="button" class="outline-button small-button filament-loan-button" data-filament-loans="'+x.id+'" title="Alternar permissão desta cor">'+(Number(x.permitir_emprestimos)!==0?'Bloquear':'Liberar')+'</button><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
       '<button type="button" class="square-action danger" aria-label="Excluir '+attr(x.cor)+'" title="Excluir" data-filament-delete="'+x.id+'">'+iconSvg("trash")+'</button></div></div>').join(""):
       '<div class="empty-state">Nenhuma cor cadastrada. Adicione a primeira cor de filamento.</div>')+'</div></section>';
   $("#filament-add").onclick=()=>filamentEditor();
+  $$("[data-filament-loans]",root).forEach(b=>b.onclick=async()=>{
+    const x=list.find(x=>x.id===Number(b.dataset.filamentLoans));if(!x)return;
+    const enabled=Number(x.permitir_emprestimos)===0;
+    try{
+      await api("/api/admin/filaments","POST",{acao:"emprestimos",id:x.id,permitir_emprestimos:enabled});
+      await adminReload();adminBuild();
+      toast(enabled?(Number(category?.permitir_emprestimos)!==0?"Cor liberada.":"Cor liberada individualmente; falta liberar a categoria Filamentos."):"Empréstimo desta cor bloqueado.");
+    }catch(error){toast(error.message,true);}
+  });
   $$("[data-filament-edit]",root).forEach(b=>b.onclick=()=>filamentEditor(Number(b.dataset.filamentEdit)));
   $$("[data-filament-delete]",root).forEach(b=>b.onclick=()=>deleteFilament(Number(b.dataset.filamentDelete)));
 }
 function filamentEditor(id){
   const color=(state.admin.filamentos||[]).find(x=>x.id===id);
   const selected=color?.hexadecimal||"#2A69D6";
-  openModal(color?"Editar filamento":"Adicionar cor de filamento","Apenas cor e quantidade.",
+  openModal(color?"Editar filamento":"Adicionar cor de filamento","Cor, estoque e permissão de empréstimo.",
     '<form id="filament-form" class="modal-main">'+
     '<div class="filament-palette">'+FILAMENT_PALETTE.map(([name,hex])=>
       '<button type="button" class="filament-preset" style="--sample:'+hex+'" data-filament-choice="'+attr(name)+'" data-hex="'+hex+'" aria-label="Escolher '+attr(name)+'" title="'+attr(name)+'"><span></span></button>').join("")+'</div>'+
     '<div class="field-grid"><div class="field"><label for="filament-name">Cor</label><input id="filament-name" maxlength="55" required value="'+attr(color?.cor||"")+'" placeholder="Ex.: Azul royal"></div>'+
     '<div class="field"><label for="filament-hex">Escolher tonalidade</label><input type="color" id="filament-hex" value="'+selected+'"></div></div>'+
-    '<div class="field"><label for="filament-quantity">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+switchInput("filament-public","Exibir para todos",color?Number(color.visivel_visitante)!==0:true,"Desmarcado: esta cor ficará visível apenas aos PETianes.")+
+    '<div class="field"><label for="filament-quantity">Quantidade de rolos</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+switchInput("filament-loans","Permitir reservas e retiradas desta cor",color?Number(color.permitir_emprestimos)!==0:Number((state.admin.categorias||[]).find(x=>x.nome==="Filamentos")?.permitir_emprestimos)!==0,"A categoria Filamentos também precisa estar liberada.")+switchInput("filament-public","Exibir para todos",color?Number(color.visivel_visitante)!==0:true,"Desmarcado: esta cor ficará visível apenas aos PETianes.")+
     '<div class="modal-footer" style="border:0;padding:16px 0 0"><button class="secondary-button" id="filament-cancel" type="button">Cancelar</button><button class="primary-button" type="submit" id="filament-save">Salvar</button></div></form>');
   $$("[data-filament-choice]").forEach(b=>b.onclick=()=>{
     $("#filament-name").value=b.dataset.filamentChoice;$("#filament-hex").value=b.dataset.hex;
@@ -592,7 +616,7 @@ function filamentEditor(id){
     e.preventDefault();
     const btn=$("#filament-save");btn.disabled=true;btn.textContent="Salvando…";
     try{
-      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value),visivel_visitante:$("#filament-public").checked});
+      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value),visivel_visitante:$("#filament-public").checked,permitir_emprestimos:$("#filament-loans").checked});
       await adminReload();closeModal();adminBuild();toast("Filamento salvo.");
     }catch(e){toast(e.message,true);btn.disabled=false;btn.textContent="Salvar";}
   };
@@ -944,9 +968,9 @@ function adminSettings(root){
     settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
     '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
-    emailEditor+'<section class="admin-panel"><div class="admin-section-head"><h2>Backup</h2></div>'+
+    emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
-    '<button type="button" class="outline-button" id="v2-backup-import">Importar backup</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
+    '<button type="button" class="outline-button" id="v2-backup-import">Restaurar arquivo JSON</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
     '<button type="button" class="outline-button" id="v2-run-cleanup">Executar limpeza</button></div></section>';
   const select=$("#v2-cleanup");select.value=["nunca","1min","7","15","30","60","90"].includes(current)?current:"personalizado";
   const update=()=>{$("#v2-custom-wrap").hidden=select.value!=="personalizado";};select.onchange=update;update();
