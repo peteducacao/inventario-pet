@@ -1153,10 +1153,8 @@ function openVariantLinker(currentId,groupName=""){
     if(!chosen.length){selected.clear();draw();return;}
     const moving=chosen.filter(x=>x.grupo_variacoes);
     if(moving.length){
-      const yes=await niceModalConfirm("Mover componentes de outro vínculo?",
-        moving.length+" material(is) serão retirados do vínculo anterior e vinculados a "+name+". Estoque preservado.",
-        "Mover e vincular");
-      if(!yes){openVariantLinker(null,name);return;}
+      const yes=window.confirm(moving.length+" material(is) deixarão o vínculo anterior e passarão para "+name+". Prosseguir?");
+      if(!yes)return;
     }
     saving=true;updateCount();
     try{
