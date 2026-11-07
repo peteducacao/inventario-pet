@@ -72,6 +72,24 @@ jobs:
       # última versão não está ativada e isso interrompia os testes seguintes.
       - name: Conferir ilustrações publicadas
         run: node tests/live-art.mjs
+      - name: Confirmar famílias no catálogo publicado
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://inventario-pet.pet-educacao.workers.dev";
+          const result=await fetch(root+"/api/catalog",{headers:{"cache-control":"no-cache"}});
+          if(!result.ok)throw Error("Catálogo inacessível: "+result.status);
+          const data=await result.json();
+          const alkaline=(data.componentes||[]).filter(x=>x.grupo_variacoes==="Alcalina");
+          if(alkaline.length<2)throw Error("A família Alcalina não foi vinculada no catálogo público.");
+          const names=alkaline.map(x=>x.nome.toLocaleLowerCase("pt-BR"));
+          if(!names.some(x=>x.includes("palito"))||!names.some(x=>x.includes("normal")))
+            throw Error("Faltam opções de pilha normal/palito na família Alcalina.");
+          const app=await fetch(root+"/final.js",{headers:{"cache-control":"no-cache"}});
+          const js=await app.text();
+          if(!app.ok||!js.includes("function openVariantChoices(")||!js.includes("data-open-variants"))
+            throw Error("Seletor de modelos não foi publicado.");
+          console.log("FAMÍLIAS PUBLICADAS OK: Alcalina com "+alkaline.length+" modelos, seleção por toque e estoques distintos.");
+          NODE
       - name: Conferir acesso direto à página independente do Admin
         run: |
           node --input-type=module <<'NODE'
