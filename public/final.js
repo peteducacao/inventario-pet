@@ -103,10 +103,11 @@ function finalCard(original,siblings=[]){
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
+  const choiceMarkup=grouped?'<span class="variant-selected">Modelo: '+esc(x.nome)+'</span><div class="variant-choices" aria-label="Escolher variação">'+siblings.map(v=>'<button type="button" class="variant-chip '+(v.id===x.id?'active':'')+'" data-variant-id="'+v.id+'" data-variant-group="'+attr(groupKey)+'" aria-pressed="'+(v.id===x.id)+'">'+esc(v.nome)+'</button>').join("")+'</div>':"";
   return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" data-photo="'+x.id+'" aria-label="Ampliar ilustração de '+attr(x.nome)+'">'+
     '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
-    '<div class="catalog-body"><h3>'+esc(grouped?x.grupo_variacoes:x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
+    '<div class="catalog-body"><h3>'+esc(grouped?x.grupo_variacoes:x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+choiceMarkup+
     (asset?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':'')+
     '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+Number(x.quantidade)+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Defeito</span><strong class="'+(Number(x.com_defeito)?"stock-defect":"")+'">'+Number(x.com_defeito)+'</strong></div></div>'+
     '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0?"disabled":"")+'>'+iconSvg(canWithdraw?"logout":"calendar",16)+' '+label+'</button></div></article>';
@@ -127,9 +128,9 @@ function finalRender(){
   const q=(state.query||"").toLocaleLowerCase("pt-BR").trim();
   const filtered=items.filter(x=>(UI.category==="all"||String(x.categoria_id)===String(UI.category))&&
     (!q||[x.nome,x.identificacao,x.patrimonio].some(v=>String(v||"").toLocaleLowerCase("pt-BR").includes(q))));
-  const p=paginate(ordered(filtered,UI.sort),UI.page,12);
+  const p=paginate(groupPublicMaterials(ordered(filtered,UI.sort)),UI.page,12);
   UI.page=p.page;stored("pet_public_page",p.page);
-  $("#category-sections").innerHTML=p.total?'<div class="card-grid">'+p.items.map(finalCard).join("")+'</div>':
+  $("#category-sections").innerHTML=p.total?'<div class="card-grid">'+p.items.map(group=>finalCard(group[0],group)).join("")+'</div>':
     '<div class="empty-state"><strong>Nenhum material encontrado.</strong><p>Experimente outro filtro.</p></div>';
   $("#catalog-pagination").innerHTML=pageButtons(p,"public");
   $("#profile-name").textContent=state.identity?.nome||"Entrar";
@@ -229,6 +230,7 @@ async function refreshNotifications(){
 }
 function setupFinalPublic(){
   render=finalRender;
+  if(document.body.dataset.adminRoute==="true")return;
   identityProfileModal=finalAccount;
   memberHistoryModal=openMyLoans;
   for(const field of [$("#search"),$("#search-mobile")].filter(Boolean)){
@@ -253,7 +255,7 @@ function setupFinalPublic(){
   $("#stats-toggle").onclick=()=>{UI.summaryMinimized=!UI.summaryMinimized;stored("pet_public_summary_closed",UI.summaryMinimized?"1":"0");finalRender();};
   $("#profile-button").onclick=openUserMenu;
   $("#notification-button").onclick=()=>{if(!state.identity){identityLoginModal();return;}openMyNotificationPopover();};
-  $("#admin-button").onclick=()=>enterAdmin(false);
+  $("#admin-button").onclick=()=>{location.href="/admin/";};
   const menuButton=$("#public-menu-toggle");
   const drawer=$("#public-sidebar");
   const veil=$("#public-nav-overlay");
@@ -278,7 +280,7 @@ function setupFinalPublic(){
         else if(identityIsMember())memberWithdrawModal();
         else reserveModal(null);
       }
-      if(action==="admin")enterAdmin(false);
+      if(action==="admin")location.href="/admin/";
     });
   }
   $("#reserve-button").onclick=()=>{
@@ -286,6 +288,8 @@ function setupFinalPublic(){
     if(identityIsMember())memberWithdrawModal();else reserveModal(null);
   };
   $("#category-sections").addEventListener("click",event=>{
+    const choice=event.target.closest("[data-variant-id]");
+    if(choice){UI.variantChoice[choice.dataset.variantGroup]=Number(choice.dataset.variantId);finalRender();return;}
     const b=event.target.closest("[data-reserve-item]");
     if(b&&!state.identity){event.stopImmediatePropagation();identityLoginModal();}
   },true);
@@ -293,14 +297,10 @@ function setupFinalPublic(){
     if(!event.target.closest("#profile-button,.pop-menu"))closeUserMenu();
     if(!event.target.closest("#notification-button,#notification-popover"))$("#notification-popover").hidden=true;
   });
-  try{finalRender()}catch(e){console.warn("Aguardando catálogo",e.message);}
-  refreshFilaments().catch(error=>console.warn("Filamentos:",error.message));
-  api("/api/identity/me").then(r=>{
-    if(r.usuario&&!state.identity){setIdentity(r.usuario);refreshNotifications();}
-  }).catch(()=>{});
+  // O carregamento inicial sincronizado ocorre em app.js.
   if(state.identity)refreshNotifications();
   setInterval(()=>{if(state.identity)refreshNotifications()},90000);
-  if(localStorage.getItem("pet_admin_open")==="1")setTimeout(()=>enterAdmin(true),200);
+  // Admin possui endereço independente.
 }
 
 async function refreshFilaments(){const data=await api("/api/filaments");UI.filaments=data.filamentos||[];finalRender();}
