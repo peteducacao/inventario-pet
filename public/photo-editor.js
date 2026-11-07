@@ -29,9 +29,9 @@ async function editPETCatalogPhoto(fileOrData) {
         '<div class="field"><label for="pet-photo-zoom">Tamanho da foto</label>'+
         '<input id="pet-photo-zoom" type="range" min="70" max="240" step="1" value="100">'+
         '<small id="pet-photo-zoom-value">100% · sem cortes</small></div>'+
-        '<div class="field"><label for="pet-photo-fit">Enquadramento</label>'+
+        '<div class="field"><label for="pet-photo-fit">Enquadrar ou recortar</label>'+
         '<select id="pet-photo-fit"><option value="contain">Mostrar foto inteira (recomendado)</option>'+
-        '<option value="cover">Preencher espaço (pode cortar as bordas)</option></select></div>'+
+        '<option value="cover">Recortar para preencher 4:3</option></select></div>'+
         '</div><div class="modal-footer pet-photo-footer">'+
         '<button id="pet-photo-cancel" type="button" class="secondary-button">Cancelar</button>'+
         '<button id="pet-photo-apply" type="button" class="primary-button">Usar esta foto</button></div></section>';
