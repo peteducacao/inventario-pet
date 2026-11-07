@@ -247,13 +247,18 @@ function memberReturnModal(loan){
     '<div class="field"><label for="member-return-note">Observações (opcional)</label><textarea id="member-return-note" maxlength="500" placeholder="Condição do material"></textarea></div>'+
     '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">Confirmar devolução</button></div></form>';
   openModal("Devolver material","Seu estoque será atualizado imediatamente.",body);
-  $("#member-return-cancel").onclick=memberHistoryModal;
+  $("#member-return-cancel").onclick=()=>{
+    if(document.body.dataset.loansRoute==="true"){closeModal();openMyLoans();}
+    else memberHistoryModal();
+  };
   $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
   $("#member-return-form").onsubmit=async e=>{
     e.preventDefault();const btn=$("#member-return-submit");btn.disabled=true;
     try{
       await api("/api/member/return","POST",{id:loan.id,defeituosos:Number($("#member-broken").value),observacao:$("#member-return-note").value});
-      await publicReload();toast("Devolução registrada!");await memberHistoryModal();
+      await publicReload();toast("Devolução registrada!");
+      if(document.body.dataset.loansRoute==="true"){closeModal();await openMyLoans();}
+      else await memberHistoryModal();
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }
