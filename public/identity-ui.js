@@ -26,7 +26,7 @@ function passwordRating(value){
   if(!pass)return null;
   const groups=[/[a-z]/.test(pass),/[A-Z]/.test(pass),/[0-9]/.test(pass),/[^a-zA-Z0-9]/.test(pass)].filter(Boolean).length;
   const unique=new Set(pass).size;
-  if(pass.length<7||unique<4||/^(.)\\1+$/.test(pass)||/(123456|password|senha123|qwerty|abc123|admin123)/i.test(pass))return "fraca";
+  if(pass.length<7||unique<4||/^(.)\1+$/.test(pass)||/(123456|password|senha123|qwerty|abc123|admin123)/i.test(pass))return "fraca";
   if(pass.length>=12&&groups>=2&&unique>=7)return "forte";
   if(pass.length>=8&&unique>=5)return "média";
   return "fraca";
@@ -36,7 +36,7 @@ function confirmWeakPassword(value){
   return confirm("Sua senha foi classificada como FRACA. Ela pode ser descoberta com maior facilidade e colocar seus empréstimos e dados da conta em risco. Deseja continuar com essa senha mesmo assim?");
 }
 function wirePasswordStrength(){
-  $('input[autocomplete="new-password"]').forEach(input=>{
+  document.querySelectorAll('input[autocomplete="new-password"]').forEach(input=>{
     const box=$("#"+input.id+"-strength");if(!box)return;
     const update=()=>{
       const rating=passwordRating(input.value);
