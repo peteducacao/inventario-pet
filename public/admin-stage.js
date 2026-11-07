@@ -261,8 +261,8 @@ function wireMaterialActions(root){
   });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
-  $("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
-  $("[data-group-links]",root).forEach(b=>b.onclick=()=>openVariantLinker(null,b.dataset.groupLinks));
+  $$("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
+  $$("[data-group-links]",root).forEach(b=>b.onclick=()=>openVariantLinker(null,b.dataset.groupLinks));
   $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
 }
 function adminRenameVariationGroup(name){
