@@ -25,7 +25,7 @@ const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal
 const identity={id:"PET-AABBCCDDEEFF",nome:"Pessoa teste",tag:"visitante",login:"teste01",
   ativo:true,trocar_senha:false,precisa_criar_login:false};
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-function build(isAdmin){
+function build(isAdmin,alreadyAdmin=false){
   const errors=[];
   const vc=new VirtualConsole();
   vc.on("jsdomError",e=>errors.push(String(e)));
@@ -37,7 +37,7 @@ function build(isAdmin){
   w.confirm=()=>true;
   w.addEventListener("error",e=>errors.push(String(e.error||e.message)));
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
-  let adminAuthenticated=false;
+  let adminAuthenticated=alreadyAdmin;
   w.fetch=async(uri,init={})=>{
     const path=new URL(uri,w.location.href).pathname;
     let status=200,body={ok:true};
@@ -141,6 +141,13 @@ await click("#modal-root [data-close]");
 assert.deepEqual(publicUI.errors,[],"Erros do catálogo.");
 publicUI.dom.window.close();
 
+const refreshed=build(true,true);
+await wait(180);
+assert.equal(refreshed.d.querySelector("#v2-admin-password"),null,"Sessão válida não pode exibir login brevemente ao atualizar.");
+assert.ok(refreshed.d.querySelector(".admin-layout"),"Sessão válida deve ir diretamente ao painel após verificar.");
+assert.deepEqual(refreshed.errors,[],"Erros ao recarregar com sessão administrativa válida.");
+refreshed.dom.window.close();
+
 const adminUI=build(true);
 await wait(160);
 const {d:ad,click:adminClick,w:aw}=adminUI;
@@ -159,6 +166,10 @@ ad.querySelector("#v2-admin-login").dispatchEvent(new aw.Event("submit",{bubbles
 await wait(180);
 assert.ok(ad.querySelector(".admin-layout"),"Admin separado não abriu.");
 assert.equal(ad.querySelector(".admin-overview.three")?.children.length,3,"Painel precisa ter três indicadores.");
+assert.ok(ad.querySelector("#dashboard-last-change"),"Atalho de última alteração deve estar na visão geral.");
+await wait(90);
+assert.match(ad.querySelector("#dashboard-last-change").textContent,/Quantidade alterada/);
+assert.ok(ad.querySelector("#dashboard-last-open"),"Última alteração deve ter link à área correspondente.");
 assert.doesNotMatch(ad.querySelector(".admin-overview.three").textContent,/Reservas pendentes/);
 assert.ok(ad.querySelector('[data-admin-tab="historico"]'));
 await adminClick('[data-admin-tab="historico"]');
@@ -180,6 +191,24 @@ assert.ok(ad.querySelector("#admin-bulk-visibility"));
 assert.equal(ad.querySelector("#admin-group-variations"),null,"Remover atalho redundante; variações continuam disponíveis no editor.");
 await adminClick("#admin-bulk-visibility");
 assert.ok(ad.querySelector("#bulk-only-members"),"Visibilidade em lote não está disponível.");
+assert.ok(ad.querySelector("#bulk-category"),"Filtro por categoria ausente.");
+assert.equal(ad.querySelector("#bulk-select-category").disabled,true,"Seleção de categoria exige escolha de categoria.");
+assert.equal(ad.querySelector("#bulk-similar").hidden,true,"Sem material marcado não pode sugerir semelhantes.");
+ad.querySelector('[data-bulk-id="1"]').click();
+await wait(20);
+assert.equal(ad.querySelector("#bulk-similar").hidden,false,"Marcar resistor deve sugerir outro modelo da mesma família.");
+assert.match(ad.querySelector("#bulk-similar").textContent,/\(1\)/);
+await adminClick("#bulk-similar");
+assert.equal(ad.querySelector("#bulk-selected-count").textContent,"2 materiais selecionados.");
+ad.querySelector("#bulk-category").value="2";
+ad.querySelector("#bulk-category").dispatchEvent(new aw.Event("change",{bubbles:true}));
+await wait(20);
+assert.equal(ad.querySelector("#bulk-select-category").disabled,false);
+assert.equal(ad.querySelectorAll("#bulk-list [data-bulk-id]").length,1,"Filtro deve mostrar apenas equipamentos.");
+await adminClick("#bulk-select-category");
+assert.equal(ad.querySelector("#bulk-selected-count").textContent,"3 materiais selecionados.","Selecionar categoria deve incluir todos os seus itens sem perder a seleção anterior.");
+await adminClick("#bulk-clear");
+assert.equal(ad.querySelector("#bulk-selected-count").textContent,"0 materiais selecionados.");
 await adminClick("#modal-root [data-close]");
 await adminClick('[data-item-edit="1"]');
 assert.ok(ad.querySelector("#i-public"),"Visibilidade individual não está disponível.");
