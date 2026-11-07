@@ -132,8 +132,8 @@ function dashboardOpenEvent(log){
   const tab=destinations[log.tipo]||"historico";
   if(tab==="materiais"){
     const item=log.registro_id!=null?state.admin?.componentes?.find(x=>String(x.id)===String(log.registro_id)):null;
-    // Um material arquivado deve ser encontrado na aba Arquivados, não na lista comum.
-    UI.adminCategory=item&&isArchived(item)?"archived":"all";
+    // Não existe mais seção Arquivados. Histórico mantém o registro mesmo após exclusão.
+    UI.adminCategory="all";
     UI.adminSearch=item?.nome||"";
     UI.adminPage=1;
     stored("pet_admin_category",UI.adminCategory);
@@ -233,20 +233,20 @@ function loanAudienceSelect(kind,id,pet,visitor){
     '</select></label>';
 }
 function adminMaterialRow(x){
-  const available=stock(x),isHidden=isArchived(x);
-  const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
+  const available=stock(x);
+  const status=available?"Disponível":"Sem estoque";
   const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small>'+
-    (isHidden&&x.grupo_variacoes?'<small class="admin-archived-group">Grupo anterior: '+esc(x.grupo_variacoes)+'</small>':"")+
+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
     loanAudienceSelect("item",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
     (Number(cat?.permitir_petianos)!==1||Number(cat?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A liberação também depende da categoria</small>':'')+'</div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
-    '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
+    '<span class="material-status '+(!available?"empty":"")+'">'+status+'</span>'+
     '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
     '<button class="square-action" type="button" title="Editar" aria-label="Editar" data-item-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
-    '<button class="square-action '+(isHidden?"":"danger")+'" type="button" title="'+(isHidden?"Restaurar":"Arquivar")+'" data-item-archive="'+x.id+'">'+iconSvg(isHidden?"back":"trash")+'</button></div></div>';
+    '<button class="square-action danger" type="button" title="Excluir material" aria-label="Excluir material" data-item-delete="'+x.id+'">'+iconSvg("trash")+'</button></div></div>';
 }
 function wireMaterialActions(root){
   $$('[data-loan-audience="item"]',root).forEach(input=>input.onchange=async()=>{
@@ -263,7 +263,7 @@ function wireMaterialActions(root){
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
   $$("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
   $$("[data-group-links]",root).forEach(b=>b.onclick=()=>openVariantLinker(null,b.dataset.groupLinks));
-  $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
+  $("[data-item-delete]",root).forEach(b=>b.onclick=()=>adminDeleteItem(Number(b.dataset.itemDelete)));
 }
 function adminRenameVariationGroup(name){
   const current=String(name||"").trim();
@@ -311,20 +311,28 @@ function adminViewMaterial(id){
   $("#v2-view-close").onclick=closeModal;
   $("#v2-view-edit").onclick=()=>adminItemEditor(id);
 }
-async function adminArchiveItem(id){
-  const x=state.admin.componentes.find(z=>z.id===id);if(!x)return;
-  const isHidden=isArchived(x);
-  if(!await niceModalConfirm(isHidden?"Restaurar material?":"Arquivar material?",(isHidden?"Restaurar ":"Arquivar ")+x.nome+"? O histórico de empréstimos será preservado.",isHidden?"Restaurar":"Arquivar",!isHidden))return;
+async function adminDeleteItem(id){
+  const item=state.admin.componentes.find(x=>Number(x.id)===Number(id));
+  if(!item)return;
+  const active=(state.admin.reservas||[]).some(r=>Number(r.componente_id)===Number(id)&&
+    ["pendente","aprovada","retirada"].includes(r.status));
+  if(active){toast("Este material tem empréstimo ou reserva ativa. Encerre a movimentação antes de excluir.",true);return;}
+  if(!await niceModalConfirm("Excluir material definitivamente?",
+    item.nome+" será removido do inventário, inclusive seus registros de reservas concluídas. Um backup JSON será baixado antes da exclusão. Não haverá seção Arquivados.",
+    "Fazer backup e excluir",true))return;
   try{
-    if(isHidden)await api("/api/admin/item/unarchive","POST",{id});
-    else await api("/api/admin/item?id="+id,"DELETE");
-    await adminReload();adminBuild();toast(isHidden?"Material restaurado.":"Material arquivado.");
+    const backup=await api("/api/admin/backup");
+    saveDownload("backup-antes-de-excluir-material-"+localDate()+".json",JSON.stringify(backup,null,2));
+    await api("/api/admin/item?id="+id,"DELETE");
+    await adminReload();adminBuild();toast("Material excluído. Backup JSON gerado.");
   }catch(e){toast(e.message,true);}
 }
 function adminMaterials(root){
-  const cats=state.admin.categorias;
-  const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("")+
-    '<option value="archived" '+(UI.adminCategory==="archived"?"selected":"")+'>Arquivados</option>';
+  const cats=state.admin.categorias.filter(c=>!c.arquivada);
+  if(UI.adminCategory==="archived"||(UI.adminCategory!=="all"&&!cats.some(c=>String(c.id)===UI.adminCategory))){
+    UI.adminCategory="all";stored("pet_admin_category","all");
+  }
+  const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("");
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head admin-materials-heading"><div><h2>Materiais cadastrados</h2></div>'+
     '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais ou grupos..." value="'+attr(UI.adminSearch)+'"></div>'+
@@ -395,25 +403,22 @@ function paintAdminMaterials(){
   const search=String(UI.adminSearch||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
   const matches=x=>!search||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes]
     .some(value=>matchesCatalogSearch(value,search));
-  const archived=UI.adminCategory==="archived";
   const active=state.admin.componentes.filter(x=>!isArchived(x));
   const families=adminGroupedFamilies(active);
   const groupKeys=new Set(families.map(g=>adminGroupKey(g.name)));
-  const groups=archived?[]:families.filter(g=>
+  const groups=families.filter(g=>
     (UI.adminCategory==="all"||g.members.some(x=>String(x.categoria_id)===UI.adminCategory))&&
     (!search||matchesCatalogSearch(g.name,search)||g.members.some(matches)));
-  const individuals=state.admin.componentes.filter(x=>{
-    if(archived){if(!isArchived(x))return false;}
-    else if(isArchived(x)||groupKeys.has(adminGroupKey(x.grupo_variacoes))||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
-    return matches(x);
-  });
+  const individuals=active.filter(x=>
+    !groupKeys.has(adminGroupKey(x.grupo_variacoes))&&
+    (UI.adminCategory==="all"||String(x.categoria_id)===UI.adminCategory)&&matches(x));
   const groupsArea=$("#admin-groups-area"),groupsList=$("#admin-group-list");
-  groupsArea.hidden=archived;
+  groupsArea.hidden=false;
   groupsList.innerHTML=groups.map(adminFamilyCard).join("");
   $("#admin-group-count").textContent=String(groups.length);
   const p=paginate(ordered(individuals,UI.adminSort),UI.adminPage);
   UI.adminPage=p.page;stored("pet_admin_page",p.page);
-  $("#admin-individual-title").textContent=archived?"Materiais arquivados":"Materiais individuais";
+  $("#admin-individual-title").textContent="Materiais individuais";
   $("#admin-individual-count").textContent=p.total+" "+(p.total===1?"material":"materiais")+" nesta seleção";
   list.innerHTML=p.total?'<div class="material-list">'+p.items.map(adminMaterialRow).join("")+'</div>':
     '<div class="empty-state">'+(groups.length?"Os modelos vinculados estão dentro dos grupos acima.":"Nenhum material encontrado.")+'</div>';
@@ -641,9 +646,8 @@ function adminCategories(root){
   const cats=(state.admin.categorias||[]).filter(x=>!x.arquivada);
   const itemCounts=cat=>{
     if(cat.nome==="Filamentos")return (state.admin.filamentos||[]).length+" cores cadastradas";
-    const items=state.admin.componentes.filter(x=>x.categoria_id===cat.id);
-    const active=items.filter(x=>!isArchived(x)).length;
-    return active+' ativos'+(items.length-active?' · '+(items.length-active)+' arquivados':'');
+    const active=state.admin.componentes.filter(x=>Number(x.categoria_id)===Number(cat.id)&&!isArchived(x)).length;
+    return active+" "+(active===1?"material":"materiais");
   };
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Organize e defina quem pode acessar cada categoria.</p></div>'+
     '<div class="buttons"><button class="outline-button" type="button" id="v2-category-backup" title="Localizar a importação de backup JSON">Restaurar backup JSON</button><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
