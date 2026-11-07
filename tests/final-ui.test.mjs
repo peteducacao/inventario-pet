@@ -345,6 +345,7 @@ await wait(30);
 assert.equal(ad.querySelectorAll('[data-rename-group="Alcalina"]').length,3,
   "O botão Renomear grupo deve ficar junto das três variações Alcalina.");
 await adminClick('[data-rename-group="Alcalina"]');
+assert.ok(ad.querySelector("#rename-group-name"),"Modal de renomear ausente. Erros: "+JSON.stringify(adminUI.errors)+" · Modal: "+String(ad.querySelector("#modal-root")?.innerHTML||"").slice(0,1200));
 assert.equal(ad.querySelector("#rename-group-name").value,"Alcalina",
   "Renomear grupo deve abrir com o nome atual preenchido.");
 assert.match(ad.querySelector("#rename-group-form").textContent,/3 material/);
