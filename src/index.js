@@ -56,7 +56,9 @@ function validateItem(data) {
     unidade: str(data.unidade||"unidades", 40),
     visivel_visitante: data.visivel_visitante === undefined ? 1 : (data.visivel_visitante ? 1 : 0),
     grupo_variacoes: str(data.grupo_variacoes,80),
-    permitir_emprestimos: data.permitir_emprestimos===undefined?1:(data.permitir_emprestimos?1:0)
+    permitir_petianos: data.permitir_petianos===undefined?(data.permitir_emprestimos===undefined?1:Number(!!data.permitir_emprestimos)):Number(!!data.permitir_petianos),
+    permitir_visitantes: data.permitir_visitantes===undefined?(data.permitir_emprestimos===undefined?1:Number(!!data.permitir_emprestimos)):Number(!!data.permitir_visitantes),
+    permitir_emprestimos: (data.permitir_petianos===undefined && data.permitir_visitantes===undefined)?(data.permitir_emprestimos===undefined?1:Number(!!data.permitir_emprestimos)):Number(!!(data.permitir_petianos||data.permitir_visitantes))
   };
   if (!x.nome) throw new Error("Informe o nome do material.");
   if ([x.quantidade, x.em_uso, x.com_defeito].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
@@ -64,8 +66,8 @@ function validateItem(data) {
   if (x.imagem && !(/^\/img\/[a-zA-Z0-9_.-]+\.(svg|webp|jpg|jpeg|png)$/.test(x.imagem) || /^https:\/\//.test(x.imagem) || /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(x.imagem))) throw new Error("A imagem deve ser uma foto válida.");
   return x;
 }
-const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes","permitir_emprestimos"];
-const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações",permitir_emprestimos:"Permissão de reservas e retiradas" };
+const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes","permitir_emprestimos","permitir_petianos","permitir_visitantes"];
+const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações",permitir_emprestimos:"Empréstimos",permitir_petianos:"Retirada para PETianes",permitir_visitantes:"Retirada para visitantes" };
 function changes(before, after) {
   if (!before) return "Material cadastrado";
   const diffs = fields.filter(key => String(before[key] ?? "") !== String(after[key] ?? "")).map(key => key === "imagem" ? "Fotografia atualizada" : names[key] + ": " + str(before[key] ?? "—", 42) + " → " + str(after[key] ?? "—", 42));
@@ -73,7 +75,7 @@ function changes(before, after) {
 }
 const isPETiano = user => user?.papel === "petiano" && !!user.login && !user.must_change_password;
 const isFilamentMirror = item => /^FILAMENTO-\d+$/.test(String(item?.import_key||""));
-const borrowable = (item,cat) => !!item && !!cat && Number(item.permitir_emprestimos)!==0 && Number(cat.permitir_emprestimos)!==0 && Number(cat.arquivada)!==1;
+const borrowable = (item,cat,member=false) => !!item && !!cat && Number(cat.arquivada)!==1 && Number(item[member?"permitir_petianos":"permitir_visitantes"])===1 && Number(cat[member?"permitir_petianos":"permitir_visitantes"])===1;
 const allowedToSee = (item, category, member) => !!category && Number(category.arquivada)!==1 && (member || (Number(item.visivel_visitante ?? 1) === 1 && Number(category.visivel_visitante ?? 1) === 1));
 async function auditLog(db, action, type, id, description, actor="Admin"){
   try{
@@ -142,7 +144,7 @@ async function processRequest(req, env) {
   if(path==="/api/filaments" && method==="GET"){
     const user=await currentIdentity(req,db);
     const member=isPETiano(user);
-    const sql="SELECT f.id,f.cor,f.hexadecimal,f.quantidade,f.ordem,f.atualizado_em,f.visivel_visitante,f.permitir_emprestimos,f.componente_id,c.em_uso,c.com_defeito,cat.id AS categoria_id,cat.permitir_emprestimos AS categoria_permite FROM filamentos f JOIN componentes c ON c.id=f.componente_id JOIN categorias cat ON cat.id=c.categoria_id WHERE c.arquivado=0 AND cat.arquivada=0"+(member?"":" AND f.visivel_visitante=1 AND cat.visivel_visitante=1")+" ORDER BY f.ordem,f.cor COLLATE NOCASE";
+    const sql="SELECT f.id,f.cor,f.hexadecimal,f.quantidade,f.ordem,f.atualizado_em,f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,f.componente_id,c.em_uso,c.com_defeito,cat.id AS categoria_id,cat.permitir_emprestimos AS categoria_permite,cat.permitir_petianos AS categoria_petianos,cat.permitir_visitantes AS categoria_visitantes FROM filamentos f JOIN componentes c ON c.id=f.componente_id JOIN categorias cat ON cat.id=c.categoria_id WHERE c.arquivado=0 AND cat.arquivada=0"+(member?"":" AND f.visivel_visitante=1 AND cat.visivel_visitante=1")+" ORDER BY f.ordem,f.cor COLLATE NOCASE";
     const filamentos=await results(db,sql);
     return j({ok:true,filamentos});
   }
@@ -150,9 +152,9 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id")), a = url.searchParams.get("inicio"), b = url.searchParams.get("fim");
     if (!dateOK(a) || !dateOK(b) || a > b) return bad("Período inválido.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(await currentIdentity(req,db)))) return bad("Material não encontrado.", 404);
-    if(!borrowable(item,category))return bad("Reservas e retiradas desativadas para este material.",409);
+    if(!borrowable(item,category,isPETiano(await currentIdentity(req,db))))return bad("Retirada não autorizada para este perfil, categoria ou material.",409);
     return j({ disponiveis:Math.max(0, baseAvailable(item) - await maxReserved(db,id,a,b)) });
   }
   if (path === "/api/reservations" && method === "POST") {
@@ -171,9 +173,9 @@ async function processRequest(req, env) {
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(identity))) return bad("Material não encontrado.",404);
-    if(!borrowable(item,category))return bad("Reservas e retiradas desativadas para este material.",409);
+    if(!borrowable(item,category,isPETiano(identity)))return bad("Retirada não autorizada para este perfil, categoria ou material.",409);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
     await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id) VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now(),identity.id).run();
@@ -265,7 +267,7 @@ async function processRequest(req, env) {
       if(active?.n)return bad("Há empréstimos ativos ou pendentes desta cor. Conclua-os antes de excluir.",409);
       await db.batch([
         db.prepare("DELETE FROM filamentos WHERE id=?").bind(id),
-        db.prepare("UPDATE componentes SET arquivado=1,permitir_emprestimos=0 WHERE id=?").bind(old.componente_id)
+        db.prepare("UPDATE componentes SET arquivado=1,permitir_emprestimos=0,permitir_petianos=0,permitir_visitantes=0 WHERE id=?").bind(old.componente_id)
       ]);
       await auditLog(db,"Excluiu","filamento",id,old.cor+" (histórico preservado)");
       return j({ok:true});
@@ -276,15 +278,27 @@ async function processRequest(req, env) {
       return j({ok:true});
     }
     if(action==="emprestimos"){
-      const id=requireId(b.id),permit=b.permitir_emprestimos===true?1:0;
-      if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
-      const f=await db.prepare("SELECT id,cor,componente_id FROM filamentos WHERE id=?").bind(id).first();
+      const id=requireId(b.id),f=await db.prepare("SELECT id,cor,componente_id FROM filamentos WHERE id=?").bind(id).first();
       if(!f)return bad("Filamento não encontrado.",404);
-      await db.batch([
-        db.prepare("UPDATE filamentos SET permitir_emprestimos=? WHERE id=?").bind(permit,id),
-        db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE id=?").bind(permit,f.componente_id)
-      ]);
-      await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(permit?"Liberados":"Bloqueados"));
+      const profile=b.perfil;
+      if(profile==="petianos"||profile==="visitantes"){
+        if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
+        const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
+        const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
+        await db.batch([
+          db.prepare("UPDATE filamentos SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,id),
+          db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,f.componente_id)
+        ]);
+        await auditLog(db,"Alterou retiradas","filamento",id,f.cor+" · "+(profile==="petianos"?"PETianes":"Visitantes")+" · "+(enabled?"Liberada":"Bloqueada"));
+      }else{
+        if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
+        const enabled=b.permitir_emprestimos?1:0;
+        await db.batch([
+          db.prepare("UPDATE filamentos SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,id),
+          db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,f.componente_id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(enabled?"Liberados":"Bloqueados"));
+      }
       return j({ok:true});
     }
     if(action!=="criar"&&action!=="editar")return bad("Ação inválida.");
@@ -292,10 +306,12 @@ async function processRequest(req, env) {
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
     if(action==="criar"){
       const position=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
-      const enabled=b.permitir_emprestimos===true?1:0;
+      const pet=b.permitir_petianos===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_petianos===true);
+      const visitor=b.permitir_visitantes===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_visitantes===true);
+      const enabled=Number(!!(pet||visitor));
       await db.batch([
-        db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos) VALUES(?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled),
-        db.prepare("INSERT INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,? FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.cor=?").bind(now(),cor),
+        db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled,pet,visitor),
+        db.prepare("INSERT INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,? FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.cor=?").bind(now(),cor),
         db.prepare("UPDATE filamentos SET componente_id=(SELECT id FROM componentes WHERE import_key='FILAMENTO-'||filamentos.id) WHERE cor=?").bind(cor)
       ]);
       await auditLog(db,"Cadastrou","filamento",null,cor+" · "+q+" rolo(s)");
@@ -306,10 +322,12 @@ async function processRequest(req, env) {
       if(!component)return bad("Vínculo do filamento não encontrado.",409);
       const approved=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(old.componente_id).first();
       if(q<Number(component.em_uso)+Number(component.com_defeito)+Number(approved?.n||0))return bad("A quantidade não cobre os materiais emprestados, com defeito e já aprovados.",409);
-      const enabled=b.permitir_emprestimos===undefined?Number(old.permitir_emprestimos):(b.permitir_emprestimos?1:0);
+      const pet=b.permitir_petianos===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_petianos):Number(b.permitir_emprestimos===true)):Number(b.permitir_petianos===true);
+      const visitor=b.permitir_visitantes===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_visitantes):Number(b.permitir_emprestimos===true)):Number(b.permitir_visitantes===true);
+      const enabled=Number(!!(pet||visitor));
       await db.batch([
-        db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,enabled,now(),id),
-        db.prepare("UPDATE componentes SET nome=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,ultima_alteracao=? WHERE id=?").bind("Filamento - "+cor,q,show,enabled,now(),old.componente_id)
+        db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,enabled,pet,visitor,now(),id),
+        db.prepare("UPDATE componentes SET nome=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,ultima_alteracao=? WHERE id=?").bind("Filamento - "+cor,q,show,enabled,pet,visitor,now(),old.componente_id)
       ]);
       await auditLog(db,"Editou","filamento",id,old.cor+" → "+cor+" · "+old.quantidade+" → "+q+" rolo(s)");
     }
@@ -379,16 +397,29 @@ async function processRequest(req, env) {
     const b = await input(req,9000),name=str(b.nome,80),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
     if(b.acao==="emprestimos"){
       const id=requireId(b.id);
-      if(typeof b.permitir_emprestimos!=="boolean")return bad("Informe a permissão desejada.");
       const cat=await db.prepare("SELECT nome,arquivada FROM categorias WHERE id=?").bind(id).first();
       if(!cat||cat.arquivada)return bad("Categoria não encontrada.",404);
-      const enabled=b.permitir_emprestimos?1:0;
-      await db.batch([
-        db.prepare("UPDATE categorias SET permitir_emprestimos=? WHERE id=?").bind(enabled,id),
-        db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE categoria_id=?").bind(enabled,id),
-        db.prepare("UPDATE filamentos SET permitir_emprestimos=? WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(enabled,id)
-      ]);
-      await auditLog(db,"Alterou empréstimos","categoria",id,cat.nome+" · Todos os itens "+(enabled?"liberados":"bloqueados"));
+      const profile=b.perfil;
+      if(profile==="petianos"||profile==="visitantes"){
+        if(typeof b.permitir!=="boolean")return bad("Informe a permissão desejada.");
+        const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
+        const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
+        await db.batch([
+          db.prepare("UPDATE categorias SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,id),
+          db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE categoria_id=?").bind(enabled,enabled,id),
+          db.prepare("UPDATE filamentos SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(enabled,enabled,id)
+        ]);
+        await auditLog(db,"Alterou retiradas","categoria",id,cat.nome+" · "+(profile==="petianos"?"PETianes":"Visitantes")+" · Todos os itens "+(enabled?"liberados":"bloqueados"));
+      }else{
+        if(typeof b.permitir_emprestimos!=="boolean")return bad("Informe a permissão desejada.");
+        const enabled=b.permitir_emprestimos?1:0;
+        await db.batch([
+          db.prepare("UPDATE categorias SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,id),
+          db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE categoria_id=?").bind(enabled,enabled,enabled,id),
+          db.prepare("UPDATE filamentos SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(enabled,enabled,enabled,id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","categoria",id,cat.nome+" · Todos os itens "+(enabled?"liberados":"bloqueados"));
+      }
       return j({ok:true});
     }
     if (b.acao === "criar") {
@@ -435,11 +466,21 @@ async function processRequest(req, env) {
   }
   if(path==="/api/admin/item/loans" && method==="POST"){
     const b=await input(req,2000),id=requireId(b.id);
-    if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
     const item=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
     if(!item||isFilamentMirror(item))return bad("Material não encontrado ou pertence à aba Filamentos.",404);
-    await db.prepare("UPDATE componentes SET permitir_emprestimos=? WHERE id=?").bind(b.permitir_emprestimos?1:0,id).run();
-    await auditLog(db,"Alterou empréstimos","material",id,item.nome+" · "+(b.permitir_emprestimos?"Liberados":"Bloqueados"));
+    const profile=b.perfil;
+    if(profile==="petianos"||profile==="visitantes"){
+      if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
+      const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
+      const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
+      await db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,id).run();
+      await auditLog(db,"Alterou retiradas","material",id,item.nome+" · "+(profile==="petianos"?"PETianes":"Visitantes")+" · "+(enabled?"Liberada":"Bloqueada"));
+    }else{
+      if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
+      const enabled=b.permitir_emprestimos?1:0;
+      await db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,id).run();
+      await auditLog(db,"Alterou empréstimos","material",id,item.nome+" · "+(enabled?"Liberados":"Bloqueados"));
+    }
     return j({ok:true});
   }
   if (path === "/api/admin/reservation" && method === "POST") {
@@ -537,10 +578,10 @@ async function processRequest(req, env) {
       db.prepare("DELETE FROM configuracoes")
     ];
     for (const c of b.categorias){
-      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) VALUES(?,?,?,?,?,?)")
-        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0,c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):(c.permitir_emprestimos?1:0)));
+      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?)")
+        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0,c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):(c.permitir_emprestimos?1:0),c.permitir_petianos===undefined?(c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):Number(!!c.permitir_emprestimos)):Number(!!c.permitir_petianos),c.permitir_visitantes===undefined?(c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):Number(!!c.permitir_emprestimos)):Number(!!c.permitir_visitantes)));
     }
-    ops.push(db.prepare("INSERT OR IGNORE INTO categorias(nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) SELECT 'Filamentos',COALESCE(MAX(ordem),0)+1,1,0,0 FROM categorias"));
+    ops.push(db.prepare("INSERT OR IGNORE INTO categorias(nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes) SELECT 'Filamentos',COALESCE(MAX(ordem),0)+1,1,0,0,0,0 FROM categorias"));
     const materialFields=[...fields,"arquivado","import_key"];
     for (const raw of b.componentes){
       const v=validateItem({...raw,mostrar_quantidade:raw.mostrar_quantidade??1,
@@ -573,13 +614,13 @@ async function processRequest(req, env) {
     if(v2&&Array.isArray(b.filamentos)){
       const knownMirrors=new Set(b.componentes.map(x=>Number(x.id)));
       for(const color of b.filamentos)ops.push(db.prepare(
-        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,componente_id) VALUES(?,?,?,?,?,?,?,?,?)"
+        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,componente_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
       ).bind(color.id,str(color.cor,55),str(color.hexadecimal,7),Number(color.quantidade)||0,
         Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1,
-        color.permitir_emprestimos?1:0,knownMirrors.has(Number(color.componente_id))?Number(color.componente_id):null));
+        color.permitir_emprestimos?1:0,color.permitir_petianos===undefined?Number(!!color.permitir_emprestimos):Number(!!color.permitir_petianos),color.permitir_visitantes===undefined?Number(!!color.permitir_emprestimos):Number(!!color.permitir_visitantes),knownMirrors.has(Number(color.componente_id))?Number(color.componente_id):null));
       // Backups antigos não possuíam vínculo: reconstruir os materiais espelhados
       // depois de restaurar as cores, preservando todas as quantidades e históricos.
-      ops.push(db.prepare("INSERT OR IGNORE INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.atualizado_em FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.componente_id IS NULL"));
+      ops.push(db.prepare("INSERT OR IGNORE INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,f.atualizado_em FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.componente_id IS NULL"));
       ops.push(db.prepare("UPDATE filamentos SET componente_id=(SELECT c.id FROM componentes c WHERE c.import_key='FILAMENTO-'||filamentos.id) WHERE componente_id IS NULL"));
     }
     if(v2&&Array.isArray(b.historico)){

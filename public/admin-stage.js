@@ -217,27 +217,40 @@ async function adminHistory(root){
 function quantityCell(name,num,clazz=""){
   return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
 }
+function roleLoanToggle(kind,id,profile,enabled,parentEnabled=true){
+  const isPet=profile==="petianos",name=isPet?"Retirada para PETianes":"Retirada para visitantes";
+  const status=enabled?(parentEnabled?"Ativada":"Categoria bloqueada"):"Desativada";
+  return '<button type="button" class="role-loan-toggle '+(enabled&&parentEnabled?'is-on':'is-off')+'" data-'+kind+'-role="'+profile+'" data-'+kind+'-loan-id="'+Number(id)+'" aria-pressed="'+(enabled?'true':'false')+'" title="'+attr(name+': '+status)+'">'+
+    '<span>'+name+'</span><strong>'+status+'</strong></button>';
+}
 function adminMaterialRow(x){
   const available=stock(x),isHidden=isArchived(x);
   const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
   const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
-  const enabled=Number(x.permitir_emprestimos)!==0&&Number(cat?.permitir_emprestimos)!==0;
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
-    '<small class="loan-indicator '+(enabled?"enabled":"disabled")+'">'+(enabled?"Reservas liberadas":"Somente consulta")+'</small></div>'+
+    '<div class="role-loan-controls">'+
+      roleLoanToggle("item",x.id,"petianos",Number(x.permitir_petianos)===1,Number(cat?.permitir_petianos)===1)+
+      roleLoanToggle("item",x.id,"visitantes",Number(x.permitir_visitantes)===1,Number(cat?.permitir_visitantes)===1)+
+    '</div></div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
     '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
-    '<div class="material-actions"><button type="button" class="square-action loan-permission-action '+(Number(x.permitir_emprestimos)!==0?"enabled":"")+'" title="'+(Number(x.permitir_emprestimos)!==0?"Bloquear reservas deste material":"Liberar reservas deste material")+'" aria-label="Alternar reservas deste material" data-item-loans="'+x.id+'">'+(Number(x.permitir_emprestimos)!==0?"✓":"×")+'</button><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
+    '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
     '<button class="square-action" type="button" title="Editar" aria-label="Editar" data-item-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
     '<button class="square-action '+(isHidden?"":"danger")+'" type="button" title="'+(isHidden?"Restaurar":"Arquivar")+'" data-item-archive="'+x.id+'">'+iconSvg(isHidden?"back":"trash")+'</button></div></div>';
 }
 function wireMaterialActions(root){
-  $$("[data-item-loans]",root).forEach(b=>b.onclick=async()=>{
-    const x=(state.admin.componentes||[]).find(x=>x.id===Number(b.dataset.itemLoans));if(!x)return;
-    const enabled=Number(x.permitir_emprestimos)===0;
-    try{await api("/api/admin/item/loans","POST",{id:x.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Empréstimo liberado para este material.":"Empréstimo bloqueado para este material.");}
-    catch(error){toast(error.message,true);}
+  $$("[data-item-role]",root).forEach(b=>b.onclick=async()=>{
+    const x=(state.admin.componentes||[]).find(x=>x.id===Number(b.dataset.itemLoanId));
+    if(!x)return;
+    const profile=b.dataset.itemRole;
+    const enabled=Number(x[profile==="petianos"?"permitir_petianos":"permitir_visitantes"])!==1;
+    try{
+      await api("/api/admin/item/loans","POST",{id:x.id,perfil:profile,permitir:enabled});
+      await adminReload();adminBuild();
+      toast((profile==="petianos"?"PETianes":"Visitantes")+": retirada "+(enabled?"liberada":"bloqueada")+" neste material.");
+    }catch(error){toast(error.message,true);}
   });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
@@ -500,7 +513,10 @@ function adminCategories(root){
     '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
     '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
     '<small class="tag '+(Number(cat.visivel_visitante)===0?'pending':'')+'">'+(Number(cat.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
-    '<button type="button" class="outline-button small-button category-loan-toggle '+(Number(cat.permitir_emprestimos)===0?"blocked":"allowed")+'" data-cat-loans="'+cat.id+'">'+(Number(cat.permitir_emprestimos)===0?"Liberar todos":"Bloquear todos")+'</button>'+
+    '<div class="role-loan-controls category-role-controls">'+
+      roleLoanToggle("cat",cat.id,"petianos",Number(cat.permitir_petianos)===1)+
+      roleLoanToggle("cat",cat.id,"visitantes",Number(cat.permitir_visitantes)===1)+
+    '</div>'+
     '<div class="actions"><button type="button" class="square-action" data-cat-up="'+cat.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
     '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
     '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
@@ -511,12 +527,17 @@ function adminCategories(root){
     selectAdminTab("configuracoes");
     const button=$("#v2-backup-import");if(button){button.scrollIntoView({behavior:"smooth",block:"center"});button.focus();}
   };
-  $$("[data-cat-loans]",root).forEach(b=>b.onclick=async()=>{
-    const cat=state.admin.categorias.find(c=>Number(c.id)===Number(b.dataset.catLoans));if(!cat)return;
-    const enabled=Number(cat.permitir_emprestimos)===0;
-    if(!await niceModalConfirm(enabled?"Liberar categoria inteira?":"Bloquear categoria inteira?",(enabled?"Todos os materiais":"Todos os materiais")+" de "+cat.nome+" terão reservas e retiradas "+(enabled?"liberadas":"bloqueadas")+". As reservas em andamento serão preservadas.",enabled?"Liberar todos":"Bloquear todos",!enabled))return;
-    try{await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Categoria e todos os itens liberados.":"Categoria e todos os itens bloqueados.");}
-    catch(e){toast(e.message,true);}
+  $$("[data-cat-role]",root).forEach(b=>b.onclick=async()=>{
+    const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(b.dataset.catLoanId));
+    if(!cat)return;
+    const profile=b.dataset.catRole,pet=profile==="petianos",label=pet?"PETianes":"visitantes";
+    const enabled=Number(cat[pet?"permitir_petianos":"permitir_visitantes"])!==1;
+    if(!await niceModalConfirm((enabled?"Liberar":"Bloquear")+" retirada para "+label+"?",(enabled?"Liberar":"Bloquear")+" as retiradas para "+label+" em todos os materiais de "+cat.nome+"? A permissão do outro perfil continuará igual. As solicitações em andamento serão preservadas.",enabled?"Liberar todos":"Bloquear todos",!enabled))return;
+    try{
+      await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,perfil:profile,permitir:enabled});
+      await adminReload();adminBuild();
+      toast("Retirada para "+label+" "+(enabled?"liberada":"bloqueada")+" em toda a categoria.");
+    }catch(error){toast(error.message,true);}
   });
   $$("[data-cat-up]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
   $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
@@ -579,18 +600,20 @@ function adminFilaments(root){
     '<div class="filament-admin-grid">'+(list.length?list.map(x=>
     '<div class="filament-admin-card">'+
       '<span class="filament-color-dot" style="background:'+attr(x.hexadecimal)+'" aria-hidden="true"></span>'+
-      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+' · '+(Number(x.permitir_emprestimos)!==0&&Number(category?.permitir_emprestimos)!==0?'Empréstimo liberado':'Somente consulta')+'</small></div>'+
-      '<div class="filament-admin-buttons"><button type="button" class="outline-button small-button filament-loan-button" data-filament-loans="'+x.id+'" title="Alternar permissão desta cor">'+(Number(x.permitir_emprestimos)!==0?'Bloquear':'Liberar')+'</button><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
+      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
+      '<div class="role-loan-controls">'+roleLoanToggle("filament",x.id,"petianos",Number(x.permitir_petianos)===1,Number(category?.permitir_petianos)===1)+roleLoanToggle("filament",x.id,"visitantes",Number(x.permitir_visitantes)===1,Number(category?.permitir_visitantes)===1)+'</div></div>'+
+      '<div class="filament-admin-buttons"><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
       '<button type="button" class="square-action danger" aria-label="Excluir '+attr(x.cor)+'" title="Excluir" data-filament-delete="'+x.id+'">'+iconSvg("trash")+'</button></div></div>').join(""):
       '<div class="empty-state">Nenhuma cor cadastrada. Adicione a primeira cor de filamento.</div>')+'</div></section>';
   $("#filament-add").onclick=()=>filamentEditor();
-  $$("[data-filament-loans]",root).forEach(b=>b.onclick=async()=>{
-    const x=list.find(x=>x.id===Number(b.dataset.filamentLoans));if(!x)return;
-    const enabled=Number(x.permitir_emprestimos)===0;
+  $$("[data-filament-role]",root).forEach(b=>b.onclick=async()=>{
+    const x=list.find(x=>x.id===Number(b.dataset.filamentLoanId));if(!x)return;
+    const profile=b.dataset.filamentRole,label=profile==="petianos"?"PETianes":"visitantes";
+    const enabled=Number(x[profile==="petianos"?"permitir_petianos":"permitir_visitantes"])!==1;
     try{
-      await api("/api/admin/filaments","POST",{acao:"emprestimos",id:x.id,permitir_emprestimos:enabled});
+      await api("/api/admin/filaments","POST",{acao:"emprestimos",id:x.id,perfil:profile,permitir:enabled});
       await adminReload();adminBuild();
-      toast(enabled?(Number(category?.permitir_emprestimos)!==0?"Cor liberada.":"Cor liberada individualmente; falta liberar a categoria Filamentos."):"Empréstimo desta cor bloqueado.");
+      toast("Retirada para "+label+" "+(enabled?"liberada":"bloqueada")+" nesta cor. Verifique também a permissão da categoria Filamentos.");
     }catch(error){toast(error.message,true);}
   });
   $$("[data-filament-edit]",root).forEach(b=>b.onclick=()=>filamentEditor(Number(b.dataset.filamentEdit)));
@@ -599,13 +622,13 @@ function adminFilaments(root){
 function filamentEditor(id){
   const color=(state.admin.filamentos||[]).find(x=>x.id===id);
   const selected=color?.hexadecimal||"#2A69D6";
-  openModal(color?"Editar filamento":"Adicionar cor de filamento","Cor, estoque e permissão de empréstimo.",
+  openModal(color?"Editar filamento":"Adicionar cor de filamento","Cor, estoque e permissões por perfil.",
     '<form id="filament-form" class="modal-main">'+
     '<div class="filament-palette">'+FILAMENT_PALETTE.map(([name,hex])=>
       '<button type="button" class="filament-preset" style="--sample:'+hex+'" data-filament-choice="'+attr(name)+'" data-hex="'+hex+'" aria-label="Escolher '+attr(name)+'" title="'+attr(name)+'"><span></span></button>').join("")+'</div>'+
     '<div class="field-grid"><div class="field"><label for="filament-name">Cor</label><input id="filament-name" maxlength="55" required value="'+attr(color?.cor||"")+'" placeholder="Ex.: Azul royal"></div>'+
     '<div class="field"><label for="filament-hex">Escolher tonalidade</label><input type="color" id="filament-hex" value="'+selected+'"></div></div>'+
-    '<div class="field"><label for="filament-quantity">Quantidade de rolos</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+switchInput("filament-loans","Permitir reservas e retiradas desta cor",color?Number(color.permitir_emprestimos)!==0:Number((state.admin.categorias||[]).find(x=>x.nome==="Filamentos")?.permitir_emprestimos)!==0,"A categoria Filamentos também precisa estar liberada.")+switchInput("filament-public","Exibir para todos",color?Number(color.visivel_visitante)!==0:true,"Desmarcado: esta cor ficará visível apenas aos PETianes.")+
+    '<div class="field"><label for="filament-quantity">Quantidade de rolos</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+switchInput("filament-loans-pet","Retirada para PETianes",color?Number(color.permitir_petianos)===1:false,"PETianes podem registrar retirada diretamente, se a categoria permitir.")+switchInput("filament-loans-visitor","Retirada para visitantes",color?Number(color.permitir_visitantes)===1:false,"Visitantes solicitam retirada para aprovação, se a categoria permitir.")+switchInput("filament-public","Exibir para todos",color?Number(color.visivel_visitante)!==0:true,"Desmarcado: esta cor ficará visível apenas aos PETianes.")+
     '<div class="modal-footer" style="border:0;padding:16px 0 0"><button class="secondary-button" id="filament-cancel" type="button">Cancelar</button><button class="primary-button" type="submit" id="filament-save">Salvar</button></div></form>');
   $$("[data-filament-choice]").forEach(b=>b.onclick=()=>{
     $("#filament-name").value=b.dataset.filamentChoice;$("#filament-hex").value=b.dataset.hex;
@@ -616,7 +639,7 @@ function filamentEditor(id){
     e.preventDefault();
     const btn=$("#filament-save");btn.disabled=true;btn.textContent="Salvando…";
     try{
-      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value),visivel_visitante:$("#filament-public").checked,permitir_emprestimos:$("#filament-loans").checked});
+      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value),visivel_visitante:$("#filament-public").checked,permitir_petianos:$("#filament-loans-pet").checked,permitir_visitantes:$("#filament-loans-visitor").checked});
       await adminReload();closeModal();adminBuild();toast("Filamento salvo.");
     }catch(e){toast(e.message,true);btn.disabled=false;btn.textContent="Salvar";}
   };
@@ -955,6 +978,16 @@ function adminSettings(root){
     '<p class="mail-template-help">Use <code>{nome}</code>, <code>{material}</code>, <code>{quantidade}</code>, <code>{prazo}</code>, <code>{registro}</code> e <code>{link}</code> nos textos.</p>'+
     '<div class="mail-template-preview"><strong>Prévia com dados fictícios</strong><p id="mail-template-preview-subject"></p><pre id="mail-template-preview-body"></pre></div>'+
     '<div class="mail-template-actions"><button type="button" class="primary-button" id="mail-template-save">Salvar texto deste modelo</button></div></section>';
+  const mailEvents=[["antes","1 dia antes da devolução"],["hoje","No dia da devolução"],["atraso2","2 dias de atraso"],["atraso7","7 dias de atraso"],["manual","Cobrança manual"]];
+  const scheduleEditor='<section class="admin-panel mail-schedule-panel"><div class="admin-section-head"><div><h2>Quando enviar e-mails?</h2>'+
+    '<p>Escolha os tipos de mensagem de cada tag. PETianes e Visitantes têm controles separados. A opção geral da tag, acima, também precisa estar ativada.</p></div></div>'+
+    '<form id="mail-event-form"><div class="mail-schedule-grid">'+
+    [["visitante","Visitantes","Solicitam reserva, que precisa ser aprovada e registrada como retirada."],["petiano","PETianes","Retiradas diretas; a tag fica sem e-mails por padrão."]].map(([tag,label,description])=>
+      '<div class="mail-schedule-card"><h3>'+label+'</h3><p>'+description+'</p>'+
+      mailEvents.map(([key,label])=>settingsToggle("mail-event-"+tag+"-"+key,label,"",true)).join("")+
+      '</div>').join("")+'</div>'+
+    '<p class="hint">Avisos automáticos só são gerados após a retirada real e na data correspondente. A cobrança manual depende de uma retirada ativa com prazo.</p>'+
+    '<div class="mail-template-actions"><button type="submit" class="primary-button" id="mail-event-save" disabled>Salvar regras por tag</button></div></form></section>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Configurações</h2></div></div>'+
     '<form id="admin-settings-form" class="settings-grid">'+
     '<div class="settings-block"><div class="field"><label for="v2-cleanup">Excluir empréstimos devolvidos após</label>'+
@@ -968,7 +1001,7 @@ function adminSettings(root){
     settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
     '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
-    emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
+    scheduleEditor+emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
     '<button type="button" class="outline-button" id="v2-backup-import">Restaurar arquivo JSON</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
     '<button type="button" class="outline-button" id="v2-run-cleanup">Executar limpeza</button></div></section>';
@@ -984,6 +1017,29 @@ function adminSettings(root){
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 
+
+  // Permissões por tipo e por tag: nenhum envio de e-mail ocorre ao salvar as opções.
+  const eventSave=$("#mail-event-save");
+  $("#mail-event-form").onsubmit=async event=>{
+    event.preventDefault();eventSave.disabled=true;eventSave.textContent="Salvando…";
+    const profiles={};
+    for(const tag of ["visitante","petiano"]){
+      profiles[tag]={};
+      for(const [key] of mailEvents)profiles[tag][key]=$("#mail-event-"+tag+"-"+key).checked;
+    }
+    try{const result=await api("/api/admin/mail/events","POST",{profiles});toast(result.mensagem||"Regras de e-mail atualizadas.");}
+    catch(error){toast(error.message,true);}
+    finally{eventSave.disabled=false;eventSave.textContent="Salvar regras por tag";}
+  };
+  api("/api/admin/mail/events").then(result=>{
+    if(!document.contains(root)||UI.adminTab!=="configuracoes")return;
+    for(const [tag,settings] of Object.entries(result.profiles||{})){
+      for(const [key,value] of Object.entries(settings.eventos||{})){
+        const input=$("#mail-event-"+tag+"-"+key);if(input)input.checked=!!value;
+      }
+    }
+    eventSave.disabled=false;
+  }).catch(error=>{toast("Não foi possível carregar as regras de e-mail: "+error.message,true);});
   // Editor de modelos: salvar um tipo por vez, mantendo a configuração dos destinatários.
   let mailTemplates=[],templateSelected="",templateChanged=false;
   const typeSelect=$("#mail-template-type"),subjectField=$("#mail-template-subject"),bodyField=$("#mail-template-body");

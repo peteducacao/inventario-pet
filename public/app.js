@@ -89,9 +89,10 @@ function dateInput(name,label,value,min=""){return '<div class="field"><label fo
 function inputField(name,label,value="",opts={}){return '<div class="field"><label for="'+name+'">'+esc(label)+'</label><input id="'+name+'" name="'+name+'" type="'+(opts.type||"text")+'" '+(opts.required?"required":"")+' maxlength="'+(opts.max||140)+'" placeholder="'+attr(opts.placeholder||"")+'" value="'+attr(value)+'"></div>'}
 function selectField(id,label,options,selected,first=false){return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><select id="'+id+'">'+(first?'<option value="">Selecione</option>':"")+options.map(x=>'<option value="'+attr(x.value)+'" '+(String(selected)===String(x.value)?"selected":"")+'>'+esc(x.label)+'</option>').join("")+'</select></div>'}
 function borrowableItem(item){
-  if(!item || Number(item.permitir_emprestimos)===0 || Number(item.arquivado)===1)return false;
+  if(!item||Number(item.arquivado)===1)return false;
   const cat=(state.data?.categorias||[]).find(c=>Number(c.id)===Number(item.categoria_id));
-  return !!cat && Number(cat.permitir_emprestimos)!==0 && Number(cat.arquivada)!==1;
+  const role=state.identity?.tag==="petiano"?"permitir_petianos":"permitir_visitantes";
+  return !!cat&&Number(cat.arquivada)!==1&&Number(cat[role])===1&&Number(item[role])===1;
 }
 function borrowableItems(){return (state.data?.componentes||[]).filter(borrowableItem);}
 async function reserveModal(itemId){
@@ -248,7 +249,8 @@ function itemEditor(id){
     })()+
     '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
     '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade",x?.quantidade||0)+stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
-    switchInput("i-loans","Permitir reservas e retiradas",x?Number(x.permitir_emprestimos)!==0:true,"O bloqueio da categoria prevalece. Você também pode liberar uma categoria inteira.")+
+    switchInput("i-loans-pet","Retirada para PETianes",x?Number(x.permitir_petianos)!==0:true,"Retirada imediata para PETianes autorizados. A categoria também precisa permitir.")+
+    switchInput("i-loans-visitor","Retirada para visitantes",x?Number(x.permitir_visitantes)!==0:true,"Visitantes solicitam a retirada, sujeita à aprovação do PET.")+
     '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
     '<details class="editor-advanced"><summary>Opções avançadas de exibição dos números</summary>'+
       switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
@@ -298,7 +300,7 @@ function itemEditor(id){
       imagem:image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),
       com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,
       mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
-      visivel_visitante:$("#i-public").checked,permitir_emprestimos:$("#i-loans").checked,grupo_variacoes:$("#i-variation-family").value,
+      visivel_visitante:$("#i-public").checked,permitir_petianos:$("#i-loans-pet").checked,permitir_visitantes:$("#i-loans-visitor").checked,grupo_variacoes:$("#i-variation-family").value,
       descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{await api("/api/admin/item","POST",body);$("#item-form")?.dispatchEvent(new Event("pet:item-saved"));await adminReload();adminModal();toast("Material salvo!");}
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar material";}

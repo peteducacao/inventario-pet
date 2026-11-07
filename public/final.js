@@ -119,8 +119,8 @@ function finalCard(original,siblings=[]){
   const x=selection||original;
   if(x._filament){
     const free=Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0));
-    const enabled=Number(x.permitir_emprestimos)!==0&&Number(x.categoria_permite)!==0&&Number(x.componente_id)>0;
     const member=identityIsMember();
+    const enabled=Number(x.componente_id)>0&&Number(member?x.permitir_petianos:x.permitir_visitantes)===1&&Number(member?x.categoria_petianos:x.categoria_visitantes)===1;
     return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
       '<div class="filament-art" style="--filament-color:'+attr(x.hexadecimal)+'"><div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div></div>'+
       '<div class="catalog-body"><span class="catalog-category">Filamentos</span><h3>'+esc(x.cor)+'</h3>'+

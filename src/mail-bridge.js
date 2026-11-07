@@ -13,6 +13,12 @@ const digest=async x=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-
 const formatDate=s=>s&&/^\d{4}-\d\d-\d\d$/.test(s)?s.split("-").reverse().join("/"):"sem prazo";
 const TEMPLATE_TYPES={antes:"Um dia antes do prazo",hoje:"No dia da devolução",atraso2:"Dois dias de atraso",atraso7:"Sete dias de atraso",manual:"Cobrança manual"};
 const TEMPLATE_EVENTS=Object.keys(TEMPLATE_TYPES);
+const MAIL_PROFILES={petiano:"PETianes",visitante:"Visitantes"};
+const emailEventKey=(tag,event)=>"mail_event_"+tag+"_"+event;
+async function eventEnabled(db,tag,event){
+  if(!Object.hasOwn(MAIL_PROFILES,tag)||!Object.hasOwn(TEMPLATE_TYPES,event))return false;
+  return await pref(db,emailEventKey(tag,event),"sim")==="sim";
+}
 const BASE_END="\n\nMaterial: {material}\nQuantidade: {quantidade}\nDevolução prevista: {prazo}\nRegistro: #{registro}\n\nPedimos que organize a devolução ou entre em contato com a equipe do PET Educação. Se já devolveu, avise a equipe para atualizar o registro.\n\nPET Educação - UFS\n{link}";
 function defaultTemplate(event){
   const intro={antes:"A devolução do material abaixo está prevista para amanhã.",hoje:"A data prevista para devolução do material é hoje.",atraso2:"Nossa equipe identificou que a devolução do material abaixo está em atraso.",atraso7:"Nossa equipe identificou que a devolução do material abaixo está em atraso há alguns dias.",manual:"Este é um lembrete da equipe do PET Educação sobre o material ainda em empréstimo."}[event];
@@ -45,13 +51,14 @@ async function current(db,id){
   delete row.email_conta;
   return row;
 }
-async function allowed(db,row){
+async function allowed(db,row,event=null){
   if(!row||row.status!=="retirada"||!emailOK(row.email)||Number(row.permite_usuario)===0)return false;
   const flag=row.tag==="petiano"?"notificacoes_petianos":"notificacoes_visitantes";
-  return await pref(db,flag,row.tag==="petiano"?"nao":"sim")==="sim";
+  if(await pref(db,flag,row.tag==="petiano"?"nao":"sim")!=="sim")return false;
+  return event===null||await eventEnabled(db,row.tag,event);
 }
 async function queue(db,row,event,origin="automatica",custom=null){
-  if(!await allowed(db,row))return {ok:false,reason:"Sem e-mail, devolução pendente ou notificações desativadas para essa pessoa/tag."};
+  if(!await allowed(db,row,event))return {ok:false,reason:"Sem e-mail, empréstimo ainda não retirado ou este tipo de notificação está desativado para a pessoa/tag."};
   if(Number(row.sem_prazo)===1||!row.data_devolucao)return {ok:false,reason:"Empréstimo sem prazo definido."};
   const msg=await content(db,row,event,custom);
   const key=origin==="manual"?"manual:"+row.id+":"+dayBR()+":"+row.data_devolucao:"auto:"+row.id+":"+event+":"+row.data_devolucao;
@@ -65,21 +72,51 @@ export async function queueManual(db,id,custom=null){
   return queue(db,row,"manual","manual",custom);
 }
 export async function generateDailyEmails(env){
-  if(!env.DB||await pref(env.DB,"avisos_email","nao")!=="sim")return;
-  const today=dayBR();
+  if(!env.DB||await pref(env.DB,"avisos_email","nao")!=="sim")return {ok:false,reason:"Lembretes automáticos desativados.",verificados:0,enfileirados:0};
+  const today=dayBR();let checked=0,queued=0;
   const due=await rows(env.DB,"SELECT r.id FROM reservas r LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE r.status='retirada' AND r.sem_prazo=0 AND r.data_devolucao!='' AND (r.email!='' OR u.email!='') ORDER BY r.data_devolucao ASC LIMIT 1500");
   for(const record of due){
     try{
       const row=await current(env.DB,record.id);
-      if(!row||!await allowed(env.DB,row))continue;
+      if(!row)continue;
+      checked++;
       const days=Math.round((Date.parse(today+"T12:00:00Z")-Date.parse(row.data_devolucao+"T12:00:00Z"))/86400000);
       const event=days===-1?"antes":days===0?"hoje":days===2?"atraso2":days===7?"atraso7":null;
-      if(event)await queue(env.DB,row,event);
+      if(event && await allowed(env.DB,row,event)){
+        const outcome=await queue(env.DB,row,event);
+        if(outcome.queued)queued++;
+      }
     }catch(e){console.error("Erro ao preparar lembrete",record.id,String(e).slice(0,120));}
   }
+  return {ok:true,verificados:checked,enfileirados:queued,hoje:today};
 }
 export async function mailAdminAPI(req,env){
   const path=new URL(req.url).pathname, db=env.DB;
+  if(path==="/api/admin/mail/events"&&req.method==="GET"){
+    const profiles={};
+    for(const [tag,name] of Object.entries(MAIL_PROFILES)){
+      const events={};
+      for(const event of TEMPLATE_EVENTS)events[event]=await eventEnabled(db,tag,event);
+      profiles[tag]={nome:name,ativado:await pref(db,tag==="petiano"?"notificacoes_petianos":"notificacoes_visitantes",tag==="petiano"?"nao":"sim")==="sim",eventos:events};
+    }
+    return reply({ok:true,profiles,tipos:TEMPLATE_TYPES,automaticos:await pref(db,"avisos_email","nao")==="sim"});
+  }
+  if(path==="/api/admin/mail/events"&&req.method==="POST"){
+    let data;try{data=await req.json();}catch{return fail("Dados inválidos.");}
+    if(!data||typeof data!=="object"||!data.profiles||typeof data.profiles!=="object")return fail("Preferências inválidas.");
+    const statements=[];
+    for(const tag of Object.keys(MAIL_PROFILES)){
+      const settings=data.profiles[tag];
+      if(!settings||typeof settings!=="object")return fail("Informe as preferências para "+MAIL_PROFILES[tag]+".");
+      for(const event of TEMPLATE_EVENTS){
+        if(typeof settings[event]!=="boolean")return fail("Escolha ativar ou desativar "+TEMPLATE_TYPES[event]+" para "+MAIL_PROFILES[tag]+".");
+        statements.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor")
+          .bind(emailEventKey(tag,event),settings[event]?"sim":"nao"));
+      }
+    }
+    await db.batch(statements);
+    return reply({ok:true,mensagem:"Preferências de e-mail por perfil e tipo salvas."});
+  }
   if(path==="/api/admin/mail/templates"&&req.method==="GET"){
     const templates=[];
     for(const event of TEMPLATE_EVENTS)templates.push({evento:event,nome:TEMPLATE_TYPES[event],...await templateFor(db,event)});
@@ -102,7 +139,7 @@ export async function mailAdminAPI(req,env){
     if(!Number.isSafeInteger(id)||id<1)return fail("Empréstimo inválido.");
     const row=await current(db,id);
     if(!row)return fail("Empréstimo não encontrado.",404);
-    if(!await allowed(db,row))return fail("A cobrança não está permitida para esta pessoa ou tag.",409);
+    if(!await allowed(db,row,"manual"))return fail("A cobrança manual não está permitida para esta pessoa ou tag.",409);
     if(Number(row.sem_prazo)===1||!row.data_devolucao)return fail("Empréstimo sem prazo definido.",409);
     const msg=await content(db,row,"manual");
     return reply({ok:true,id,destinatario:row.email,assunto:msg.subject,mensagem:msg.body});
@@ -147,7 +184,7 @@ export async function mailBridgeAPI(req,env){
     const candidates=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,mensagem,prazo_referencia FROM mail_queue WHERE situacao='pendente' OR (situacao='processando' AND processado_em<?) ORDER BY id ASC LIMIT 20",[deadline]);
     for(const item of candidates){
       const row=item.reserva_id?await current(db,item.reserva_id):null;
-      if(!row||!await allowed(db,row)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||Number(row.sem_prazo)===1){
+      if(!row||!await allowed(db,row,item.evento)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||Number(row.sem_prazo)===1){
         await db.prepare("UPDATE mail_queue SET situacao='cancelado',ultimo_erro='Empréstimo modificado, devolvido ou notificações desativadas' WHERE id=? AND situacao IN ('pendente','processando')").bind(item.id).run();
         continue;
       }

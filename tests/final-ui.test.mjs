@@ -6,18 +6,18 @@ const scripts=["app.js","identity-ui.js","component-art.js","final.js","admin-st
   .map(name=>readFileSync("public/"+name,"utf8")).join("\n;\n");
 const one={id:1,categoria_id:1,nome:"Resistor 100Ω",imagem:"",grupo_variacoes:"Resistores",
   quantidade:15,em_uso:0,com_defeito:0,mostrar_quantidade:1,mostrar_em_uso:1,mostrar_defeito:1,
-  visivel_visitante:1,arquivado:0,patrimonio:"",identificacao:"",ultima_alteracao:"2026-11-06T10:00:00Z"};
+  visivel_visitante:1,permitir_petianos:1,permitir_visitantes:1,arquivado:0,patrimonio:"",identificacao:"",ultima_alteracao:"2026-11-06T10:00:00Z"};
 const two={...one,id:2,nome:"Resistor 220Ω",quantidade:9};
 const three={...one,id:3,nome:"Arduino Uno",grupo_variacoes:"",quantidade:6};
 const extra={...one,id:4,categoria_id:2,nome:"Tablet de uso interno",visivel_visitante:0};
 const alkalineNormal={...one,id:5,nome:"Alcalina 1.5V Pilha normal",grupo_variacoes:"Alcalina",quantidade:25};
 const alkalinePalito={...one,id:6,nome:"Alcalina 1.5V Pilha Palito",grupo_variacoes:"Alcalina",quantidade:4};
 const alkalineNine={...one,id:7,nome:"Alcalina 9V",grupo_variacoes:"Alcalina",quantidade:31};
-const categories=[{id:1,nome:"Eletrônica",visivel_visitante:1,arquivada:0,ordem:0,permitir_emprestimos:1},
-  {id:2,nome:"Equipamentos",visivel_visitante:0,arquivada:0,ordem:1,permitir_emprestimos:1},
-  {id:3,nome:"Filamentos",visivel_visitante:1,arquivada:0,ordem:2,permitir_emprestimos:0}];
-const colors=[{id:20,cor:"Azul",hexadecimal:"#2A69D6",quantidade:3,visivel_visitante:1,permitir_emprestimos:0,componente_id:200,em_uso:0,com_defeito:0,categoria_id:3,categoria_permite:0},
-  {id:21,cor:"Preto",hexadecimal:"#24272C",quantidade:2,visivel_visitante:0,permitir_emprestimos:0,componente_id:201,em_uso:0,com_defeito:0,categoria_id:3,categoria_permite:0}];
+const categories=[{id:1,nome:"Eletrônica",visivel_visitante:1,arquivada:0,ordem:0,permitir_emprestimos:1,permitir_petianos:1,permitir_visitantes:1},
+  {id:2,nome:"Equipamentos",visivel_visitante:0,arquivada:0,ordem:1,permitir_emprestimos:1,permitir_petianos:1,permitir_visitantes:1},
+  {id:3,nome:"Filamentos",visivel_visitante:1,arquivada:0,ordem:2,permitir_emprestimos:0,permitir_petianos:0,permitir_visitantes:0}];
+const colors=[{id:20,cor:"Azul",hexadecimal:"#2A69D6",quantidade:3,visivel_visitante:1,permitir_emprestimos:0,permitir_petianos:0,permitir_visitantes:0,componente_id:200,em_uso:0,com_defeito:0,categoria_id:3,categoria_permite:0,categoria_petianos:0,categoria_visitantes:0},
+  {id:21,cor:"Preto",hexadecimal:"#24272C",quantidade:2,visivel_visitante:0,permitir_emprestimos:0,permitir_petianos:0,permitir_visitantes:0,componente_id:201,em_uso:0,com_defeito:0,categoria_id:3,categoria_permite:0,categoria_petianos:0,categoria_visitantes:0}];
 const visitorCatalog={categorias:[categories[0],categories[2]],componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine],demonstracao:false};
 const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine,extra],
   filamentos:colors,reservas:[{id:9,componente_id:1,componente_nome:"Resistor 100Ω",
@@ -39,7 +39,8 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   w.addEventListener("error",e=>errors.push(String(e.error||e.message)));
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
   let adminAuthenticated=alreadyAdmin;
-  const pendingNotices=[],adminReservationRequests=[],templateSaves=[];
+  const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[];
+  const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
   let noticeRequestCount=0;
   w.fetch=async(uri,init={})=>{
     const path=new URL(uri,w.location.href).pathname;
@@ -65,6 +66,10 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       {id:"PET-AABBCCDDEEFF",nome:"Pessoa teste",email:"pessoa@example.com",login:"teste01",tag:"visitante",ativo:1,notificar_email:1},
       {id:"PET-ABCDEFAABBCC",nome:"PETiane teste",email:"pet@example.com",login:"pet01",tag:"petiano",ativo:1,notificar_email:0}
     ]};
+    else if(path==="/api/admin/mail/events"){
+      if(init.method==="POST"){mailEventSaves.push(JSON.parse(init.body||"{}"));body={ok:true,mensagem:"Preferências salvas."};}
+      else body={ok:true,profiles:{visitante:{nome:"Visitantes",ativado:true,eventos:{...eventOptions}},petiano:{nome:"PETianes",ativado:false,eventos:{...eventOptions}}}};
+    }
     else if(path==="/api/admin/mail/templates"){
       if(init.method==="POST"){templateSaves.push(JSON.parse(init.body||"{}"));body={ok:true};}
       else body={ok:true,templates:[
@@ -85,7 +90,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests,templateSaves};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests,templateSaves,mailEventSaves};
 }
 
 const publicUI=build(false);
@@ -268,16 +273,26 @@ assert.match(ad.querySelector("#mail-template-preview-subject").textContent,/Nov
 await adminClick("#mail-template-save");
 assert.equal(adminUI.templateSaves.length,1,"Salvar modelo deve atualizar a API do Gmail.");
 assert.equal(adminUI.templateSaves[0].assunto,"Novo aviso do {material}");
+assert.equal(ad.querySelectorAll("#mail-event-form input[type=checkbox]").length,10,"Duas tags devem ter cinco opções de aviso cada.");
+assert.equal(ad.querySelector("#mail-test-submit"),null,"Não criar envio de teste extra.");
+assert.equal(ad.querySelector("#mail-check-now"),null,"Não adicionar botão de verificação extra.");
+const petBefore=ad.querySelector("#mail-event-petiano-antes");
+petBefore.checked=false;
+await adminClick("#mail-event-save");
+assert.equal(adminUI.mailEventSaves.length,1);
+assert.equal(adminUI.mailEventSaves[0].profiles.petiano.antes,false);
+assert.equal(adminUI.mailEventSaves[0].profiles.visitante.antes,true);
 await adminClick('[data-admin-tab="filamentos"]');
 assert.match(ad.querySelector("#admin-content").textContent,/Preto/,"Admin não vê filamento restrito.");
-assert.equal(ad.querySelectorAll("[data-filament-loans]").length,2,"Cada cor deve ter seu botão individual de empréstimo.");
+assert.equal(ad.querySelectorAll("[data-filament-role]").length,4,"Cada cor deve permitir configurar PETianes e visitantes separadamente.");
 await adminClick('[data-filament-edit="21"]');
 assert.equal(ad.querySelector("#filament-public").checked,false,"Filamento restrito ficou público.");
 await adminClick("#filament-cancel");
 await adminClick('[data-admin-tab="categorias"]');
 assert.match(ad.querySelector("#admin-content").textContent,/Só PETianes/);
-assert.equal(ad.querySelectorAll("[data-cat-loans]").length,3,"Cada categoria, inclusive Filamentos, deve ter um controle em lote.");
-assert.equal(ad.querySelector('[data-cat-loans="3"]').textContent,"Liberar todos");
+assert.equal(ad.querySelectorAll("[data-cat-role]").length,6,"Cada categoria, inclusive Filamentos, precisa de duas permissões.");
+assert.match(ad.querySelector('[data-cat-role="petianos"][data-cat-loan-id="3"]').textContent,/Retirada para PETianes/);
+assert.match(ad.querySelector('[data-cat-role="visitantes"][data-cat-loan-id="3"]').textContent,/Retirada para visitantes/);
 assert.doesNotMatch(ad.querySelector("#admin-content").textContent,/Categorias excluídas/,"Lista de categorias excluídas não deve aparecer.");
 assert.ok(ad.querySelector("#v2-category-backup"),"Botão para localizar a restauração do JSON deve aparecer nas categorias.");
 await adminClick('[data-cat-edit="2"]');
