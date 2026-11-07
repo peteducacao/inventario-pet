@@ -5,6 +5,12 @@ function setIdentity(user){
   if(user)localStorage.setItem("pet_inventario_nome",user.nome);
   else localStorage.removeItem("pet_inventario_nome");
   render();
+  // Após login/logout ou mudança de tag, recarregar os dados com as novas permissões.
+  if(document.body.dataset.adminRoute!=="true" && typeof UI!=="undefined"){
+    Promise.all([api("/api/catalog"),api("/api/filaments")]).then(([catalog,colors])=>{
+      state.data=catalog;UI.filaments=colors.filamentos||[];render();
+    }).catch(error=>console.warn("Atualização de acesso:",error.message));
+  }
 }
 async function copyValue(value,field){
   try{await navigator.clipboard.writeText(value);toast("Copiado!");}
