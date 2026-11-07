@@ -212,7 +212,7 @@ export async function mailBridgeAPI(req,env){
   if(path==="/api/mail/ack"&&req.method==="POST"){
     let b;
     try{b=await req.json();}catch{return fail("Dados inválidos.");}
-    const accountId=/^conta-(\\d+)$/.exec(String(b?.id||""));
+    const accountId=/^conta-(\d+)$/.exec(String(b?.id||""));
     if(accountId){
       const id=Number(accountId[1]),lock=clean(b?.lock,100);
       if(!Number.isSafeInteger(id)||id<1||!lock)return fail("Confirmação inválida.");
