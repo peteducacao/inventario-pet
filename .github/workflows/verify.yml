@@ -31,6 +31,8 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/experiments.test.mjs
       - name: Testar central de vínculos, grupos vazios e Excel sem tocar D1 remoto
         run: node --disable-warning=ExperimentalWarning tests/central-vinculos.test.mjs
+      - name: Testar migração de descarte e saldos sem defeitos
+        run: node --disable-warning=ExperimentalWarning tests/estoque-simplificado.test.mjs
       - name: Testar vínculo inicial das famílias sem misturar estoque
         run: node --disable-warning=ExperimentalWarning tests/variation-linking.test.mjs
       - name: Testar arquivados e reparo do vínculo Arduino no D1 isolado
