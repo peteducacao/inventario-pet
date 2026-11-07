@@ -28,7 +28,8 @@
 11. A sessão Admin é diferente da conta pessoal PETiane/Visitante. A API `/api/admin/*` exige sessão administrativa autenticada.
 12. Não remova, reinicialize ou sobrescreva dados reais de produção para testar interface. Não altere registros de usuários, empréstimos, histórico ou configurações sem pedido claro.
 13. Commit no GitHub ≠ site publicado. Confirme que o workflow de deploy da `main` terminou **success** para o mesmo SHA antes de dizer que foi publicado.
-14. Alterou fluxo ou infraestrutura? Atualize a Ajuda, o guia técnico e os testes correspondentes na mesma PR.
+14. Ordene cards no catálogo por **título exibido**, após agrupar as variações, para respeitar A–Z/Z–A (ex.: Arduino antes de Pilha Alcalina). Busca de materiais no catálogo e Admin deve aceitar `ESP32` mesmo se o nome salvo for `ESP 32`, ignorando separadores, acentos e caixa. A busca por modelo deve preservar o grupo completo.
+15. Alterou fluxo ou infraestrutura? Atualize a Ajuda, o guia técnico e os testes correspondentes na mesma PR.
 
 ## Como modificar com segurança
 1. Consulte `AGENTS.md`, `docs/GUIA_TECNICO.md`, o código do recurso, migrações e testes antes de editar.

@@ -112,6 +112,32 @@ function groupPublicMaterials(items){
   }
   return list;
 }
+// A ordenação alfabética deve considerar o título visível de CADA CARD,
+// e não o nome do primeiro componente usado para formar uma família.
+// Os outros modos preservam sua ordenação original por material.
+// Busca flexível: ESP32, ESP 32 e ESP-32 representam o mesmo nome.
+function normalizedCatalogSearch(value){
+  return String(value??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+}
+function matchesCatalogSearch(value,query){
+  const needle=normalizedCatalogSearch(query),haystack=normalizedCatalogSearch(value);
+  if(!needle||haystack.includes(needle))return true;
+  const compactNeedle=needle.replace(/[^a-z0-9]/g,"");
+  return compactNeedle.length>=2&&haystack.replace(/[^a-z0-9]/g,"").includes(compactNeedle);
+}
+function orderedCatalogGroups(groups,sort){
+  if(sort!=="az"&&sort!=="za")return groups;
+  const title=group=>{
+    const item=group[0]||{};
+    return String(item._filament?item.cor:(item.grupo_variacoes||item.nome)||"").trim();
+  };
+  const compare=(a,b)=>title(a).localeCompare(title(b),"pt-BR",{sensitivity:"base",numeric:true});
+  return [...groups].sort((a,b)=>{
+    const order=compare(a,b);
+    if(order)return sort==="za"?-order:order;
+    return String(a[0]?.nome||"").localeCompare(String(b[0]?.nome||""),"pt-BR",{sensitivity:"base",numeric:true});
+  });
+}
 function finalCard(original,siblings=[]){
   const familyName=String(original.grupo_variacoes||"").trim();
   const groupKey=familyName.toLocaleLowerCase("pt-BR");
@@ -212,14 +238,15 @@ function finalRender(){
   const q=String(state.query||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
   const inCategory=items.filter(x=>UI.category==="all"||String(x.categoria_id)===String(UI.category));
   const normalize=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR");
-  const matches=x=>[x.nome,x.identificacao,x.patrimonio,x.grupo_variacoes].some(v=>normalize(v).includes(q));
+  const matches=x=>[x.nome,x.identificacao,x.patrimonio,x.grupo_variacoes].some(v=>matchesCatalogSearch(v,q));
   // Buscar pelo grupo ou por qualquer modelo deve manter todos os modelos
   // vinculados no mesmo card (não transformar um grupo num item solto).
   const matchingGroups=new Set(inCategory.filter(x=>q&&matches(x)&&x.grupo_variacoes)
     .map(x=>normalize(x.grupo_variacoes)));
   const filtered=inCategory.filter(x=>!q||matches(x)||
     (x.grupo_variacoes&&matchingGroups.has(normalize(x.grupo_variacoes))));
-  const p=paginate(groupPublicMaterials(ordered(filtered,UI.sort)),UI.page,12);
+  // Ordenar depois do agrupamento: A–Z/Z–A precisam usar os nomes vistos pelo visitante.
+  const p=paginate(orderedCatalogGroups(groupPublicMaterials(ordered(filtered,UI.sort)),UI.sort),UI.page,12);
   UI.page=p.page;stored("pet_public_page",p.page);
   $("#category-sections").innerHTML=p.total?'<div class="card-grid">'+p.items.map(group=>finalCard(group[0],group)).join("")+'</div>':
     '<div class="empty-state"><strong>Nenhum material encontrado.</strong><p>Experimente outro filtro.</p></div>';

@@ -394,14 +394,14 @@ function paintAdminMaterials(){
   const list=$("#admin-material-list");if(!list)return;
   const search=String(UI.adminSearch||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
   const matches=x=>!search||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes]
-    .some(value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").includes(search));
+    .some(value=>matchesCatalogSearch(value,search));
   const archived=UI.adminCategory==="archived";
   const active=state.admin.componentes.filter(x=>!isArchived(x));
   const families=adminGroupedFamilies(active);
   const groupKeys=new Set(families.map(g=>adminGroupKey(g.name)));
   const groups=archived?[]:families.filter(g=>
     (UI.adminCategory==="all"||g.members.some(x=>String(x.categoria_id)===UI.adminCategory))&&
-    (!search||adminGroupKey(g.name).normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(search)||g.members.some(matches)));
+    (!search||matchesCatalogSearch(g.name,search)||g.members.some(matches)));
   const individuals=state.admin.componentes.filter(x=>{
     if(archived){if(!isArchived(x))return false;}
     else if(isArchived(x)||groupKeys.has(adminGroupKey(x.grupo_variacoes))||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
