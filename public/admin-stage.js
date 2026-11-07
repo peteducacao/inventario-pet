@@ -1062,7 +1062,7 @@ function openBulkVisibility(currentId){
 function openVariantLinker(currentId,groupName=""){
   const name=String(groupName||"").trim();
   if(!name){openLinksHub();return;}
-  const normalized=value=>String(value||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+  const normalized=value=>String(value||"").normalize("NFD").replace(/\p{M}/gu,"").toLocaleLowerCase("pt-BR").trim();
   const hint=name.toLocaleLowerCase("pt-BR");
   openModal("Vínculo: "+name,"Selecione componentes existentes. Fotos e estoques são editados apenas em Materiais.",
     '<div class="modal-main variant-manager">'+
