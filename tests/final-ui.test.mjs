@@ -60,7 +60,7 @@ function build(isAdmin){
     else {status=404;body={error:"Rota simulada não encontrada: "+path};}
     return {ok:status<400,status,json:async()=>body};
   };
-  w.eval(scripts+"\nwindow.__pageButtons=pageButtons;");
+  w.eval(scripts+"\nwindow.__pageButtons=pageButtons;window.__adminTestState=state;");
   const click=async(sel)=>{
     const el=d.querySelector(sel);
     assert.ok(el,"Controle ausente: "+sel);
@@ -205,7 +205,7 @@ assert.ok(ad.querySelector("#v2-confirm"),"Sair do Admin exige confirmação.");
 await adminClick("#v2-confirm");
 await wait(100);
 assert.equal(aw.localStorage.getItem("pet_admin_open"),"0","Logout deve limpar sessão local.");
-assert.equal(aw.eval("state.admin===null"),true,"Logout deve limpar estado administrativo.");
+assert.equal(aw.__adminTestState.admin===null,true,"Logout deve limpar estado administrativo.");
 assert.ok(!ad.querySelector("#admin-stage").classList.contains("admin-loading"),"Logout não pode deixar tela carregando.");
 assert.deepEqual(adminUI.errors.filter(x=>!x.includes("Not implemented: navigation (except hash changes)")),[],"Erros de logout além da navegação indisponível no jsdom.");
 adminUI.dom.window.close();
