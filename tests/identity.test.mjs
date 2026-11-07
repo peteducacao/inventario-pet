@@ -86,6 +86,10 @@ assert.equal((await call("/api/identity/me","GET",null,loginA.cookie)).body.usua
 assert.equal((await call("/api/identity/me","GET",null,loginB.cookie)).body.usuario.tag,"visitante");
 const list=await call("/api/admin/users","GET",null,"",true);
 assert.equal(list.body.usuarios.find(u=>u.login==="sergio01").tag,"petiano");
+assert.equal(list.body.totais.todos,4,"O painel deve contabilizar todas as contas cadastradas.");
+assert.equal(list.body.totais.petiano,1,"O painel deve contabilizar PETianes após alterar tag.");
+assert.equal(list.body.totais.visitante,3,"O painel deve contabilizar visitantes após alterar tag.");
+assert.equal(list.body.totais.todos,list.body.totais.petiano+list.body.totais.visitante,"A soma dos perfis deve fechar.");
 assert.ok(!JSON.stringify(list.body).includes(senhaA));
 assert.ok(!JSON.stringify(list.body).includes(saved.password_hash));
 

@@ -669,3 +669,32 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
 .filament-admin-label>.loan-audience-control{margin-top:8px}
 .loan-audience-hint{display:block;font-size:10px;color:#778c9a;margin-top:4px;line-height:1.4}
 @media(max-width:740px){.category-row>.loan-audience-control{flex:1 1 170px;margin-left:0}.loan-audience-control{max-width:100%}.category-row>.actions{margin-left:auto}}
+
+
+/* Usuários: três indicadores que também filtram uma única lista vertical por perfil. */
+.admin-users-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 17px}
+.admin-users-counter{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:7px;text-align:left;min-width:0;min-height:95px;padding:16px 18px;border:1px solid #dee9ed;border-radius:15px;background:#f8fbfc;cursor:pointer;transition:background .15s,border-color .15s,box-shadow .15s}
+.admin-users-counter span{font-size:12px;font-weight:750;color:#577284}
+.admin-users-counter strong{font-size:30px;line-height:1;color:#173951;font-variant-numeric:tabular-nums}
+.admin-users-counter:hover{border-color:#9fcac6;background:#f2faf8}
+.admin-users-counter.active{border-color:#18a68c;background:#e8f8f3;box-shadow:inset 0 0 0 1px #18a68c}
+.admin-users-counter.active span,.admin-users-counter.active strong{color:#126c5b}
+.admin-users-counter:focus-visible{outline:3px solid #4cabc0;outline-offset:3px}
+.admin-users-result{font-size:12px!important;color:#658095!important;margin:2px 0 14px!important}
+.admin-user-group{display:flex;flex-direction:column;gap:10px;min-width:0}
+.admin-user-group+.admin-user-group{margin-top:12px}
+.admin-user-group-title{display:flex;align-items:center;gap:9px;margin:3px 1px 0;font-size:14px;font-weight:850;color:#29485e}
+.admin-user-group-title span{display:inline-flex;align-items:center;justify-content:center;min-width:25px;height:25px;border-radius:50px;background:#e9f4f7;color:#426a80;font-size:12px}
+.admin-users-panel .user-list{display:flex;flex-direction:column;gap:10px}
+.admin-users-panel .user-row{background:white}
+@media(max-width:700px){
+ .admin-users-summary{gap:7px;margin-bottom:14px}
+ .admin-users-counter{padding:12px 10px;min-height:79px;gap:8px}
+ .admin-users-counter span{font-size:10px;line-height:1.3}
+ .admin-users-counter strong{font-size:25px}
+}
+@media(max-width:370px){
+ .admin-users-counter{padding:10px 7px}
+ .admin-users-counter span{font-size:9px}
+ .admin-users-counter strong{font-size:22px}
+}

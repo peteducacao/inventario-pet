@@ -108,6 +108,8 @@ docs/GUIA_TECNICO.md               Este guia
 
 **Catálogo e estoque**: `GET /api/catalog`, `GET /api/availability`, `GET /api/filaments`; Admin: `/api/admin/state`, `/api/admin/item`, `/api/admin/category`, `/api/admin/filaments`, `/api/admin/visibility`, `/api/admin/item/loans`, `/api/admin/variations`.
 
+**Aba Usuários:** a API `/api/admin/users` devolve `usuarios` e os totais `totais.todos`, `totais.petiano`, `totais.visitante`, calculados no D1. O painel possui três cartões contadores clicáveis; PETianes e Visitantes são separados por títulos numa única lista vertical, preservando busca e ações individuais. Alterações de tag e exclusões devem atualizar esses totais na próxima consulta.
+
 **Contas, movimentações e avisos**: `/api/identity/register`, `/api/identity/login`, `/api/identity/me`, `/api/my/loans`, `/api/notifications`, `/api/member/withdraw`, `/api/my/return`; `/api/admin/users`, `/api/admin/reservation`.
 
 **Limpeza**:
