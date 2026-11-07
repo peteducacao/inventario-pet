@@ -15,6 +15,7 @@ assert.equal(ele.quantidade,5);assert.equal(exp.quantidade,12);
 assert.equal(row("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=(SELECT id FROM categorias WHERE nome='Experimentos') AND arquivado=0").n,26);
 // Executa a mesma migração que o Cloudflare aplicará ao D1.
 db.exec(readFileSync("migrations/0011_conciliar_experimentos.sql","utf8"));
+db.exec(readFileSync("migrations/0013_gmail_queue.sql","utf8"));
 const motor=row("SELECT id,quantidade,em_uso,com_defeito FROM componentes WHERE id=?",ele.id);
 assert.deepEqual([motor.quantidade,motor.em_uso,motor.com_defeito],[17,12,0]);
 assert.equal(motor.quantidade-motor.em_uso-motor.com_defeito,5);
