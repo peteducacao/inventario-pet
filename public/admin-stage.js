@@ -333,6 +333,7 @@ function adminMaterials(root){
     '<section class="admin-groups-area" id="admin-groups-area" aria-label="Grupos de variações">'+
       '<details class="admin-groups-wrapper" id="admin-groups-section" open>'+
         '<summary><span>Grupos de variações <span id="admin-group-count" class="admin-groups-count"></span></span><small>Um grupo por família · edite o título e os vínculos aqui</small></summary>'+
+        '<div class="admin-group-create"><button type="button" class="outline-button small-button" id="admin-group-new">'+iconSvg("plus",14)+' Criar grupo de variações</button></div>'+
         '<div class="admin-groups-grid" id="admin-group-list"></div>'+
       '</details></section>'+
     '<section class="admin-individual-area" aria-label="Materiais individuais">'+
@@ -340,6 +341,7 @@ function adminMaterials(root){
       '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
   $("#admin-bulk-visibility").onclick=()=>openBulkVisibility();
+  $("#admin-group-new").onclick=()=>openVariantLinker();
   $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
   $("#admin-material-category").onchange=e=>{UI.adminCategory=e.target.value;UI.adminPage=1;stored("pet_admin_category",UI.adminCategory);paintAdminMaterials()};
   $("#admin-material-sort").onchange=e=>{UI.adminSort=e.target.value;UI.adminPage=1;stored("pet_admin_sort",UI.adminSort);paintAdminMaterials()};
@@ -400,7 +402,7 @@ function paintAdminMaterials(){
     return matches(x);
   });
   const groupsArea=$("#admin-groups-area"),groupsList=$("#admin-group-list");
-  groupsArea.hidden=archived||!groups.length;
+  groupsArea.hidden=archived;
   groupsList.innerHTML=groups.map(adminFamilyCard).join("");
   $("#admin-group-count").textContent=String(groups.length);
   const p=paginate(ordered(individuals,UI.adminSort),UI.adminPage);
@@ -822,7 +824,8 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
   const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
     String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
-  return {visible:available,html:available.slice(0,160).map(x=>{
+  const shown=withPhotos?[...available].sort((a,b)=>Number(selected.has(b.id))-Number(selected.has(a.id))):available;
+  return {visible:available,html:shown.slice(0,160).map(x=>{
     const status=showVisibility?bulkVisibilityState(x):null;
     const label=status?(status.categoryRestricted?
       '<span class="bulk-visibility-badge restricted category-locked">🔒 Só PETianes · categoria restrita</span>':
@@ -851,7 +854,7 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
 function adminMaterialPickerConfig(mode,currentId,requestedGroup=""){
   const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
   const selected=new Set(),current=all.find(x=>x.id===currentId);
-  const group=requestedGroup||current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
+  const group=requestedGroup||current?.grupo_variacoes||(current?materialFamilyHint(current.nome):"");
   if(mode==="variations"&&group){
     // Já vinculados devem aparecer selecionados antes de qualquer clique.
     const linked=String(group).trim().toLocaleLowerCase("pt-BR");
