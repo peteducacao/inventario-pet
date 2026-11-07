@@ -95,7 +95,7 @@ async function catalog(db, isAdmin = false, member = false) {
 }
 async function state(db) {
   const data = await catalog(db, true);
-  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.solicitado_em DESC LIMIT 1500");
+  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id ORDER BY r.solicitado_em DESC LIMIT 1500");
   data.filamentos = await results(db,"SELECT * FROM filamentos ORDER BY ordem,cor COLLATE NOCASE");
   const config = await results(db, "SELECT chave,valor FROM configuracoes");
   data.configuracoes = Object.fromEntries(config.map(x => [x.chave, x.valor]));
