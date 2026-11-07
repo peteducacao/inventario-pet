@@ -390,6 +390,7 @@ function userRow(x){
     '<div><strong>'+esc(x.nome)+'</strong><small>'+esc(x.login||"Sem login")+' · '+esc(x.id)+'</small></div>'+
     '<span class="tag '+(member?"picked":"")+'">'+(member?"PETiano":"Visitante")+'</span>'+
     '<div class="user-actions"><button class="outline-button small-button" type="button" data-user-role="'+attr(x.id)+'" title="Alterar tag">'+iconSvg("tag",15)+' Tag</button>'+
+    '<button class="outline-button small-button" type="button" data-user-mail="'+attr(x.id)+'" title="Autorizar ou desativar avisos desta pessoa">'+(Number(x.notificar_email)===0?"🔕 Avisos desligados":"✉ Avisos permitidos")+'</button>'+
     '<button class="outline-button small-button" type="button" data-user-password="'+attr(x.id)+'" title="Redefinir senha">'+iconSvg("key",15)+' Senha</button>'+
     '<button class="danger-button small-button" type="button" data-user-delete="'+attr(x.id)+'" title="Excluir usuário">'+iconSvg("trash",15)+' Excluir</button></div></div>';
 }
@@ -402,7 +403,14 @@ function paintUsers(){
   list.innerHTML=found.length?p.items.map(userRow).join(""):'<div class="empty-state">Nenhum usuário encontrado.</div>';
   $("#admin-users-pages").innerHTML=pageButtons(p,"users");
   $$("[data-user-role]",list).forEach(b=>b.onclick=()=>adminToggleTag(b.dataset.userRole));
-  $$("[data-user-password]",list).forEach(b=>b.onclick=()=>{
+  $("[data-user-mail]",list).forEach(b=>b.onclick=async()=>{
+    const u=users.find(x=>x.id===b.dataset.userMail);if(!u)return;
+    const enabled=Number(u.notificar_email)===0;
+    if(!await niceModalConfirm("Avisos deste usuário?",u.nome+": "+(enabled?"permitir":"desativar")+" notificações por e-mail. A configuração geral da tag também será respeitada.","Confirmar"))return;
+    try{await api("/api/admin/users","POST",{id:u.id,tag:u.tag,ativo:Number(u.ativo)===1,notificar_email:enabled});await adminUsers($("#admin-content"));toast("Preferência individual atualizada.");}
+    catch(e){toast(e.message,true);}
+  });
+  $("[data-user-password]",list).forEach(b=>b.onclick=()=>{
     const u=users.find(x=>x.id===b.dataset.userPassword);if(u)adminResetPasswordModal(u);
   });
   $$("[data-user-delete]",list).forEach(b=>b.onclick=()=>{
