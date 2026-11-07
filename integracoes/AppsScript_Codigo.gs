@@ -6,6 +6,19 @@
  * PET_SITE_URL = https://inventario-pet.pet-educacao.workers.dev
  * PET_MAIL_TOKEN = mesmo valor secreto de MAIL_BRIDGE_TOKEN no Cloudflare
  */
+// Execute uma única vez, copie o token do registro de execução e guarde-o
+// também como segredo MAIL_BRIDGE_TOKEN no Cloudflare. Não compartilhe o token.
+function gerarTokenPET() {
+  const props=PropertiesService.getScriptProperties();
+  let token=props.getProperty("PET_MAIL_TOKEN");
+  if(!token){
+    token=Utilities.getUuid().replace(/-/g,"")+Utilities.getUuid().replace(/-/g,"");
+    props.setProperty("PET_MAIL_TOKEN",token);
+  }
+  Logger.log("Copie esta chave para MAIL_BRIDGE_TOKEN no Cloudflare: "+token);
+  return "Chave salva nas propriedades do script.";
+}
+
 function configuracaoPET_() {
   const props = PropertiesService.getScriptProperties();
   const url = (props.getProperty("PET_SITE_URL") || "").replace(/\/+$/, "");
