@@ -498,7 +498,6 @@ assert.equal(ad.querySelector("#i-variation-family"),null);
 assert.equal(ad.querySelector("#i-has-link").textContent,"Sim");
 await adminClick("#modal-root [data-close]");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
-await adminClick("#modal-root [data-close]");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");
 assert.equal(ad.querySelector("#admin-back").getAttribute("href"),"/");
 await adminClick("#admin-logout");
