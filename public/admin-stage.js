@@ -330,7 +330,7 @@ function reservationRow(r){
   const actions=r.status==="pendente"?'<button class="primary-button" type="button" data-res-do="aprovar" data-id="'+r.id+'">'+iconSvg("check",14)+' Aprovar</button><button type="button" class="danger-button" data-res-do="recusar" data-id="'+r.id+'">Recusar</button>':
     r.status==="aprovada"?'<button type="button" class="primary-button" data-res-do="retirar" data-id="'+r.id+'">Registrar retirada</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
     r.status==="retirada"?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>':"";
-  const mailAction=r.status==="retirada"&&r.email?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
+  const mailAction=r.status==="retirada"&&(r.email_conta||r.email)?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
   return '<div class="reservation-row">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb"></div>')+
     '<div><h3>#'+r.id+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3><small>'+esc(r.nome_solicitante)+' · '+r.quantidade+' un.'+(r.tipo==="retirada_direta"?" · PETiano":"")+'</small>'+
     (r.contato?'<small style="display:block">'+esc(r.contato)+'</small>':"")+
@@ -378,8 +378,8 @@ async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
   if(action==="devolver")return returnModal(r);
   if(action==="cobrar"){
-    if(!await niceModalConfirm("Enviar cobrança pelo Gmail?", "O aviso será colocado na fila para envio a "+r.email+".", "Colocar na fila"))return;
-    try{await api("/api/admin/mail/queue","POST",{id});toast("Cobrança colocada na fila do Gmail.");}
+    if(!await niceModalConfirm("Enviar cobrança pelo Gmail?", "O aviso será colocado na fila para envio a "+(r.email_conta||r.email)+".", "Colocar na fila"))return;
+    try{const result=await api("/api/admin/mail/queue","POST",{id});toast(result.mensagem||"Cobrança colocada na fila do Gmail.");}
     catch(e){toast(e.message,true);}
     return;
   }
@@ -422,7 +422,7 @@ async function adminUsers(root){
 function userRow(x){
   const member=x.tag==="petiano";
   return '<div class="user-row"><span class="user-icon">'+esc((x.nome||"P")[0].toUpperCase())+'</span>'+
-    '<div><strong>'+esc(x.nome)+'</strong><small>'+esc(x.login||"Sem login")+' · '+esc(x.id)+'</small></div>'+
+    '<div><strong>'+esc(x.nome)+'</strong><small>'+esc(x.login||"Sem login")+' · '+esc(x.id)+(x.email?' · '+esc(x.email):' · E-mail pendente')+'</small></div>'+
     '<span class="tag '+(member?"picked":"")+'">'+(member?"PETiano":"Visitante")+'</span>'+
     '<div class="user-actions"><button class="outline-button small-button" type="button" data-user-role="'+attr(x.id)+'" title="Alterar tag">'+iconSvg("tag",15)+' Tag</button>'+
     '<button class="outline-button small-button" type="button" data-user-mail="'+attr(x.id)+'" title="Autorizar ou desativar avisos desta pessoa">'+(Number(x.notificar_email)===0?"🔕 Avisos desligados":"✉ Avisos permitidos")+'</button>'+
