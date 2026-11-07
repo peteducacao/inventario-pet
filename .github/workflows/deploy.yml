@@ -160,7 +160,7 @@ jobs:
             const start=new Date(Date.now()+3*86400000).toISOString().slice(0,10),end=new Date(Date.now()+5*86400000).toISOString().slice(0,10);
             const avail=(await get("/api/availability?id="+id+"&inicio="+start+"&fim="+end)).d;
             if(avail.disponiveis!==3)throw Error("Disponibilidade inconsistente");
-            await get("/api/reservations",{method:"POST",body:JSON.stringify({componente_id:id,quantidade:1,data_inicio:start,data_devolucao:end,nome_solicitante:"Visitante de teste"})});
+            await get("/api/reservations",{method:"POST",body:JSON.stringify({componente_id:id,quantidade:1,data_inicio:start,data_devolucao:end,nome_solicitante:"Visitante de teste",email:"teste-inventario@example.com"})});
             const pending=(await admin("/api/admin/state")).d.reservas.find(r=>r.componente_id===id&&r.status==="pendente");
             if(!pending)throw Error("Pedido de reserva não chegou ao administrador");
             resId=pending.id;
