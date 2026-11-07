@@ -780,3 +780,55 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .item-edit-modal .item-editor-scroll{padding:12px 14px 8px;scrollbar-gutter:auto}
  .item-edit-modal .item-editor-savebar{margin:0;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px))}
 }
+
+
+/* Famílias com um único painel por grupo; os modelos ficam recolhidos. */
+.admin-groups-area{margin:20px 0 24px}
+.admin-groups-wrapper{border:1px solid #d8e7e9;background:#f8fcfb;border-radius:17px;padding:15px}
+.admin-groups-wrapper>summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;align-items:center;gap:5px 13px;font-weight:850;color:#174d60;font-size:17px}
+.admin-groups-wrapper>summary::-webkit-details-marker{display:none}
+.admin-groups-wrapper>summary:before{content:"▾";font-size:18px;color:#0f9b82}
+.admin-groups-wrapper:not([open])>summary:before{content:"▸"}
+.admin-groups-wrapper>summary small{font-weight:500;color:#64808d;font-size:11px}
+.admin-groups-count{background:#d8f2e9;color:#14725d;padding:3px 9px;border-radius:99px;font-size:12px}
+.admin-group-create{padding:13px 0}
+.admin-groups-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:12px;align-items:start}
+.admin-family-card{min-width:0;background:white;border:1px solid #dae7ea;border-radius:15px;padding:14px;box-shadow:0 5px 15px #17334a09}
+.admin-family-head{display:flex;align-items:center;gap:11px}
+.admin-family-thumb .material-thumb{width:55px;height:55px;min-width:55px}
+.admin-family-title{flex:1;min-width:0}
+.admin-family-title h4{margin:0;font-size:16px;color:#173b50;line-height:1.4;overflow-wrap:anywhere}
+.admin-family-title small{display:block;color:#6a8190;font-size:11px;line-height:1.5}
+.admin-family-stat{margin:11px 0;font-size:12px;color:#577081}
+.admin-family-stat strong{color:#22566b}
+.admin-family-warning{display:block;margin-top:7px;color:#9b5a21;font-weight:650;font-size:11px;line-height:1.5}
+.admin-family-actions{display:flex;flex-wrap:wrap;gap:7px}
+.admin-family-actions button{flex:1;min-width:125px;min-height:37px;display:inline-flex;align-items:center;justify-content:center;gap:5px;padding:8px 10px;font-size:12px}
+.admin-family-models{margin-top:12px;border-top:1px solid #e3ecec}
+.admin-family-models>summary{padding:11px 0 1px;cursor:pointer;font-size:12px;font-weight:800;color:#137a72;list-style:none}
+.admin-family-models>summary::-webkit-details-marker{display:none}
+.admin-family-models>summary::before{content:"▸";padding-right:7px}
+.admin-family-models[open]>summary::before{content:"▾"}
+.admin-family-model-list{display:grid;gap:7px;margin-top:11px}
+.admin-family-model-row{display:flex;align-items:center;gap:9px;padding:9px;border:1px solid #e4ecef;background:#f8fbfc;border-radius:11px;min-width:0}
+.admin-family-model-row .material-thumb{width:39px;height:39px;min-width:39px;flex:0 0 39px}
+.admin-family-model-text{flex:1;min-width:0}
+.admin-family-model-text strong{display:block;color:#28465b;font-size:12px;overflow-wrap:anywhere;line-height:1.5}
+.admin-family-model-text small{display:block;color:#637d89;font-size:10px;line-height:1.5}
+.admin-family-model-row button{flex-shrink:0;min-height:35px;padding:7px 11px}
+.admin-individual-area{border-top:1px solid #e5edef;padding-top:18px}
+.admin-individual-heading h3{font-size:18px;color:#1b4157;margin:0}
+.admin-individual-heading p{margin:4px 0 0;color:#6c8492;font-size:12px}
+.item-group-reference{padding:11px 13px;border:1px solid #dcebe7;border-radius:11px;background:#f5faf9}
+.item-group-reference strong{display:block;color:#187564;font-size:13px}
+.item-group-reference span{display:block;color:#6a8091;font-size:13px}
+.item-group-reference small{display:block;margin-top:4px;color:#68818b;line-height:1.6;font-size:11px}
+@media(max-width:720px){
+ .admin-groups-area{margin:15px 0 20px}
+ .admin-groups-wrapper{padding:11px}
+ .admin-groups-wrapper>summary{font-size:15px;gap:4px 9px}
+ .admin-groups-wrapper>summary small{flex-basis:100%;padding-left:22px}
+ .admin-family-card{padding:12px}
+ .admin-family-actions button{min-width:0;white-space:normal}
+ .admin-family-model-row{padding:8px;gap:7px}
+}
