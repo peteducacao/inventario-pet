@@ -351,6 +351,29 @@ function paintReservations(){
   $("#admin-res-pages").innerHTML=pageButtons(p,"reservas");
   $$("[data-res-do]",list).forEach(b=>b.onclick=()=>adminReservationAction(Number(b.dataset.id),b.dataset.resDo));
 }
+function confirmReservationRefusal(reservation){
+  return new Promise(resolve=>{
+    const userName=state.identity?.nome||"";
+    const body='<form class="modal-main" id="admin-refusal-form">'+
+      '<p class="notice">A pessoa receberá uma notificação informando a recusa e quem tomou a decisão, se a solicitação estiver vinculada à conta dela.</p>'+
+      '<div class="field"><label for="admin-refusal-actor">Nome de quem recusou *</label><input id="admin-refusal-actor" required maxlength="80" autocomplete="name" placeholder="Nome do(a) responsável" value="'+attr(userName)+'"></div>'+
+      '<div class="field"><label for="admin-refusal-reason">Motivo da recusa (opcional)</label><textarea id="admin-refusal-reason" maxlength="500" rows="3" placeholder="Ex.: material indisponível para o período"></textarea></div>'+
+      '<div class="modal-footer" style="border:0;padding:14px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button type="button" class="outline-button" id="admin-refusal-cancel">Cancelar</button>'+
+      '<button type="submit" class="danger-button" id="admin-refusal-confirm">Confirmar recusa</button></div></form>';
+    openModal("Recusar solicitação #"+reservation.id,"Material: "+(reservation.componente_nome||"Material"),body);
+    const finish=value=>{closeModal();resolve(value);};
+    $("#admin-refusal-cancel").onclick=()=>finish(null);
+    const x=$("#modal-root [data-close]");if(x)x.onclick=()=>finish(null);
+    $("#admin-refusal-form").onsubmit=e=>{
+      e.preventDefault();
+      const actor=$("#admin-refusal-actor").value.trim();
+      if(actor.length<2){$("#admin-refusal-actor").setCustomValidity("Informe o nome de quem tomou a decisão.");$("#admin-refusal-actor").reportValidity();return;}
+      finish({responsavel:actor,observacao:$("#admin-refusal-reason").value.trim()});
+    };
+    $("#admin-refusal-actor").oninput=e=>e.target.setCustomValidity("");
+  });
+}
 async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
   if(action==="devolver")return returnModal(r);
@@ -360,12 +383,22 @@ async function adminReservationAction(id,action){
     catch(e){toast(e.message,true);}
     return;
   }
-  const descriptions={aprovar:"Aprovar a reserva de "+r.nome_solicitante+"?",recusar:"Recusar ou cancelar esta reserva?",retirar:"Confirmar que o material foi entregue?"};
-  if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar",action==="recusar"))return;
+  let decision=null;
+  if(action==="recusar"){
+    decision=await confirmReservationRefusal(r);
+    if(!decision)return;
+  }else{
+    const descriptions={aprovar:"Aprovar a reserva de "+r.nome_solicitante+"?",retirar:"Confirmar que o material foi entregue?"};
+    if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar"))return;
+  }
   try{
-    await api("/api/admin/reservation","POST",{id,acao:action,responsavel:state.actor||"Administração"});
+    const response=await api("/api/admin/reservation","POST",{id,acao:action,responsavel:decision?.responsavel||"Administração",...(decision?{observacao:decision.observacao}:{})});
     await adminReload();adminBuild();
-    toast("Reserva atualizada.");
+    if(action==="recusar"&&response.notificacao_registrada===false){
+      toast("Reserva recusada, mas esta solicitação não está vinculada a uma conta: notificação não enviada.",true);
+    }else{
+      toast(action==="recusar"?"Recusa registrada e notificação salva.":"Reserva atualizada.");
+    }
   }catch(e){toast(e.message,true);}
 }
 /* Usuários: tag, redefinição de senha e exclusão segura. */

@@ -470,6 +470,7 @@ $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda
     $("#offline-alert").hidden=true;
     render();
     if(document.body.dataset.loansRoute==="true")openMyLoans();
+    if(state.identity&&typeof refreshNotifications==="function")refreshNotifications();
     const returnedFromAdmin=sessionStorage.getItem("pet_check_identity_after_admin")==="1";
     if(returnedFromAdmin)sessionStorage.removeItem("pet_check_identity_after_admin");
     if(returnedFromAdmin&&!state.identity&&typeof showReturnFromAdminIdentityNotice==="function")showReturnFromAdminIdentityNotice();

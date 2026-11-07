@@ -38,13 +38,16 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   w.addEventListener("error",e=>errors.push(String(e.error||e.message)));
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
   let adminAuthenticated=alreadyAdmin;
+  const pendingNotices=[],adminReservationRequests=[];
+  let noticeRequestCount=0;
   w.fetch=async(uri,init={})=>{
     const path=new URL(uri,w.location.href).pathname;
     let status=200,body={ok:true};
     if(path==="/api/catalog")body=visitorCatalog;
     else if(path==="/api/filaments")body={ok:true,filamentos:[colors[0]]};
     else if(path==="/api/identity/me")body={ok:true,usuario:identityLoggedIn?identity:null};
-    else if(path==="/api/notifications")body={notificacoes:[],nao_lidas:0};
+    else if(path==="/api/notifications"){noticeRequestCount++;body={notificacoes:pendingNotices,nao_lidas:pendingNotices.filter(x=>!x.lida_em).length};}
+    else if(path==="/api/admin/reservation"){adminReservationRequests.push(JSON.parse(init.body||"{}"));body={ok:true,notificacao_registrada:true};}
     else if(path==="/api/admin/state"){
       if(adminAuthenticated)body=fullAdmin;
       else {status=401;body={error:"Entre no painel administrativo."};}
@@ -71,7 +74,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests};
 }
 
 const publicUI=build(false);
@@ -84,6 +87,12 @@ assert.match(p,/title="Ir para a última página"/,"Atalho para última página 
 assert.doesNotMatch(p,/216 itens/,"Contagem de itens não deve aparecer no catálogo.");
 assert.match(w.__pageButtons({page:18,pages:18,total:216},"public"),/aria-current="page"/);
 assert.equal(d.body.classList.contains("catalog-loading"),false,"Catálogo ficou preso no carregamento.");
+assert.ok(publicUI.noticeRequestCount()>=1,"Sino deve consultar notificações logo após restaurar login.");
+publicUI.addNotice({id:44,titulo:"Reserva recusada",mensagem:"Sua reserva #31 foi recusada por Ana Maria (PET).",criada_em:"2026-11-07T12:10:00Z",lida_em:null});
+await click("#notification-button");
+assert.match(d.querySelector("#notification-popover").textContent,/recusada por Ana Maria/,"Sino deve buscar notificação ao abrir.");
+assert.equal(d.querySelector("#notification-count").textContent,"1","Sino deve mostrar aviso não lido.");
+await click("#notification-button");
 assert.equal(d.querySelector("#search").closest(".catalog-toolbar")!==null,true,"Busca não está junto à ordenação.");
 assert.equal(d.querySelector("#search-mobile"),null,"Busca duplicada não deveria existir.");
 assert.ok(d.querySelector("#public-sidebar").textContent.includes("Meus empréstimos"));
@@ -191,6 +200,18 @@ await wait(180);
 assert.ok(ad.querySelector(".admin-layout"),"Admin separado não abriu.");
 assert.equal(aw.sessionStorage.getItem("pet_check_identity_after_admin"),"1","Ao entrar no Admin marcar checagem de identidade pessoal no retorno.");
 assert.equal(ad.querySelector(".admin-overview.three")?.children.length,3,"Painel precisa ter três indicadores.");
+await adminClick('[data-admin-tab="reservas"]');
+assert.ok(ad.querySelector('[data-res-do="recusar"]'),"A reserva pendente deve permitir recusa.");
+await adminClick('[data-res-do="recusar"]');
+assert.ok(ad.querySelector("#admin-refusal-actor"),"A recusa precisa identificar a pessoa responsável.");
+assert.ok(ad.querySelector("#admin-refusal-reason"),"A recusa pode incluir motivo.");
+ad.querySelector("#admin-refusal-actor").value="Ana Maria";
+ad.querySelector("#admin-refusal-reason").value="Sem disponibilidade";
+ad.querySelector("#admin-refusal-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(90);
+assert.equal(adminUI.adminReservationRequests.at(-1).responsavel,"Ana Maria");
+assert.equal(adminUI.adminReservationRequests.at(-1).observacao,"Sem disponibilidade");
+await adminClick('[data-admin-tab="painel"]');
 assert.ok(ad.querySelector("#dashboard-recent-log"),"Últimas alterações precisam estar dentro da visão geral.");
 assert.equal(ad.querySelector(".admin-shortcuts"),null,"Atalhos fixos devem sair da visão geral.");
 assert.equal(ad.querySelector("#dashboard-last-change"),null,"O destaque isolado não deve ocupar espaço.");
