@@ -513,7 +513,10 @@ function adminCategories(root){
     '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
     '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
     '<small class="tag '+(Number(cat.visivel_visitante)===0?'pending':'')+'">'+(Number(cat.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
-    '<button type="button" class="outline-button small-button category-loan-toggle '+(Number(cat.permitir_emprestimos)===0?"blocked":"allowed")+'" data-cat-loans="'+cat.id+'">'+(Number(cat.permitir_emprestimos)===0?"Liberar todos":"Bloquear todos")+'</button>'+
+    '<div class="role-loan-controls category-role-controls">'+
+      roleLoanToggle("cat",cat.id,"petianos",Number(cat.permitir_petianos)===1)+
+      roleLoanToggle("cat",cat.id,"visitantes",Number(cat.permitir_visitantes)===1)+
+    '</div>'+
     '<div class="actions"><button type="button" class="square-action" data-cat-up="'+cat.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
     '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
     '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
@@ -524,12 +527,17 @@ function adminCategories(root){
     selectAdminTab("configuracoes");
     const button=$("#v2-backup-import");if(button){button.scrollIntoView({behavior:"smooth",block:"center"});button.focus();}
   };
-  $$("[data-cat-loans]",root).forEach(b=>b.onclick=async()=>{
-    const cat=state.admin.categorias.find(c=>Number(c.id)===Number(b.dataset.catLoans));if(!cat)return;
-    const enabled=Number(cat.permitir_emprestimos)===0;
-    if(!await niceModalConfirm(enabled?"Liberar categoria inteira?":"Bloquear categoria inteira?",(enabled?"Todos os materiais":"Todos os materiais")+" de "+cat.nome+" terão reservas e retiradas "+(enabled?"liberadas":"bloqueadas")+". As reservas em andamento serão preservadas.",enabled?"Liberar todos":"Bloquear todos",!enabled))return;
-    try{await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Categoria e todos os itens liberados.":"Categoria e todos os itens bloqueados.");}
-    catch(e){toast(e.message,true);}
+  $$("[data-cat-role]",root).forEach(b=>b.onclick=async()=>{
+    const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(b.dataset.catLoanId));
+    if(!cat)return;
+    const profile=b.dataset.catRole,pet=profile==="petianos",label=pet?"PETianes":"visitantes";
+    const enabled=Number(cat[pet?"permitir_petianos":"permitir_visitantes"])!==1;
+    if(!await niceModalConfirm((enabled?"Liberar":"Bloquear")+" retirada para "+label+"?",(enabled?"Liberar":"Bloquear")+" as retiradas para "+label+" em todos os materiais de "+cat.nome+"? A permissão do outro perfil continuará igual. As solicitações em andamento serão preservadas.",enabled?"Liberar todos":"Bloquear todos",!enabled))return;
+    try{
+      await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,perfil:profile,permitir:enabled});
+      await adminReload();adminBuild();
+      toast("Retirada para "+label+" "+(enabled?"liberada":"bloqueada")+" em toda a categoria.");
+    }catch(error){toast(error.message,true);}
   });
   $$("[data-cat-up]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
   $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
