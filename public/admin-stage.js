@@ -600,18 +600,20 @@ function adminFilaments(root){
     '<div class="filament-admin-grid">'+(list.length?list.map(x=>
     '<div class="filament-admin-card">'+
       '<span class="filament-color-dot" style="background:'+attr(x.hexadecimal)+'" aria-hidden="true"></span>'+
-      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+' · '+(Number(x.permitir_emprestimos)!==0&&Number(category?.permitir_emprestimos)!==0?'Empréstimo liberado':'Somente consulta')+'</small></div>'+
-      '<div class="filament-admin-buttons"><button type="button" class="outline-button small-button filament-loan-button" data-filament-loans="'+x.id+'" title="Alternar permissão desta cor">'+(Number(x.permitir_emprestimos)!==0?'Bloquear':'Liberar')+'</button><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
+      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
+      '<div class="role-loan-controls">'+roleLoanToggle("filament",x.id,"petianos",Number(x.permitir_petianos)===1,Number(category?.permitir_petianos)===1)+roleLoanToggle("filament",x.id,"visitantes",Number(x.permitir_visitantes)===1,Number(category?.permitir_visitantes)===1)+'</div></div>'+
+      '<div class="filament-admin-buttons"><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
       '<button type="button" class="square-action danger" aria-label="Excluir '+attr(x.cor)+'" title="Excluir" data-filament-delete="'+x.id+'">'+iconSvg("trash")+'</button></div></div>').join(""):
       '<div class="empty-state">Nenhuma cor cadastrada. Adicione a primeira cor de filamento.</div>')+'</div></section>';
   $("#filament-add").onclick=()=>filamentEditor();
-  $$("[data-filament-loans]",root).forEach(b=>b.onclick=async()=>{
-    const x=list.find(x=>x.id===Number(b.dataset.filamentLoans));if(!x)return;
-    const enabled=Number(x.permitir_emprestimos)===0;
+  $$("[data-filament-role]",root).forEach(b=>b.onclick=async()=>{
+    const x=list.find(x=>x.id===Number(b.dataset.filamentLoanId));if(!x)return;
+    const profile=b.dataset.filamentRole,label=profile==="petianos"?"PETianes":"visitantes";
+    const enabled=Number(x[profile==="petianos"?"permitir_petianos":"permitir_visitantes"])!==1;
     try{
-      await api("/api/admin/filaments","POST",{acao:"emprestimos",id:x.id,permitir_emprestimos:enabled});
+      await api("/api/admin/filaments","POST",{acao:"emprestimos",id:x.id,perfil:profile,permitir:enabled});
       await adminReload();adminBuild();
-      toast(enabled?(Number(category?.permitir_emprestimos)!==0?"Cor liberada.":"Cor liberada individualmente; falta liberar a categoria Filamentos."):"Empréstimo desta cor bloqueado.");
+      toast("Retirada para "+label+" "+(enabled?"liberada":"bloqueada")+" nesta cor. Verifique também a permissão da categoria Filamentos.");
     }catch(error){toast(error.message,true);}
   });
   $$("[data-filament-edit]",root).forEach(b=>b.onclick=()=>filamentEditor(Number(b.dataset.filamentEdit)));
@@ -620,13 +622,13 @@ function adminFilaments(root){
 function filamentEditor(id){
   const color=(state.admin.filamentos||[]).find(x=>x.id===id);
   const selected=color?.hexadecimal||"#2A69D6";
-  openModal(color?"Editar filamento":"Adicionar cor de filamento","Cor, estoque e permissão de empréstimo.",
+  openModal(color?"Editar filamento":"Adicionar cor de filamento","Cor, estoque e permissões por perfil.",
     '<form id="filament-form" class="modal-main">'+
     '<div class="filament-palette">'+FILAMENT_PALETTE.map(([name,hex])=>
       '<button type="button" class="filament-preset" style="--sample:'+hex+'" data-filament-choice="'+attr(name)+'" data-hex="'+hex+'" aria-label="Escolher '+attr(name)+'" title="'+attr(name)+'"><span></span></button>').join("")+'</div>'+
     '<div class="field-grid"><div class="field"><label for="filament-name">Cor</label><input id="filament-name" maxlength="55" required value="'+attr(color?.cor||"")+'" placeholder="Ex.: Azul royal"></div>'+
     '<div class="field"><label for="filament-hex">Escolher tonalidade</label><input type="color" id="filament-hex" value="'+selected+'"></div></div>'+
-    '<div class="field"><label for="filament-quantity">Quantidade de rolos</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+switchInput("filament-loans","Permitir reservas e retiradas desta cor",color?Number(color.permitir_emprestimos)!==0:Number((state.admin.categorias||[]).find(x=>x.nome==="Filamentos")?.permitir_emprestimos)!==0,"A categoria Filamentos também precisa estar liberada.")+switchInput("filament-public","Exibir para todos",color?Number(color.visivel_visitante)!==0:true,"Desmarcado: esta cor ficará visível apenas aos PETianes.")+
+    '<div class="field"><label for="filament-quantity">Quantidade de rolos</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+switchInput("filament-loans-pet","Retirada para PETianes",color?Number(color.permitir_petianos)===1:false,"PETianes podem registrar retirada diretamente, se a categoria permitir.")+switchInput("filament-loans-visitor","Retirada para visitantes",color?Number(color.permitir_visitantes)===1:false,"Visitantes solicitam retirada para aprovação, se a categoria permitir.")+switchInput("filament-public","Exibir para todos",color?Number(color.visivel_visitante)!==0:true,"Desmarcado: esta cor ficará visível apenas aos PETianes.")+
     '<div class="modal-footer" style="border:0;padding:16px 0 0"><button class="secondary-button" id="filament-cancel" type="button">Cancelar</button><button class="primary-button" type="submit" id="filament-save">Salvar</button></div></form>');
   $$("[data-filament-choice]").forEach(b=>b.onclick=()=>{
     $("#filament-name").value=b.dataset.filamentChoice;$("#filament-hex").value=b.dataset.hex;
@@ -637,7 +639,7 @@ function filamentEditor(id){
     e.preventDefault();
     const btn=$("#filament-save");btn.disabled=true;btn.textContent="Salvando…";
     try{
-      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value),visivel_visitante:$("#filament-public").checked,permitir_emprestimos:$("#filament-loans").checked});
+      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value),visivel_visitante:$("#filament-public").checked,permitir_petianos:$("#filament-loans-pet").checked,permitir_visitantes:$("#filament-loans-visitor").checked});
       await adminReload();closeModal();adminBuild();toast("Filamento salvo.");
     }catch(e){toast(e.message,true);btn.disabled=false;btn.textContent="Salvar";}
   };
