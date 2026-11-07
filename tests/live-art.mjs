@@ -14,8 +14,8 @@ async function get(path,shouldInclude=[]){
   return text;
 }
 const localHtml=readFileSync("public/index.html","utf8");
-const currentArtPath=localHtml.match(/\\/component-art\\.js\\?v=[^"]+/)?.[0];
-const currentFinalPath=localHtml.match(/\\/final\\.js\\?v=[^"]+/)?.[0];
+const currentArtPath=localHtml.match(/component-art[.]js[?]v=[^"]+/)?.[0];
+const currentFinalPath=localHtml.match(/final[.]js[?]v=[^"]+/)?.[0];
 assert.ok(currentArtPath&&currentFinalPath,"Arquivos versionados devem existir no HTML local.");
 const html=await get("/",[currentArtPath,currentFinalPath]);
 await get("/final.js",["page-total","Última página","data-page"]);
