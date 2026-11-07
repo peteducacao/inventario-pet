@@ -286,7 +286,7 @@ function adminRenameVariationGroup(name){
     const btn=$("#rename-group-submit");btn.disabled=true;
     try{
       await api("/api/admin/variation-groups","POST",{acao:"renomear",nome:current,novo_nome:next,responsavel:state.actor||"Admin"});
-      await adminReload();openLinksHub();toast("Vínculo renomeado para "+next+".");
+      await adminReload();adminBuild();openLinksHub();toast("Vínculo renomeado para "+next+".");
     }catch(error){btn.disabled=false;toast(error.message,true);}
   };
 }
@@ -340,7 +340,7 @@ function openLinksHub(){
       busy=true;
       try{
         await api("/api/admin/variation-groups","POST",{acao:"excluir",nome:name,responsavel:state.actor||"Admin"});
-        await adminReload();openLinksHub();toast("Vínculo "+name+" excluído. Materiais preservados.");
+        await adminReload();adminBuild();openLinksHub();toast("Vínculo "+name+" excluído. Materiais preservados.");
       }catch(error){toast(error.message,true);openLinksHub();}
       finally{busy=false;}
     });
@@ -359,7 +359,7 @@ function openLinksHub(){
     busy=true;
     try{
       await api("/api/admin/variation-groups","POST",{acao:"criar",nome:name,responsavel:state.actor||"Admin"});
-      await adminReload();
+      await adminReload();adminBuild();
       openVariantLinker(null,name);
       toast("Vínculo criado. Você já pode adicionar os materiais.");
     }catch(error){toast(error.message,true);}
@@ -1119,7 +1119,7 @@ function openVariantLinker(currentId,groupName=""){
       saving=true;btn.disabled=true;
       try{
         await api("/api/admin/variations","POST",{ids:[item.id],grupo:"",responsavel:state.actor||"Admin"});
-        await adminReload();refresh();draw();
+        await adminReload();adminBuild();refresh();draw();
         toast(item.nome+" desvinculado. Estoque preservado.");
       }catch(error){toast(error.message,true);btn.disabled=false;}
       finally{saving=false;}
