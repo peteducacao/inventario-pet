@@ -110,7 +110,7 @@ assert.equal(catOnlyVisitor.status,200,JSON.stringify(catOnlyVisitor.body));
 const categoryAfter=sqlite.prepare("SELECT permitir_petianos,permitir_visitantes FROM categorias WHERE id=?").get(electronic.id);
 assert.equal(categoryAfter.permitir_petianos,0,"PETianes devem ficar bloqueados.");
 assert.equal(categoryAfter.permitir_visitantes,1,"Categoria deve permitir somente visitantes.");
-assert.equal((await req("/api/availability?id="+arduino.id+"&inicio="+today+"&fim="+end,undefined,visitor)).status,200);
+assert.equal((await req("/api/availability?id="+arduino.id+"&inicio="+today+"&fim="+end,"GET",undefined,visitor)).status,200);
 assert.equal((await req("/api/member/withdraw","POST",{componente_id:arduino.id,quantidade:1,data_devolucao:end},member)).status,409);
 const onlyPet=await postAdmin("/api/admin/item/loans",{id:arduino.id,perfil:"combinado",permitir_petianos:true,permitir_visitantes:false});
 assert.equal(onlyPet.status,200);
