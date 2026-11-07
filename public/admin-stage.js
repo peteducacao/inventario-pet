@@ -960,7 +960,7 @@ function openVariantLinker(currentId){
       String($("#variant-group-name").value||"").trim().toLocaleLowerCase("pt-BR")).length;
     $("#variant-selected").textContent=model.selected.size+" marcados · "+linked+
       " já vinculados ao grupo · "+(model.selected.size-linked)+" a vincular.";
-    $("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
+    $$("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
       draw();
     });
