@@ -150,6 +150,23 @@ w.__publicTestUI.category="all";
 w.__publicTestUI.sort="az";
 w.__finalRender();
 
+// Nomes técnicos devem ser localizados com ou sem espaços, hífens ou separadores.
+const espPublic=w.__adminTestState.data.componentes.find(x=>x.id===3);
+const espPreviousName=espPublic.nome;
+espPublic.nome="Placa ESP 32 DevKit";
+for(const term of ["esp32","ESP 32","ESP-32","esp_32"]){
+  w.__adminTestState.query=term;
+  w.__finalRender();
+  assert.equal(d.querySelectorAll(".catalog-card").length,1,
+    "Buscar "+term+" deve localizar o mesmo ESP 32 no catálogo público.");
+  assert.equal(d.querySelector(".catalog-card h3")?.textContent,"Arduino",
+    "Encontrar um modelo não deve desmontar o card de sua família.");
+  assert.match(d.querySelector(".catalog-card").textContent,/ESP 32 DevKit/);
+}
+espPublic.nome=espPreviousName;
+w.__adminTestState.query="";
+w.__finalRender();
+
 assert.ok(publicUI.noticeRequestCount()>=1,"Sino deve consultar notificações logo após restaurar login.");
 publicUI.addNotice({id:44,titulo:"Reserva recusada",mensagem:"Sua reserva #31 foi recusada por Ana Maria (PET).",criada_em:"2026-11-07T12:10:00Z",lida_em:null});
 await click("#notification-button");
@@ -380,6 +397,22 @@ assert.ok(ad.querySelector("#admin-individual-title"),"Materiais avulsos precisa
 assert.ok(ad.querySelector("#admin-group-new"),"O painel deve permitir criar uma família sem editar os materiais um a um.");
 assert.ok(ad.querySelector("#admin-bulk-visibility"));
 assert.equal(ad.querySelector("#admin-group-variations"),null,"Remover atalho redundante; variações continuam disponíveis no editor.");
+// A mesma tolerância vale para a pesquisa administrativa.
+const espAdmin=fullAdmin.componentes.find(x=>x.id===3);
+const espAdminPreviousName=espAdmin.nome;
+espAdmin.nome="ESP 32 DevKit";
+const adminSearchForEsp=ad.querySelector("#admin-material-search");
+for(const term of ["esp32","ESP 32","esp-32"]){
+  adminSearchForEsp.value=term;
+  adminSearchForEsp.dispatchEvent(new aw.Event("input",{bubbles:true}));
+  await wait(25);
+  assert.ok(ad.querySelector('[data-admin-group="Arduino"]'),
+    "Pesquisa Admin por "+term+" deve encontrar o grupo contendo o ESP 32.");
+}
+espAdmin.nome=espAdminPreviousName;
+adminSearchForEsp.value="";
+adminSearchForEsp.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(25);
 const groupSearch=ad.querySelector("#admin-material-search");
 groupSearch.value="Alcalina";
 groupSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
