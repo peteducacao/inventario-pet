@@ -235,6 +235,7 @@ function itemEditor(id){
   const family=window.__newVariantGroup||x?.grupo_variacoes||"";
   window.__newVariantGroup="";
   const body='<form id="item-form" class="modal-main">'+
+    '<div class="item-editor-scroll">'+
     '<div class="item-editor-intro"><strong>Edição rápida</strong><span>Altere nome ou estoque e salve. Outras opções ficam recolhidas abaixo.</span></div>'+
     '<div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+
       selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
@@ -276,6 +277,7 @@ function itemEditor(id){
         switchInput("i-show-broken","Exibir com defeito",x?flag(x.mostrar_defeito):false)+
       '</details>'+
       '</div></details>'+
+    '</div>'+
     '<div class="modal-footer item-editor-savebar"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button>'+
       '<button type="submit" class="primary-button" id="i-save">'+(x?"Salvar alterações":"Cadastrar material")+'</button></div></form>';
   openModal(x?"Editar material":"Adicionar material","",body,{size:"wide item-edit-modal"});
