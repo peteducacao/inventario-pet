@@ -6,13 +6,13 @@
 <meta name="description" content="Inventário do PET Educação.">
 <title>Admin | Inventário PET Educação</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="/styles.css?v=20261107-menu-admin-leds-v7">
-<link rel="stylesheet" href="/final.css?v=20261107-menu-admin-leds-v7">
-<script defer src="/app.js?v=20261107-menu-admin-leds-v7"></script>
-<script defer src="/identity-ui.js?v=20261107-menu-admin-leds-v7"></script>
-<script defer src="/component-art.js?v=20261107-menu-admin-leds-v7"></script>
-<script defer src="/final.js?v=20261107-menu-admin-leds-v7"></script>
-<script defer src="/admin-stage.js?v=20261107-menu-admin-leds-v7"></script>
+<link rel="stylesheet" href="/styles.css?v=20261107-pages-bulk-v8">
+<link rel="stylesheet" href="/final.css?v=20261107-pages-bulk-v8">
+<script defer src="/app.js?v=20261107-pages-bulk-v8"></script>
+<script defer src="/identity-ui.js?v=20261107-pages-bulk-v8"></script>
+<script defer src="/component-art.js?v=20261107-pages-bulk-v8"></script>
+<script defer src="/final.js?v=20261107-pages-bulk-v8"></script>
+<script defer src="/admin-stage.js?v=20261107-pages-bulk-v8"></script>
 </head>
 <body data-admin-route="true">
 <div id="app">
@@ -42,14 +42,14 @@
     </div>
     <div class="public-sidebar-caption">ACESSO RÁPIDO</div>
     <nav class="public-nav">
-      <button type="button" data-public-action="inventory" class="active" aria-current="page">
+      <a href="/" data-public-action="inventory" class="active" aria-current="page">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
         Inventário
-      </button>
-      <button type="button" data-public-action="loans">
+      </a>
+      <a href="/emprestimos/" data-public-action="loans">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 2 9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"/></svg>
         Meus empréstimos
-      </button>
+      </a>
       <a href="/admin/" data-public-action="admin" class="manage-link">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
         Admin
