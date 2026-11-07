@@ -49,6 +49,7 @@ function build(isAdmin){
       if(adminAuthenticated)body=fullAdmin;
       else {status=401;body={error:"Entre no painel administrativo."};}
     }else if(path==="/api/login"){adminAuthenticated=true;body={ok:true};}
+    else if(path==="/api/logout"){adminAuthenticated=false;body={ok:true};}
     else if(path==="/api/admin/log")body={ok:true,eventos:[{id:1,criado_em:"2026-11-06T12:00:00Z",
       responsavel:"Teste",acao:"Editou",tipo:"material",descricao:"Quantidade alterada"}],
       total:1,pagina:1,limpeza_historico:"nunca"};
