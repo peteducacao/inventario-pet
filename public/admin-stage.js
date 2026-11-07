@@ -1,5 +1,5 @@
 /* Administração Inventário PET: painel próprio e responsivo. */
-const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["filamentos","layers","Filamentos"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["configuracoes","settings","Configurações"]];
+const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["filamentos","layers","Filamentos"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["historico","back","Histórico"],["configuracoes","settings","Configurações"]];
 function adminCounts(){
   const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
   const reservations=state.admin?.reservas||[];
@@ -30,6 +30,7 @@ function adminModal(){
   if(!state.admin)return enterAdmin();
   closeModal();
   $("#admin-stage").hidden=false;
+  $("#admin-stage").classList.remove("admin-loading");
   document.body.classList.add("admin-mode");
   stored("pet_admin_open","1");
   state.tab=UI.adminTab;
@@ -64,6 +65,7 @@ function adminBuild(){
   adminContent();
 }
 function leaveAdminWithoutLogout(){
+  if(document.body.dataset.adminRoute==="true"){location.href="/";return;}
   stored("pet_admin_open","0");
   $("#admin-stage").hidden=true;document.body.classList.remove("admin-mode");
   closeModal();finalRender();
@@ -93,22 +95,28 @@ function adminContent(){
   if(UI.adminTab==="reservas")return adminReservations(content);
   if(UI.adminTab==="usuarios")return adminUsers(content);
   if(UI.adminTab==="categorias")return adminCategories(content);
+  if(UI.adminTab==="historico")return adminHistory(content);
   return adminSettings(content);
 }
 function adminDashboard(root){
   const c=adminCounts();
-  root.innerHTML='<div class="admin-section-head"><div><h2>Visão geral</h2></div><div class="buttons"><button class="outline-button small-button" type="button" id="admin-stats-toggle">'+(UI.adminSummaryMinimized?"Mostrar resumo":"Minimizar resumo")+' '+iconSvg(UI.adminSummaryMinimized?"down":"up",14)+'</button></div></div>'+
-    '<div class="admin-overview '+(UI.adminSummaryMinimized?"collapsed":"")+'"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div><div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div><div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div><div class="admin-stat"><strong>'+c.pending+'</strong><span>Reservas pendentes</span></div></div>'+
-    '<section class="admin-panel"><div class="admin-section-head"><div><h2>Materiais</h2><p>Acesse e atualize seu inventário.</p></div><div class="buttons"><button type="button" class="outline-button small-button" id="v2-dashboard-all">Ver todos</button><button type="button" class="primary-button small-button" id="v2-dashboard-add">'+iconSvg("plus",15)+' Novo material</button></div></div>'+
-    '<div id="dashboard-materials"></div></section>'+
-    (c.pending?'<section class="admin-panel"><div class="admin-section-head"><h2>Reservas aguardando aprovação</h2><button class="outline-button small-button" id="dashboard-reservations">Analisar</button></div><p>'+c.pending+' solicitação(ões) para conferir.</p></section>':"");
-  $("#admin-stats-toggle").onclick=()=>{UI.adminSummaryMinimized=!UI.adminSummaryMinimized;stored("pet_admin_summary_closed",UI.adminSummaryMinimized?"1":"0");adminDashboard(root)};
-  $("#v2-dashboard-all").onclick=()=>selectAdminTab("materiais");
-  $("#v2-dashboard-add").onclick=()=>adminItemEditor();
-  if(c.pending)$("#dashboard-reservations").onclick=()=>selectAdminTab("reservas");
-  const small=ordered(state.admin.componentes.filter(x=>!isArchived(x)),UI.adminSort).slice(0,6);
-  $("#dashboard-materials").innerHTML='<div class="material-list">'+small.map(adminMaterialRow).join("")+'</div>';
-  wireMaterialActions($("#dashboard-materials"));
+  root.innerHTML='<section class="admin-panel"><h2>Visão geral</h2><p>Resumo do acervo, com acesso rápido às ferramentas.</p>'+
+    '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div>'+
+    '<div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div>'+
+    '<div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div></div>'+
+    '<div class="admin-shortcuts">'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="materiais">'+iconSvg("box",21)+' Materiais e estoque</button>'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="categorias">'+iconSvg("layers",21)+' Categorias e acesso</button>'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="historico">'+iconSvg("back",21)+' Histórico de alterações</button>'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="filamentos">'+iconSvg("grid",21)+' Filamentos</button>'+
+    '</div></section>'+
+    '<section class="admin-panel"><div class="admin-section-head"><h2>Atividade recente</h2><button class="outline-button small-button" type="button" id="dashboard-log-all">Ver histórico</button></div><div id="dashboard-recent-log" class="admin-log-list">Carregando…</div></section>';
+  $$("[data-dashboard-go]",root).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.dashboardGo));
+  $("#dashboard-log-all").onclick=()=>selectAdminTab("historico");
+  api("/api/admin/log?pagina=1").then(data=>{
+    const el=$("#dashboard-recent-log");if(!el)return;
+    el.innerHTML=(data.eventos||[]).slice(0,4).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração registrada ainda.</div>';
+  }).catch(error=>{const el=$("#dashboard-recent-log");if(el)el.textContent=error.message;});
 }
 function quantityCell(name,num,clazz=""){
   return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
@@ -488,9 +496,9 @@ async function openAdmin(){
   }catch(error){
     if(!/painel|401|autoriz/i.test(error.message)){toast(error.message,true);return;}
   }
-  openModal("Administração","Acesso ao painel do inventário.",
+  openModal("Admin","Entre com a senha para acessar o inventário.",
     '<form class="modal-main" id="v2-admin-login">'+
-    '<div class="field"><label for="v2-admin-password">Senha administrativa</label>'+
+    '<div class="field"><label for="v2-admin-password">Senha</label>'+
     '<div class="password-input-wrap"><input type="password" id="v2-admin-password" autocomplete="current-password" required placeholder="Digite a senha">'+
     '<button type="button" id="v2-admin-show-password" class="show-password" aria-pressed="false">Mostrar</button></div></div>'+
     '<button type="submit" class="primary-button" style="width:100%;min-height:49px" id="v2-admin-submit">Entrar no painel</button></form>');
@@ -506,3 +514,7 @@ async function openAdmin(){
   };
 }
 setupFinalPublic();
+if(document.body.dataset.adminRoute==="true"){
+  const stage=$("#admin-stage");if(stage)stage.classList.add("admin-loading");
+  openAdmin();
+}
