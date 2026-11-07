@@ -103,6 +103,11 @@ assert.match(p,/title="Ir para a última página"/,"Atalho para última página 
 assert.doesNotMatch(p,/216 itens/,"Contagem de itens não deve aparecer no catálogo.");
 assert.match(w.__pageButtons({page:18,pages:18,total:216},"public"),/aria-current="page"/);
 assert.equal(d.body.classList.contains("catalog-loading"),false,"Catálogo ficou preso no carregamento.");
+// Filtros persistidos de categorias arquivadas não podem deixar o catálogo vazio.
+w.eval("UI.category='99999';finalRender();");
+assert.equal(w.localStorage.getItem("pet_public_category"),"all","Filtro de categoria excluída ou arquivada deve voltar para Todos.");
+assert.ok(d.querySelector('[data-category="all"]').classList.contains("active"));
+assert.ok(d.querySelectorAll(".catalog-card").length>0,"Ao trocar o filtro antigo, o catálogo deve voltar a exibir materiais.");
 assert.ok(publicUI.noticeRequestCount()>=1,"Sino deve consultar notificações logo após restaurar login.");
 publicUI.addNotice({id:44,titulo:"Reserva recusada",mensagem:"Sua reserva #31 foi recusada por Ana Maria (PET).",criada_em:"2026-11-07T12:10:00Z",lida_em:null});
 await click("#notification-button");
