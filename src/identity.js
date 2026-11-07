@@ -159,6 +159,7 @@ async function changePassword(req,env){
     env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(u.id)
   ]);
   const session=await addSession(env.DB,u.id);
+  if(u.email)await enqueueIdentityNotice(env.DB,u.id,u.email,"Senha alterada - Inventário PET","A senha da sua conta do Inventário PET Educação foi alterada. Se não reconhece essa ação, procure imediatamente a equipe do PET.");
   return respond({ok:true,usuario:{...publicUser(u),trocar_senha:false}},200,{"set-cookie":session});
 }
 async function updateEmail(req,env,user){
@@ -166,8 +167,20 @@ async function updateEmail(req,env,user){
   if(!user.login||user.must_change_password)return error("Finalize o acesso à sua conta antes de cadastrar o e-mail.",403);
   const b=await bodyJson(req,3000),email=clean(b.email,180).toLowerCase();
   if(!validEmail(email))return error("Informe um e-mail válido.");
-  await env.DB.prepare("UPDATE usuarios SET email=?,atualizado_em=? WHERE id=?").bind(email,now(),user.id).run();
-  return respond({ok:true,usuario:{...publicUser(user),email}});
+  if(!await verifyPassword(b.senha_atual,user))return error("Senha atual incorreta.",401);
+  if(await emailInUse(env.DB,email,user.id))return error("Este e-mail já está cadastrado.",409);
+  const previous=clean(user.email,180).toLowerCase();
+  try{
+    await env.DB.batch([
+      env.DB.prepare("UPDATE usuarios SET email=?,atualizado_em=? WHERE id=?").bind(email,now(),user.id),
+      env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id),
+      env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=? WHERE usuario_id=? AND usado_em IS NULL").bind(now(),user.id),
+      env.DB.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='' WHERE usuario_id=? AND tipo='recuperacao' AND situacao IN ('pendente','processando')").bind(user.id)
+    ]);
+  }catch(e){if(duplicateEmailError(e)||maybeDuplicate(e))return error("Este e-mail já está cadastrado.",409);throw e;}
+  const session=await addSession(env.DB,user.id);
+  if(previous&&previous!==email)await enqueueIdentityNotice(env.DB,user.id,previous,"E-mail alterado - Inventário PET","O e-mail associado à sua conta do Inventário PET Educação foi alterado. Se não reconhece esta ação, procure imediatamente a equipe do PET.");
+  return respond({ok:true,usuario:{...publicUser(user),email}},200,{"set-cookie":session});
 }
 async function rename(req,env,user){
   if(!user)return error("Cadastre seu perfil antes de editar o nome.",401);
