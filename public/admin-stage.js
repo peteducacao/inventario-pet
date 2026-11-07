@@ -380,21 +380,43 @@ function adminViewMaterial(id){
   $("#v2-view-close").onclick=closeModal;
   $("#v2-view-edit").onclick=()=>adminItemEditor(id);
 }
-async function adminDeleteItem(id){
+async function optionalBackupBeforeDeletion(download,filename){
+  if(!download)return false;
+  const backup=await api("/api/admin/backup");
+  saveDownload(filename+"-"+localDate()+".json",JSON.stringify(backup,null,2));
+  return true;
+}
+function deletionBackupChoice(id){
+  return '<label class="delete-backup-choice" for="'+id+'">'+
+    '<input id="'+id+'" type="checkbox">'+
+    '<span><strong>Deseja baixar um backup antes de excluir?</strong>'+
+    '<small>Opcional. Marque para salvar uma cópia JSON no seu dispositivo.</small></span></label>';
+}
+function adminDeleteItem(id){
   const item=state.admin.componentes.find(x=>Number(x.id)===Number(id));
   if(!item)return;
   const active=(state.admin.reservas||[]).some(r=>Number(r.componente_id)===Number(id)&&
     ["pendente","aprovada","retirada"].includes(r.status));
   if(active){toast("Este material tem empréstimo ou reserva ativa. Encerre a movimentação antes de excluir.",true);return;}
-  if(!await niceModalConfirm("Excluir material definitivamente?",
-    item.nome+" será removido do inventário, inclusive seus registros de reservas concluídas. Um backup JSON será baixado antes da exclusão. Não haverá seção Arquivados.",
-    "Fazer backup e excluir",true))return;
-  try{
-    const backup=await api("/api/admin/backup");
-    saveDownload("backup-antes-de-excluir-material-"+localDate()+".json",JSON.stringify(backup,null,2));
-    await api("/api/admin/item?id="+id,"DELETE");
-    await adminReload();adminBuild();toast("Material excluído. Backup JSON gerado.");
-  }catch(e){toast(e.message,true);}
+  openModal("Excluir material definitivamente?","Confirme o que deseja fazer",
+    '<form class="modal-main" id="delete-item-confirm">'+
+    '<p><strong>'+esc(item.nome)+'</strong> será removido do inventário, inclusive seus registros de reservas concluídas. Esta ação não poderá ser desfeita.</p>'+
+    deletionBackupChoice("delete-item-backup")+
+    '<div class="modal-footer delete-confirm-actions">'+
+    '<button class="secondary-button" type="button" id="delete-item-cancel">Cancelar</button>'+
+    '<button class="danger-button" type="submit" id="delete-item-submit">Excluir material</button></div></form>');
+  $("#delete-item-cancel").onclick=closeModal;
+  $("#delete-item-confirm").onsubmit=async e=>{
+    e.preventDefault();
+    const btn=$("#delete-item-submit"),download=$("#delete-item-backup").checked;
+    btn.disabled=true;btn.textContent=download?"Preparando backup…":"Excluindo…";
+    try{
+      const exported=await optionalBackupBeforeDeletion(download,"backup-antes-de-excluir-material");
+      await api("/api/admin/item?id="+id,"DELETE");
+      await adminReload();closeModal();adminBuild();
+      toast("Material excluído."+(exported?" Backup baixado.":""));
+    }catch(error){toast("Não foi possível excluir: "+error.message,true);btn.disabled=false;btn.textContent="Excluir material";}
+  };
 }
 function adminMaterials(root){
   const cats=state.admin.categorias.filter(c=>!c.arquivada);
@@ -778,7 +800,8 @@ function adminDeleteCategory(id){
   openModal("Excluir categoria e materiais","Confirmação de segurança",
     '<form id="delete-category-confirm" class="modal-main">'+
     '<p>Esta ação retirará <strong>'+esc(cat.nome)+'</strong> e '+linked.length+' material(is) do inventário, inclusive arquivados. Empréstimos já concluídos vinculados também serão excluídos.</p>'+
-    '<p class="notice warning">Exclusão definitiva. Um backup será baixado antes. Reservas ou retiradas em aberto impedem esta operação.</p>'+
+    '<p class="notice warning">Exclusão definitiva. Reservas ou retiradas em aberto impedem esta operação.</p>'+
+    deletionBackupChoice("cat-delete-backup")+
     '<label for="cat-delete-name">Digite exatamente <strong>'+esc(cat.nome)+'</strong> para confirmar:</label>'+
     '<input id="cat-delete-name" required autocomplete="off" placeholder="'+attr(cat.nome)+'">'+
     '<div class="confirm-actions"><button class="secondary-button" type="button" id="cat-delete-cancel">Cancelar</button>'+
@@ -789,10 +812,9 @@ function adminDeleteCategory(id){
     if(name!==cat.nome){toast("O nome não corresponde à categoria.",true);return;}
     const button=$("#cat-delete-submit");button.disabled=true;
     try{
-      const backup=await api("/api/admin/backup");
-       saveDownload("backup-antes-de-excluir-"+localDate()+".json",JSON.stringify(backup,null,2));
-       await api("/api/admin/category","POST",{acao:"excluir",id,confirmacao:name});
-      await adminReload();closeModal();adminBuild();toast("Categoria e materiais excluídos. Backup gerado.");
+      const exported=await optionalBackupBeforeDeletion($("#cat-delete-backup").checked,"backup-antes-de-excluir-categoria");
+      await api("/api/admin/category","POST",{acao:"excluir",id,confirmacao:name});
+      await adminReload();closeModal();adminBuild();toast("Categoria e materiais excluídos."+(exported?" Backup baixado.":""));
     }catch(error){toast(error.message,true);button.disabled=false;}
   };
 }
@@ -1286,7 +1308,7 @@ function adminSettings(root){
     '<button type="button" class="outline-button" id="v2-backup-import">Restaurar arquivo JSON</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
     '<button type="button" class="outline-button" id="v2-run-cleanup">Limpar concluídas vencidas</button>'+
     '<button type="button" class="danger-button" id="v2-reset-reservations">Apagar todos os registros de reservas</button></div>'+
-    '<p class="hint">A opção de apagar todos os registros exige confirmação e gera backup. Não é permitida com retiradas ativas ou aprovações antigas não regularizadas.</p></section>';
+    '<p class="hint">A opção de apagar todos os registros exige confirmação. O download de backup é opcional; a exclusão não é permitida com retiradas ativas ou aprovações antigas não regularizadas.</p></section>';
   const select=$("#v2-cleanup");select.value=["nunca","1min","7","15","30","60","90"].includes(current)?current:"personalizado";
   const update=()=>{$("#v2-custom-wrap").hidden=select.value!=="personalizado";};select.onchange=update;update();
   $("#admin-settings-form").onsubmit=async e=>{
@@ -1388,21 +1410,22 @@ function adminSettings(root){
     }
     openModal("Apagar TODO o histórico de reservas","Operação irreversível após a confirmação",
       '<form id="reset-reservations-form" class="modal-main">'+
-      '<p class="notice warning"><strong>Atenção:</strong> todos os registros de reservas, inclusive pendentes e concluídos, serão apagados. As cobranças pendentes relacionadas serão canceladas. O inventário, os usuários e o histórico administrativo serão preservados. Um backup JSON será baixado antes da exclusão.</p>'+
+      '<p class="notice warning"><strong>Atenção:</strong> todos os registros de reservas, inclusive pendentes e concluídos, serão apagados. As cobranças pendentes relacionadas serão canceladas. O inventário, os usuários e o histórico administrativo serão preservados.</p>'+
+      deletionBackupChoice("reset-reservations-backup")+
       '<div class="field"><label for="reset-reservations-confirm">Digite APAGAR TODAS AS RESERVAS para confirmar</label><input id="reset-reservations-confirm" required autocomplete="off" placeholder="APAGAR TODAS AS RESERVAS"></div>'+
-      '<div class="modal-footer"><button type="button" class="outline-button" id="reset-reservations-cancel">Cancelar</button><button class="danger-button" type="submit" id="reset-reservations-submit">Fazer backup e apagar registros</button></div></form>');
+      '<div class="modal-footer"><button type="button" class="outline-button" id="reset-reservations-cancel">Cancelar</button><button class="danger-button" type="submit" id="reset-reservations-submit">Apagar registros</button></div></form>');
     $("#reset-reservations-cancel").onclick=closeModal;
     $("#reset-reservations-form").onsubmit=async e=>{
       e.preventDefault();
       if($("#reset-reservations-confirm").value.trim()!=="APAGAR TODAS AS RESERVAS"){toast("Digite a confirmação exatamente como indicada.",true);return;}
-      const btn=$("#reset-reservations-submit");btn.disabled=true;btn.textContent="Preparando backup…";
+      const btn=$("#reset-reservations-submit"),download=$("#reset-reservations-backup").checked;
+      btn.disabled=true;btn.textContent=download?"Preparando backup…":"Excluindo registros…";
       try{
-        const backup=await api("/api/admin/backup");
-        saveDownload("backup-antes-de-limpar-reservas-"+localDate()+".json",JSON.stringify(backup,null,2));
+        const exported=await optionalBackupBeforeDeletion(download,"backup-antes-de-limpar-reservas");
         btn.textContent="Excluindo registros…";
         const result=await api("/api/admin/reservations/reset","POST",{confirmar:"APAGAR TODAS AS RESERVAS"});
-        await adminReload();closeModal();adminBuild();toast(result.removidos+" registro(s) de reserva apagado(s); backup gerado.");
-      }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Fazer backup e apagar registros";}
+        await adminReload();closeModal();adminBuild();toast(result.removidos+" registro(s) de reserva apagado(s)."+(exported?" Backup baixado.":""));
+      }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Apagar registros";}
     };
   };
   $("#v2-run-cleanup").onclick=async()=>{
