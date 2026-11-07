@@ -378,3 +378,51 @@ body:not(.admin-mode) .inventory-section .catalog-numbers{margin:8px 0 9px}
  .variant-picker-details strong{font-size:12px}
  .variant-picker-details small{font-size:10px}
 }
+
+
+/* Navegação PET: contraste, identidade e ações claras no celular. */
+.public-nav a{display:flex;align-items:center;gap:10px;min-height:42px;width:100%;background:transparent;color:#2b4253;border:0;border-radius:11px;text-align:left;font-size:12px;font-weight:750;padding:10px 12px;text-decoration:none;white-space:nowrap}
+.public-nav a svg{flex-shrink:0}
+.public-nav a.manage-link{background:#d8f7e9;color:#0c5942;margin-top:1px}
+.public-nav a.manage-link:hover,.public-nav a.manage-link:focus-visible{background:#b9efd8}
+.public-sidebar-head{display:none}
+.public-sidebar-caption{font-size:10px;font-weight:850;letter-spacing:1.4px;color:#6a9b95;padding:9px 12px 12px}
+.public-sidebar-footer{display:flex;align-items:center;gap:9px;margin:24px 8px 8px;padding:14px 12px;border-radius:13px;background:#e8f5f2;color:#275968;font-size:12px;font-weight:800}
+.public-sidebar-footer small{display:block;color:#679190;font-size:10px;font-weight:500;margin-top:3px}
+.public-sidebar-footer-dot{width:9px;height:9px;background:#0db88c;border-radius:50%;box-shadow:0 0 0 5px #c6eee1;flex-shrink:0}
+.admin-side-bottom .admin-sidebar-link{display:flex;align-items:center;justify-content:center;gap:8px;border:1px solid #ffffff32;background:#ffffff15;color:white;border-radius:11px;padding:12px;text-decoration:none;text-align:center;font-weight:750;font-size:12px}
+.admin-side-bottom .admin-sidebar-link:hover{background:#ffffff25}
+.admin-access-shell{min-height:100dvh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 15% 10%,#d2f4e7 0%,transparent 38%),linear-gradient(145deg,#e7f3f6,#f8fbfc)}
+.admin-access-card{width:min(430px,100%);border:1px solid #d6e8e8;border-radius:22px;background:#fff;box-shadow:0 24px 66px #12364d1d;padding:30px 27px 20px}
+.admin-access-symbol{height:60px;width:60px;display:grid;place-items:center;border-radius:18px;background:linear-gradient(145deg,#09a98a,#07596a);color:white;box-shadow:0 7px 18px #13755f45}
+.admin-access-card h1{margin:19px 0 0;font-size:26px;color:#103d51}
+.admin-access-card>p{margin:5px 0 15px;font-size:13px;color:#738c99}
+.admin-access-card .modal-main{padding:7px 0 0}
+.admin-access-notice{padding:10px 12px;margin:10px 0;font-size:12px;border:1px solid #f3d5b5;color:#895120;background:#fff8ed;border-radius:11px}
+.admin-access-links{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:17px}
+.admin-access-links a,.admin-access-links button{font-size:12px;color:#137967;text-decoration:none;font-weight:750;border:0;background:transparent;padding:8px 0}
+.admin-access-links a:hover,.admin-access-links button:hover{text-decoration:underline}
+.variant-photo-row{display:flex;align-items:center;gap:10px}
+.variant-photo-row .variant-photo-select{flex:1;display:flex;align-items:center;gap:9px;min-width:0;cursor:pointer}
+.variant-photo-thumb{flex:0 0 48px;width:48px;height:44px;border-radius:9px;background:#f0f8f7;object-fit:contain}
+.variant-photo-row .variant-photo-upload{font-size:11px;white-space:nowrap;padding:8px 9px;border-radius:9px;border:1px solid #c5e9db;color:#11665c;background:#f0fbf5;font-weight:750;cursor:pointer}
+.variant-photo-row .variant-photo-upload:hover{background:#d5f2e6}
+@media(max-width:860px){
+ .public-sidebar{background:linear-gradient(180deg,#e9f7f4,#f9fcfd 65%,#eff8f5);padding:0 14px 24px;display:flex;flex-direction:column}
+ .public-sidebar-head{display:flex;flex-direction:column;align-items:stretch;gap:4px;background:radial-gradient(circle at 92% 8%,#ffffff25,transparent 45%),linear-gradient(125deg,#093b53,#06766e);margin:0 -14px 20px;padding:21px 20px 24px;color:#fff}
+ .public-sidebar-head-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+ .public-sidebar-symbol{display:grid;place-items:center;width:42px;height:42px;border-radius:14px;background:#ffffff21;color:#dcfff3;font-size:23px}
+ #public-nav-close{display:grid;place-items:center;width:36px;height:36px;border:1px solid #ffffff50;background:#ffffff18;color:#fff;font-size:27px;border-radius:10px;cursor:pointer}
+ .public-sidebar-head strong{font-size:19px;letter-spacing:-.4px}
+ .public-sidebar-head>span{font-size:11px;color:#bde6de}
+ .public-sidebar-caption{padding:0 12px 11px}
+ .public-nav{gap:8px}
+ .public-nav button,.public-nav a{min-height:49px;font-size:13px;padding:12px 14px}
+ .public-nav button.active,.public-nav button:hover,.public-nav a.manage-link{background:#d4f5e9;color:#075f51;box-shadow:inset 3px 0 #0aa786}
+ .public-sidebar-footer{margin-top:auto}
+}
+@media(max-width:390px){
+ .variant-photo-thumb{width:38px;height:37px;flex-basis:38px}
+ .variant-photo-row .variant-photo-upload{font-size:10px;padding:7px}
+ .admin-access-card{padding:25px 19px 16px}
+}
