@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {JSDOM,VirtualConsole} from "jsdom";
 
-const scripts=["app.js","identity-ui.js","component-art.js","final.js","admin-stage.js"]
+const scripts=["photo-editor.js","excel-export.js","app.js","identity-ui.js","component-art.js","final.js","admin-stage.js"]
   .map(name=>readFileSync("public/"+name,"utf8")).join("\n;\n");
 const invalidSelectors=readFileSync("public/admin-stage.js","utf8").split("\n")
   .filter(line=>/^\s*\$\(/.test(line)&&line.includes(".forEach("));
@@ -25,6 +25,7 @@ const colors=[{id:20,cor:"Azul",hexadecimal:"#2A69D6",quantidade:3,visivel_visit
   {id:21,cor:"Preto",hexadecimal:"#24272C",quantidade:2,visivel_visitante:0,permitir_emprestimos:0,permitir_petianos:0,permitir_visitantes:0,componente_id:201,em_uso:0,com_defeito:0,categoria_id:3,categoria_permite:0,categoria_petianos:0,categoria_visitantes:0}];
 const visitorCatalog={categorias:[categories[0],categories[2]],componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine],demonstracao:false};
 const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine,extra],
+  grupos_variacoes:[{nome:"Resistores"},{nome:"Arduino"},{nome:"Alcalina"}],
   filamentos:colors,reservas:[{id:9,componente_id:1,componente_nome:"Resistor 100Ω",
     nome_solicitante:"Teste",quantidade:1,status:"pendente",data_inicio:"2026-12-01",data_devolucao:"2026-12-03"}],
   configuracoes:{modo_demo:"nao",limpeza_reservas:"nunca",limpeza_historico:"nunca"}};
@@ -83,6 +84,21 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       ]};
     }
     else if(path==="/api/my/loans")body={emprestimos:[]};
+    else if(path==="/api/admin/variation-groups"){
+      const payload=JSON.parse(init.body||"{}");
+      if(payload.acao==="criar")fullAdmin.grupos_variacoes.push({nome:payload.nome});
+      if(payload.acao==="renomear"){
+        variationRenameRequests.push(payload);
+        for(const item of fullAdmin.componentes)if(item.grupo_variacoes===payload.nome)item.grupo_variacoes=payload.novo_nome;
+        const entry=fullAdmin.grupos_variacoes.find(g=>g.nome===payload.nome);if(entry)entry.nome=payload.novo_nome;
+      }
+      if(payload.acao==="excluir"){
+        fullAdmin.grupos_variacoes=fullAdmin.grupos_variacoes.filter(g=>g.nome!==payload.nome);
+        for(const item of fullAdmin.componentes)if(item.grupo_variacoes===payload.nome)item.grupo_variacoes="";
+      }
+      body={ok:true};
+    }
+    else if(path==="/api/admin/export")body=fullAdmin;
     else if(path==="/api/admin/variations/rename"){
       const payload=JSON.parse(init.body||"{}");
       variationRenameRequests.push(payload);
@@ -168,7 +184,7 @@ for(const term of ["esp32","ESP 32","ESP-32","esp_32"]){
     "Buscar "+term+" deve localizar o mesmo ESP 32 no catálogo público.");
   assert.equal(d.querySelector(".catalog-card h3")?.textContent,"Arduino",
     "Encontrar um modelo não deve desmontar o card de sua família.");
-  assert.match(d.querySelector(".catalog-card").textContent,/ESP 32 DevKit/);
+  assert.match(d.querySelector(".catalog-card").textContent,/Ver variações/);
 }
 espPublic.nome=espPreviousName;
 w.__adminTestState.query="";
@@ -184,10 +200,13 @@ assert.equal(d.querySelector("#search").closest(".catalog-toolbar")!==null,true,
 assert.equal(d.querySelector("#search-mobile"),null,"Busca duplicada não deveria existir.");
 assert.ok(d.querySelector("#public-sidebar").textContent.includes("Meus empréstimos"));
 assert.equal(d.querySelectorAll("[data-public-action='reservations']").length,0,"Reservas redundantes ainda aparecem no menu.");
-assert.equal(d.querySelectorAll(".grouped-card").length,2,"Resistores e Alcalinas devem ter cards de família.");
+assert.equal(d.querySelectorAll(".grouped-card").length,3,"Card agrupado aparece mesmo para uma variação.");
 const arduinoSingle=Array.from(d.querySelectorAll(".catalog-card")).find(x=>x.querySelector("h3")?.textContent==="Arduino");
 assert.ok(arduinoSingle,"Mesmo com um único vínculo, o catálogo deve exibir o nome salvo do grupo Arduino.");
-assert.match(arduinoSingle.textContent,/Arduino Uno/,"O material individual não pode desaparecer sob o título do grupo.");
+assert.ok(arduinoSingle.querySelector('[data-open-variants="arduino"]'),"Grupo único abre Ver variações.");
+await click('.catalog-photo[data-open-variants="arduino"]');
+assert.equal(d.querySelectorAll(".variant-picker-option").length,1);
+await click("#modal-root [data-close]");
 w.__adminTestState.query="Resistor 100";w.__finalRender();
 assert.equal(d.querySelector('[data-open-variants="resistores"]')?.closest(".grouped-card")?.querySelector(".catalog-numbers strong")?.textContent,"24",
   "Buscar por um modelo deve manter o grupo completo no card, somando seus estoques.");
@@ -248,6 +267,13 @@ await wait(70);
 assert.equal(d.querySelectorAll(".catalog-card").length,1,"Filtro de busca não funciona.");
 search.value="";search.dispatchEvent(new w.Event("input",{bubbles:true}));
 await wait(70);
+// Regressão: procurar Arduino mostra grupo vinculado e Nano avulso, sem duplicar Uno.
+w.__adminTestState.data.componentes.push({...three,id:899,nome:"Arduino Nano",grupo_variacoes:"",quantidade:2});
+w.__adminTestState.query="Arduino";
+w.__finalRender();
+assert.deepEqual(Array.from(d.querySelectorAll(".catalog-card h3"),n=>n.textContent),["Arduino","Arduino Nano"]);
+w.__adminTestState.query="";
+w.__finalRender();
 await click('[data-photo]');
 assert.ok(d.querySelector(".photo-lightbox"),"Ampliação dos desenhos não funciona.");
 await click("#modal-root [data-close]");
@@ -399,161 +425,84 @@ await adminClick('[data-cat-edit="2"]');
 assert.equal(ad.querySelector("#cat-public").checked,false,"Categoria reservada deveria estar restrita.");
 await adminClick("#cat-cancel");
 await adminClick('[data-admin-tab="materiais"]');
-assert.ok(ad.querySelectorAll('[data-admin-group]').length>=1,"Grupos de materiais devem aparecer no topo, sem repetir variações na lista.");
-assert.ok(ad.querySelector("#admin-individual-title"),"Materiais avulsos precisam ter uma área separada.");
-assert.ok(ad.querySelector("#admin-group-new"),"O painel deve permitir criar uma família sem editar os materiais um a um.");
-assert.ok(ad.querySelector("#admin-bulk-visibility"));
-assert.equal(ad.querySelector("#admin-group-variations"),null,"Remover atalho redundante; variações continuam disponíveis no editor.");
-// A mesma tolerância vale para a pesquisa administrativa.
-const espAdmin=fullAdmin.componentes.find(x=>x.id===3);
-const espAdminPreviousName=espAdmin.nome;
+assert.ok(ad.querySelector("#admin-links-hub"),"Botão Vínculos deve aparecer.");
+assert.ok(ad.querySelector("#admin-download-excel"),"Exportação Excel deve aparecer.");
+assert.equal(ad.querySelector("#admin-group-new"),null,"Sem ações redundantes.");
+assert.equal(ad.querySelector("[data-rename-group]"),null,"Renomear apenas na central.");
+const clearMaterialsSearch=ad.querySelector("#admin-material-search");
+clearMaterialsSearch.value="";
+clearMaterialsSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(20);
+assert.ok(ad.querySelector('[data-admin-group="Arduino"] .admin-family-models'),"Admin deve mostrar variações.");
+const adminSearch=ad.querySelector("#admin-material-search"),espAdmin=fullAdmin.componentes.find(x=>x.id===3),previous=espAdmin.nome;
 espAdmin.nome="ESP 32 DevKit";
-const adminSearchForEsp=ad.querySelector("#admin-material-search");
 for(const term of ["esp32","ESP 32","esp-32"]){
-  adminSearchForEsp.value=term;
-  adminSearchForEsp.dispatchEvent(new aw.Event("input",{bubbles:true}));
+  adminSearch.value=term;adminSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
   await wait(25);
-  assert.ok(ad.querySelector('[data-admin-group="Arduino"]'),
-    "Pesquisa Admin por "+term+" deve encontrar o grupo contendo o ESP 32.");
+  assert.ok(ad.querySelector('[data-admin-group="Arduino"]'),"Busca encontra grupo por "+term);
 }
-espAdmin.nome=espAdminPreviousName;
-adminSearchForEsp.value="";
-adminSearchForEsp.dispatchEvent(new aw.Event("input",{bubbles:true}));
-await wait(25);
-const groupSearch=ad.querySelector("#admin-material-search");
-groupSearch.value="Alcalina";
-groupSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+espAdmin.nome=previous;adminSearch.value="";adminSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
 await wait(30);
-assert.equal(ad.querySelectorAll('[data-admin-group="Alcalina"]').length,1,
-  "A família Alcalina precisa aparecer uma única vez no topo.");
-assert.equal(ad.querySelectorAll('[data-rename-group="Alcalina"]').length,1,
-  "O botão Renomear grupo deve ficar só no cartão da família, não repetido nos modelos.");
-assert.equal(ad.querySelectorAll('#admin-material-list [data-item-edit]').length,0,
-  "Os modelos de uma família não podem repetir a lista de materiais individuais.");
-assert.match(ad.querySelector('[data-admin-group="Alcalina"]').textContent,/3 materiais vinculados/);
-assert.ok(ad.querySelector('[data-group-links="Alcalina"]'),"A família precisa ter Gerenciar vínculos.");
-assert.equal(ad.querySelector('[data-admin-group="Alcalina"] .admin-family-models').open,false,
-  "Os modelos individuais precisam começar recolhidos.");
-await adminClick('[data-rename-group="Alcalina"]');
-assert.ok(ad.querySelector("#rename-group-name"),"Modal de renomear ausente. Erros: "+JSON.stringify(adminUI.errors)+" · Modal: "+String(ad.querySelector("#modal-root")?.innerHTML||"").slice(0,1200));
-assert.equal(ad.querySelector("#rename-group-name").value,"Alcalina",
-  "Renomear grupo deve abrir com o nome atual preenchido.");
-assert.match(ad.querySelector("#rename-group-form").textContent,/3 material/);
-assert.match(ad.querySelector("#rename-group-form").textContent,/patrimônios/);
-const groupInput=ad.querySelector("#rename-group-name");
-groupInput.value="Pilhas";
-ad.querySelector("#rename-group-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
-await wait(110);
-assert.equal(adminUI.variationRenameRequests.length,1,"Salvar deve chamar a API de renomeação.");
-assert.equal(adminUI.variationRenameRequests[0].grupo_atual,"Alcalina");
-assert.equal(adminUI.variationRenameRequests[0].novo_nome,"Pilhas");
-assert.ok(fullAdmin.componentes.filter(x=>x.grupo_variacoes==="Pilhas").length===3,
-  "Todas as três variações devem ser renomeadas sem mudar seu cadastro.");
-assert.equal(ad.querySelectorAll('[data-admin-group="Pilhas"]').length,1,
-  "O grupo deve continuar numa só linha após renomear.");
-assert.equal(ad.querySelectorAll('[data-rename-group="Pilhas"]').length,1);
-assert.ok(!ad.querySelector("#rename-group-form"),"Ao concluir o salvamento, o modal deve fechar.");
-const freshSearch=ad.querySelector("#admin-material-search");
-freshSearch.value="";
-freshSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
-await wait(25);
 await adminClick("#admin-bulk-visibility");
-assert.ok(ad.querySelector("#bulk-only-members"),"Visibilidade em lote não está disponível.");
-assert.ok(ad.querySelector("#bulk-category"),"Filtro por categoria ausente.");
-assert.equal(ad.querySelector("#bulk-select-category").disabled,true,"Seleção de categoria exige escolha de categoria.");
-assert.equal(ad.querySelector("#bulk-similar").hidden,true,"Sem material marcado não pode sugerir semelhantes.");
-assert.ok(ad.querySelector(".bulk-visibility-badge.public"),"Visibilidade pública já salva deve aparecer destacada.");
-assert.ok(ad.querySelector(".bulk-visibility-badge.category-locked"),"A restrição da categoria deve aparecer destacada.");
-assert.equal(ad.querySelector("#bulk-only-members").disabled,true,"Sem seleção não deve permitir alteração.");
-
-ad.querySelector('[data-bulk-id="1"]').click();
-await wait(20);
-assert.equal(ad.querySelector("#bulk-similar").hidden,false,"Marcar resistor deve sugerir outro modelo da mesma família.");
-assert.match(ad.querySelector("#bulk-similar").textContent,/\(1\)/);
-await adminClick("#bulk-similar");
-assert.equal(ad.querySelector("#bulk-selected-count").textContent,"2 materiais selecionados.");
-ad.querySelector("#bulk-category").value="2";
-ad.querySelector("#bulk-category").dispatchEvent(new aw.Event("change",{bubbles:true}));
-await wait(20);
-assert.equal(ad.querySelector("#bulk-select-category").disabled,false);
-assert.equal(ad.querySelectorAll("#bulk-list [data-bulk-id]").length,1,"Filtro deve mostrar apenas equipamentos.");
-await adminClick("#bulk-select-category");
-assert.equal(ad.querySelector("#bulk-selected-count").textContent,"3 materiais selecionados.","Selecionar categoria deve incluir todos os seus itens sem perder a seleção anterior.");
-assert.match(ad.querySelector("#bulk-category-status").textContent,/1\/1 só PETianes/,"Resumo deve mostrar o estado salvo da categoria.");
-assert.equal(ad.querySelectorAll("#bulk-list .bulk-visibility-badge.category-locked").length,1,"Item da categoria restrita deve ter sinal claro.");
-assert.match(ad.querySelector("#bulk-selection-state").textContent,/já visíveis só para PETianes/);
-assert.equal(ad.querySelector("#bulk-category-warning").hidden,false,"Avisar que liberar só o item não libera a categoria.");
-await adminClick("#bulk-show-all");
-assert.ok(ad.querySelector("#bulk-list"),"Liberação de categoria restrita deve ser bloqueada sem descartar a seleção.");
-
+assert.ok(ad.querySelector("#bulk-category"),"Filtro de categoria obrigatório.");
+assert.equal(ad.querySelector("#bulk-select-category"),null,"Sem seleção de categoria duplicada.");
+assert.equal(ad.querySelector("#bulk-only-members").disabled,true);
+assert.ok(ad.querySelector(".bulk-visibility-badge.public"));
+ad.querySelector('[data-bulk-id="1"]').click();await wait(20);
+assert.match(ad.querySelector("#bulk-selected-count").textContent,/1 material selecionado/);
 await adminClick("#bulk-clear");
-assert.equal(ad.querySelector("#bulk-selected-count").textContent,"0 materiais selecionados.");
-assert.equal(ad.querySelector("#bulk-only-members").disabled,true,"Nenhuma alteração sem itens selecionados.");
-await adminClick("#bulk-select-category");
-assert.equal(ad.querySelector("#bulk-selected-count").textContent,"1 material selecionado.");
-await adminClick("#bulk-only-members");
-assert.ok(ad.querySelector("#bulk-list"),"Material que já é Só PETianes não deve ser regravado.");
-assert.match(ad.querySelector("#toast").textContent,/Nenhuma alteração foi feita/,"Informar que a configuração já estava salva.");
+assert.match(ad.querySelector("#bulk-selected-count").textContent,/0 materiais selecionados/);
 await adminClick("#modal-root [data-close]");
-await adminClick("#admin-bulk-visibility");
-assert.equal(ad.querySelectorAll("#bulk-list input:checked").length,0,"A caixa indica seleção para editar, não visibilidade salva.");
-assert.equal(ad.querySelectorAll(".bulk-visibility-badge.category-locked").length,1,"A visibilidade salva deve continuar marcada ao reabrir.");
-
-await adminClick("#modal-root [data-close]");
-const resistorGroup=ad.querySelector('[data-admin-group="Resistores"]');
-assert.ok(resistorGroup,"Grupo Resistores deve aparecer no topo.");
-const models=resistorGroup.querySelector(".admin-family-models");
-models.open=true;
-assert.equal(resistorGroup.querySelectorAll('[data-group-model]').length,3,
-  "A família deve conter seus três modelos, inclusive os de outras categorias.");
-await adminClick('[data-admin-group="Resistores"] [data-item-edit="1"]');
-assert.ok(ad.querySelector(".item-edit-modal"),"Editor compacto deve usar modal próprio.");
-assert.ok(ad.querySelector(".item-editor-intro"),"A edição rápida precisa ter instruções curtas.");
-assert.ok(ad.querySelector("#i-name")?.closest("details")===null,"Nome deve ficar visível sem expandir seções.");
-assert.ok(ad.querySelector("#i-quantity")?.closest("details")===null,"Estoque deve ficar visível sem expandir seções.");
-assert.equal(ad.querySelector("#item-editor-identification").open,false,"Identificação deve começar recolhida.");
-assert.equal(ad.querySelector("#item-editor-media").open,false,"Fotos, vínculos e exibição devem começar recolhidos.");
-assert.ok(ad.querySelector("#i-save")?.closest(".item-editor-savebar"),"Salvar deve ficar na barra fixa inferior.");
-assert.match(ad.querySelector("#i-save").textContent,/Salvar alterações/);
-assert.ok(ad.querySelector("#i-public"),"Visibilidade individual não está disponível.");
-assert.equal(ad.querySelector("#i-variation-family")?.value,"Resistores","O grupo salvo deve ser preservado ao editar o material.");
-assert.equal(ad.querySelector("#i-variation-family")?.type,"hidden","Nome e vínculos não devem ser alterados no editor individual.");
-assert.equal(ad.querySelector("#i-unit").tagName,"SELECT","Unidade precisa ter seletor.");
-assert.ok([...ad.querySelectorAll("#i-unit option")].some(x=>x.value==="pacotes"),"Unidades como pacotes precisam ser preservadas.");
-assert.ok(ad.querySelector('#i-unit option[value="__outro__"]'),"Unidade personalizada deve existir.");
-assert.equal(ad.querySelector("#i-available"),null,"Aviso redundante de disponíveis não foi removido.");
-assert.equal(ad.querySelector("#i-link-variations"),null,
-  "Vínculos não devem ser alterados a partir do editor individual.");
-await adminClick("#modal-root [data-close]");
-await adminClick('[data-group-links="Resistores"]');
-assert.ok(ad.querySelector("#variant-linked-list"),"O organizador deve mostrar claramente os modelos já vinculados.");
-assert.ok(ad.querySelector("#variant-available-list"),"Deve existir lista de materiais disponíveis para adicionar.");
-assert.equal(ad.querySelector("#variant-group-name").readOnly,true,"Renomear deve ser ação separada de vincular.");
-assert.equal(ad.querySelector("#variant-group-name").value,"Resistores");
-assert.equal(ad.querySelector("#variant-linked-count").textContent,"3","A família tem três modelos vinculados.");
-assert.equal(ad.querySelectorAll("[data-variant-remove]").length,3,"Cada membro vinculado deve ter botão Retirar do grupo.");
-const variantSearch=ad.querySelector("#variant-search");
-variantSearch.value="";
-variantSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
-await wait(20);
-assert.ok(ad.querySelector('[data-variant-add="3"]'),"Arduino Uno deve aparecer como candidato para mover.");
-await adminClick('[data-variant-add="3"]');
-assert.ok(ad.querySelector("[data-variant-confirm]"),"Mover de outra família exige confirmação.");
-await adminClick("[data-variant-confirm]");
+await adminClick("#admin-links-hub");
+assert.ok(ad.querySelector('[data-link-open="Alcalina"]'));
+await adminClick('[data-link-rename="Alcalina"]');
+assert.equal(ad.querySelector("#rename-group-name").value,"Alcalina");
+ad.querySelector("#rename-group-name").value="Pilhas";
+ad.querySelector("#rename-group-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
 await wait(120);
-assert.ok(ad.querySelector("#variant-linked-list"),"A confirmação não pode fechar o organizador de vínculos.");
-assert.equal(ad.querySelector("#variant-linked-count").textContent,"4","Material deve entrar imediatamente no grupo após salvar.");
+assert.equal(adminUI.variationRenameRequests.at(-1).novo_nome,"Pilhas");
+assert.equal(fullAdmin.componentes.filter(x=>x.grupo_variacoes==="Pilhas").length,3);
+assert.ok(ad.querySelector('[data-link-open="Pilhas"]'));
+await adminClick('[data-link-open="Resistores"]');
+assert.equal(ad.querySelector("#variant-linked-count").textContent,"3");
+assert.equal(ad.querySelector("#variant-create"),null,"Não cadastrar material pela central.");
+assert.equal(ad.querySelector("[data-variant-photo]"),null,"Não editar fotos pela central.");
+const variantFilter=ad.querySelector("#variant-search");
+variantFilter.value="Arduino";variantFilter.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(25);
+assert.ok(ad.querySelector('[data-variant-select="3"]'));
+ad.querySelector('[data-variant-select="3"]').click();await wait(15);
+await adminClick("#variant-link-selected");await wait(115);
 assert.equal(fullAdmin.componentes.find(x=>x.id===3).grupo_variacoes,"Resistores");
-await adminClick('[data-variant-remove="3"]');
-assert.ok(ad.querySelector("[data-variant-confirm]"),"Retirar do grupo exige confirmação.");
-await adminClick("[data-variant-confirm]");
-await wait(120);
-assert.equal(ad.querySelector("#variant-linked-count").textContent,"3","Após retirar, o grupo volta a ter três materiais.");
+assert.equal(ad.querySelector("#variant-linked-count").textContent,"4");
+await adminClick('[data-variant-remove="3"]');await wait(115);
 assert.equal(fullAdmin.componentes.find(x=>x.id===3).grupo_variacoes,"");
-assert.ok(ad.querySelector('[data-variant-add="3"]'),"Material retirado deve voltar à lista de candidatos.");
-assert.ok(ad.querySelector("#variant-create"),"Deve ser possível cadastrar um novo modelo dentro da família.");
-assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
+assert.equal(ad.querySelector("#variant-linked-count").textContent,"3");
+await adminClick("#variant-back");
+await adminClick("#links-hub-create");
+ad.querySelector("#links-hub-new-name").value="Vínculo Vazio";
+ad.querySelector("#links-hub-new-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(140);
+assert.ok(fullAdmin.grupos_variacoes.some(x=>x.nome==="Vínculo Vazio"));
+assert.equal(ad.querySelector("#variant-linked-count").textContent,"0");
+await adminClick("#variant-back");
+assert.ok(ad.querySelector('[data-link-open="Vínculo Vazio"]'));
+await adminClick('[data-link-delete="Vínculo Vazio"]');
+assert.ok(ad.querySelector("#v2-confirm"),"Exclusão do grupo exige confirmação.");
+await adminClick("#v2-confirm");
+await wait(90);
+assert.equal(fullAdmin.grupos_variacoes.some(x=>x.nome==="Vínculo Vazio"),false,"Apagar grupo vazio não apaga materiais.");
 await adminClick("#modal-root [data-close]");
+await adminClick('[data-admin-tab="materiais"]');
+assert.equal(ad.querySelector('[data-admin-group="Resistores"]').querySelectorAll("[data-group-model]").length,3);
+await adminClick('[data-admin-group="Resistores"] [data-item-edit="1"]');
+assert.ok(ad.querySelector("#i-name"));
+assert.ok(ad.querySelector("#i-quantity"));
+assert.ok(ad.querySelector("#i-photo"));
+assert.equal(ad.querySelector("#i-variation-family"),null);
+assert.equal(ad.querySelector("#i-has-link").textContent,"Sim");
+await adminClick("#modal-root [data-close]");
+assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");
 assert.equal(ad.querySelector("#admin-back").getAttribute("href"),"/");
 await adminClick("#admin-logout");

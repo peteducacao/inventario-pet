@@ -142,7 +142,7 @@ function finalCard(original,siblings=[]){
   const familyName=String(original.grupo_variacoes||"").trim();
   const groupKey=familyName.toLocaleLowerCase("pt-BR");
   const selection=siblings.find(a=>a.id===UI.variantChoice[groupKey]);
-  const grouped=siblings.length>1;
+  const grouped=Boolean(familyName)&&siblings.length>0;
   const x=selection||original;
   if(x._filament){
     const free=Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0));
@@ -171,7 +171,7 @@ function finalCard(original,siblings=[]){
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
   const groupedAction=grouped&&!selection;
   const openModel=grouped?'<button type="button" class="variant-open" data-open-variants="'+attr(groupKey)+'">'+
-    (selection?'Trocar modelo':'Ver '+siblings.length+' variações')+' <span aria-hidden="true">›</span></button>':"";
+    (selection?'Trocar modelo':'Ver variações')+' <span aria-hidden="true">›</span></button>':"";
   const imageAction=grouped?'data-open-variants="'+attr(groupKey)+'"':'data-photo="'+x.id+'"';
   const photoLabel=grouped?'Escolher variação de '+original.grupo_variacoes:'Ampliar ilustração de '+x.nome;
   const action=groupedAction?
@@ -192,7 +192,7 @@ function openVariantChoices(groupKey){
   const group=String(groupKey||"").trim().toLocaleLowerCase("pt-BR");
   const variants=(state.data.componentes||[]).filter(item=>!isArchived(item)&&
     String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===group);
-  if(variants.length<2)return;
+  if(!variants.length)return;
   const title=variants[0].grupo_variacoes;
   const rows=variants.map(v=>{
     const quantity=Number(v.quantidade)||0,free=stock(v),used=Number(v.em_uso)||0;

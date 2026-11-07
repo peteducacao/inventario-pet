@@ -99,14 +99,53 @@ async function catalog(db, isAdmin = false, member = false) {
   }
   return { categorias: cats, componentes: items };
 }
+async function listVariationGroups(db) {
+  const existing=await results(db,"SELECT DISTINCT TRIM(grupo_variacoes) AS nome FROM componentes WHERE TRIM(COALESCE(grupo_variacoes,''))<>''");
+  try {
+    const stored=await results(db,"SELECT nome FROM grupos_variacoes ORDER BY nome COLLATE NOCASE");
+    return [...new Map([...stored,...existing].filter(x=>x.nome).map(x=>[x.nome.toLocaleLowerCase("pt-BR"),{nome:x.nome}])).values()]
+      .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+  } catch(error) {
+    // Compatibilidade com bancos de teste de migrações anteriores à 0020.
+    if(!String(error).includes("no such table"))throw error;
+    return existing;
+  }
+}
 async function state(db) {
   const data = await catalog(db, true);
   data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id ORDER BY r.solicitado_em DESC LIMIT 1500");
   data.filamentos = await results(db,"SELECT f.*,c.em_uso,c.com_defeito FROM filamentos f LEFT JOIN componentes c ON c.id=f.componente_id ORDER BY f.ordem,f.cor COLLATE NOCASE");
+  // Inclui grupos vazios, que não existem em componentes e nunca entram no catálogo.
+  data.grupos_variacoes = await listVariationGroups(db);
   const config = await results(db, "SELECT chave,valor FROM configuracoes");
   data.configuracoes = Object.fromEntries(config.map(x => [x.chave, x.valor]));
   data.ultima_atualizacao = data.componentes.reduce((best,item)=>item.ultima_alteracao>best?item.ultima_alteracao:best,"");
   return data;
+}
+async function renameVariationGroup(db,body) {
+  const current=str(body.grupo_atual,80),next=str(body.novo_nome,80);
+  if(current.length<2||next.length<2)return bad("Informe os nomes atual e novo do vínculo.");
+  const norm=value=>String(value||"").trim().toLocaleLowerCase("pt-BR");
+  const groups=await listVariationGroups(db);
+  const source=groups.find(g=>norm(g.nome)===norm(current));
+  if(!source)return bad("Vínculo não encontrado.",404);
+  if(source.nome===next&&current===next)return j({ok:true,alterados:0});
+  if(groups.some(g=>norm(g.nome)===norm(next)&&norm(g.nome)!==norm(current)))
+    return bad("Já existe outro vínculo com esse nome.",409);
+  const members=await results(db,"SELECT id,grupo_variacoes FROM componentes WHERE TRIM(COALESCE(grupo_variacoes,''))<>''");
+  const affected=members.filter(x=>norm(x.grupo_variacoes)===norm(current));
+  const actor=str(body.responsavel,100)||"Admin",stamp=now();
+  const ops=affected.map(x=>db.prepare("UPDATE componentes SET grupo_variacoes=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+    .bind(next,stamp,actor,"Grupo de variações: "+current+" → "+next,x.id));
+  const hasTable=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='grupos_variacoes'").first();
+  if(hasTable){
+    // Grupos antigos criados antes da migração também são preservados.
+    ops.push(db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES(?)").bind(source.nome));
+    ops.push(db.prepare("UPDATE grupos_variacoes SET nome=? WHERE nome=?").bind(next,source.nome));
+  }
+  if(ops.length)await db.batch(ops);
+  await auditLog(db,"Renomeou grupo de variações","material",null,current+" → "+next+" · "+affected.length+" materiais",actor);
+  return j({ok:true,alterados:affected.length});
 }
 const maxReserved = async (db, id, start, end, except = -1) => {
   const found = await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND id!=? AND status='aprovada' AND data_inicio<=? AND data_devolucao>=?").bind(id, except, end, start).first();
@@ -246,23 +285,39 @@ async function processRequest(req, env) {
     await auditLog(db,show?"Liberou exibição":"Restringiu exibição","material",null,changes.length+" materiais: "+changes.map(x=>x.nome).slice(0,16).join(", "),body.responsavel);
     return j({ok:true,alterados:changes.length,inalterados:objects.length-changes.length});
   }
-  if(path==="/api/admin/variations/rename" && method==="POST"){
-    const body=await input(req,2000);
-    const current=str(body.grupo_atual,80),next=str(body.novo_nome,80);
-    if(current.length<2||next.length<2)return bad("Informe os nomes atual e novo do grupo (mínimo de 2 caracteres).");
+  if(path==="/api/admin/variation-groups" && method==="POST"){
+    const body=await input(req,2500),action=str(body.acao,20);
+    const name=str(body.nome,80),next=str(body.novo_nome,80);
     const norm=value=>String(value||"").trim().toLocaleLowerCase("pt-BR");
-    const groups=await results(db,"SELECT id,grupo_variacoes FROM componentes WHERE TRIM(grupo_variacoes)<>''");
-    const affected=groups.filter(x=>norm(x.grupo_variacoes)===norm(current));
-    if(!affected.length)return bad("Este grupo não foi encontrado. Atualize o painel e tente novamente.",404);
-    if(groups.some(x=>norm(x.grupo_variacoes)===norm(next)&&norm(x.grupo_variacoes)!==norm(current)))
-      return bad("Já existe outro grupo com esse nome. Escolha um nome diferente para evitar juntar famílias.",409);
-    if(affected.every(x=>x.grupo_variacoes===next))return j({ok:true,alterados:0});
-    const actor=str(body.responsavel,100)||"Admin",stamp=now();
-    const updated=await db.prepare("UPDATE componentes SET grupo_variacoes=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id IN ("+affected.map(()=>"?").join(",")+")")
-      .bind(next,stamp,actor,"Grupo de variações: "+current+" → "+next,...affected.map(x=>x.id)).run();
-    await auditLog(db,"Renomeou grupo de variações","material",null,
-      current+" → "+next+" · "+(updated.meta?.changes||0)+" materiais",actor);
-    return j({ok:true,alterados:updated.meta?.changes||0});
+    const known=await listVariationGroups(db);
+    const matches=value=>known.find(group=>norm(group.nome)===norm(value));
+    const actor=str(body.responsavel,100)||"Admin";
+    if(action==="criar"){
+      if(name.length<2)return bad("Informe um nome de vínculo com pelo menos 2 caracteres.");
+      if(matches(name))return bad("Já existe um vínculo com esse nome.",409);
+      await db.prepare("INSERT INTO grupos_variacoes(nome) VALUES(?)").bind(name).run();
+      await auditLog(db,"Criou grupo","material",null,name,actor);
+      return j({ok:true,nome:name});
+    }
+    if(action==="excluir"){
+      const current=matches(name);
+      if(!current)return bad("Vínculo não encontrado.",404);
+      const members=await results(db,"SELECT id FROM componentes WHERE LOWER(TRIM(grupo_variacoes))=LOWER(?)",[current.nome]);
+      const stamp=now();
+      const ops=members.map(x=>db.prepare("UPDATE componentes SET grupo_variacoes='',ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+        .bind(stamp,actor,"Vínculo "+current.nome+" removido; material individual preservado",x.id));
+      ops.push(db.prepare("DELETE FROM grupos_variacoes WHERE nome=?").bind(current.nome));
+      await db.batch(ops);
+      await auditLog(db,"Excluiu grupo","material",null,current.nome+" · "+members.length+" material(is) preservado(s)",actor);
+      return j({ok:true,desvinculados:members.length});
+    }
+    if(action!=="renomear")return bad("Ação de vínculo inválida.");
+    body.grupo_atual=name;body.novo_nome=next;
+    // Renomeação é processada pelo mesmo núcleo utilizado pela rota antiga.
+    return renameVariationGroup(db,body);
+  }
+  if(path==="/api/admin/variations/rename" && method==="POST"){
+    return renameVariationGroup(db,await input(req,2500));
   }
   if(path==="/api/admin/variations" && method==="POST"){
     const body=await input(req,12000),ids=Array.isArray(body.ids)?body.ids.map(Number):[];
@@ -271,8 +326,11 @@ async function processRequest(req, env) {
     if(label && label.length<2)return bad("Informe um nome de grupo válido.");
     const objects=await results(db,"SELECT id,nome FROM componentes WHERE id IN ("+ids.map(()=>"?").join(",")+")",ids);
     if(objects.length!==ids.length)return bad("Alguns materiais não foram encontrados.",404);
-    await db.batch(ids.map(id=>db.prepare("UPDATE componentes SET grupo_variacoes=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
-      .bind(label,now(),str(body.responsavel,100)||"Admin","Grupo de variações: "+(label||"Sem grupo"),id)));
+    const ops=ids.map(id=>db.prepare("UPDATE componentes SET grupo_variacoes=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(label,now(),str(body.responsavel,100)||"Admin","Grupo de variações: "+(label||"Sem grupo"),id));
+    const hasTable=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='grupos_variacoes'").first();
+    if(label&&hasTable)ops.unshift(db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES(?)").bind(label));
+    await db.batch(ops);
     await auditLog(db,label?"Vinculou variações":"Desvinculou variações","material",null,objects.map(x=>x.nome).slice(0,16).join(", ")+" → "+(label||"Sem grupo"),body.responsavel);
     return j({ok:true,vinculados:objects.length});
   }
@@ -385,6 +443,8 @@ async function processRequest(req, env) {
     if (!categoria) return bad("Categoria não encontrada.");
     const old = id ? await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first() : null;
     if (id && !old) return bad("Material não encontrado.",404);
+    // Vínculos só podem ser alterados pela central própria, nunca pelo editor.
+    item.grupo_variacoes=old?.grupo_variacoes||"";
     if(isFilamentMirror(old))return bad("Edite esta cor pela aba Filamentos.",409);
     const available = baseAvailable(item);
     if (id && (await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(id).first()).n > available) return bad("As quantidades não cobrem as reservas já aprovadas.",409);
@@ -598,6 +658,13 @@ async function processRequest(req, env) {
     await auditLog(db,"Configuração","sistema",null,"Configurações de reservas atualizadas");
     return j({ ok:true });
   }
+  if (path === "/api/admin/export" && method === "GET") {
+    // Exportação completa para Excel, sem senhas/sessões/segredos.
+    const data=await state(db);
+    data.reservas=await results(db,"SELECT r.id,r.componente_id,c.nome AS componente_nome,r.nome_solicitante,r.quantidade,r.tipo,r.status,r.data_inicio,r.data_devolucao,r.devolvido_em,r.solicitado_em,r.contato,r.observacao FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.id DESC");
+    return j({categorias:data.categorias,componentes:data.componentes,
+      grupos_variacoes:data.grupos_variacoes,filamentos:data.filamentos,reservas:data.reservas});
+  }
   if (path === "/api/admin/backup" && method === "GET") {
     const data=await state(db);
     const [historico,conciliacao_experimentos_vinculos,conciliacao_experimentos_backup]=await Promise.all([
@@ -625,15 +692,23 @@ async function processRequest(req, env) {
       return bad("O backup tem registros inválidos.");
     if(!v2 || !Array.isArray(b.filamentos))return bad("Use um backup completo v2 com filamentos para preservar os estoques.",409);
     const activeUsers=new Set((await results(db,"SELECT id FROM usuarios")).map(x=>Number(x.id)));
+    const hasGroupTable=await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='grupos_variacoes'").first();
     // Reposição única e atômica das tabelas do inventário. Contas/senhas de
     // usuários não são exportadas nem apagadas nesta operação.
     const ops=[
       db.prepare("DELETE FROM reservas"),
       db.prepare("DELETE FROM filamentos"),
       db.prepare("DELETE FROM componentes"),
+      ...(hasGroupTable?[db.prepare("DELETE FROM grupos_variacoes")]:[]),
       db.prepare("DELETE FROM categorias"),
       db.prepare("DELETE FROM configuracoes")
     ];
+    if(hasGroupTable){
+      const saved=Array.isArray(b.grupos_variacoes)?b.grupos_variacoes:[];
+      const names=new Map([...saved.map(x=>typeof x==="string"?x:x?.nome),...b.componentes.map(x=>x.grupo_variacoes)]
+        .map(x=>str(x,80)).filter(x=>x.length>=2).map(x=>[x.toLocaleLowerCase("pt-BR"),x]));
+      for(const name of names.values())ops.push(db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES(?)").bind(name));
+    }
     for (const c of b.categorias){
       ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?)")
         .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0,c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):(c.permitir_emprestimos?1:0),c.permitir_petianos===undefined?(c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):Number(!!c.permitir_emprestimos)):Number(!!c.permitir_petianos),c.permitir_visitantes===undefined?(c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):Number(!!c.permitir_emprestimos)):Number(!!c.permitir_visitantes)));

@@ -231,20 +231,13 @@ function itemEditor(id){
   const x=state.admin.componentes.find(i=>i.id===id);
   const categories=state.admin.categorias.filter(c=>!c.arquivada).map(c=>({value:c.id,label:c.nome}));
   if(!categories.length){toast("Cadastre uma categoria primeiro.",true);selectAdminTab("categorias");return;}
-  const groups=[...new Set(state.admin.componentes.map(y=>y.grupo_variacoes).filter(Boolean))];
-  const family=window.__newVariantGroup||x?.grupo_variacoes||"";
-  window.__newVariantGroup="";
+  const family=x?.grupo_variacoes||"";
   const body='<form id="item-form" class="modal-main">'+
     '<div class="item-editor-scroll">'+
     '<div class="item-editor-intro"><strong>Edição rápida</strong><span>Altere nome ou estoque e salve. Outras opções ficam recolhidas abaixo.</span></div>'+
     '<div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+
       selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
-    (!x?'<div class="field item-group-new"><label for="i-variation-family">Adicionar ao grupo (opcional)</label>'+
-      '<select id="i-variation-family"><option value="">Sem grupo — material individual</option>'+
-      [...new Set([family,...groups].filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"))
-        .map(name=>'<option value="'+attr(name)+'"'+(name===family?' selected':'')+'>'+esc(name)+'</option>').join("")+
-      '</select><small class="hint">'+(family?'Este modelo já será vinculado a '+esc(family)+' quando você salvar.':
-      'Se escolher um grupo, este material aparecerá como modelo dentro dele. Também é possível fazer isso depois na área Grupos de variações.')+'</small></div>':'')+
+    '<div class="item-link-indicator"><strong>Possui vínculo?</strong> <span id="i-has-link">'+(family?'Sim':'Não')+'</span></div>'+
     '<section class="item-editor-essentials" aria-labelledby="item-editor-stock-title">'+
       '<h3 id="item-editor-stock-title">Estoque</h3>'+
       '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade total",x?.quantidade||0)+
@@ -272,13 +265,14 @@ function itemEditor(id){
       '<div class="field"><label for="i-description">Informações sobre defeitos (opcional)</label><textarea id="i-description" maxlength="1400">'+esc(x?.descricao_defeito||"")+'</textarea></div>'+
       (x?.ultima_alteracao?'<div class="audit"><strong>Última alteração salva</strong><span>'+esc(x.ultimo_responsavel||"PETiane")+' · '+esc(fmt(x.ultima_alteracao))+'</span><p>'+esc(x.detalhes_alteracao||"Registro atualizado")+'</p></div>':"")+
       '</div></details>'+
-    '<details class="item-editor-section" id="item-editor-media"><summary>Foto, variações e exibição <small>Imagem, grupo e opções de visualização</small></summary>'+
+    '<details class="item-editor-section" id="item-editor-media"><summary>Foto e exibição <small>Imagem e opções de visualização</small></summary>'+
       '<div class="item-editor-extra">'+
-      (x?'<div class="field"><label>Grupo de variações</label><input id="i-variation-family" type="hidden" value="'+attr(family)+'">'+
-        '<div class="item-group-reference">'+(family?'<strong>'+esc(family)+'</strong>':'<span>Sem grupo</span>')+
-        '<small>Para adicionar ou retirar este material de um grupo, use Grupos de variações na aba Materiais.</small></div></div>':'')+
       switchInput("i-public","Exibir para todos",x?flag(x.visivel_visitante):true,"Desmarque para mostrar somente aos PETianes.")+
-      '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Ilustração do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Imagem própria ou ilustração automática.</small><label class="switch-row"><span><strong>Remover fundo claro automaticamente</strong><small>Para fotos com fundo uniforme.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div>'+
+      '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Foto do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div>'+
+      '<small class="hint">Formato recomendado: 4:3. O editor centraliza a foto sem cortar o componente. Também permite girar, ampliar e ajustar.</small>'+
+      '<input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px">'+
+      '<div class="item-photo-actions"><button type="button" class="outline-button small-button" id="i-photo-edit" '+(!/^data:image\//i.test(x?.imagem||"")?'disabled ':'')+'>Ajustar foto atual</button>'+
+      '<button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div></div>'+
       '<details class="editor-advanced"><summary>Exibição das quantidades no catálogo</summary>'+
         switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
         switchInput("i-show-used","Exibir em uso",x?flag(x.mostrar_em_uso):true)+
@@ -296,11 +290,20 @@ function itemEditor(id){
     other.required=!other.hidden;
     if(!other.hidden)other.focus();
   };
-  $("#i-photo-remove").onclick=()=>{image="";$("#i-photo-preview").innerHTML='<img alt="Desenho padrão" src="'+attr(defaultImage($("#i-name").value))+'">';$("#i-photo").value="";$("#i-photo").dispatchEvent(new Event("input",{bubbles:true}));};
+  const showPhoto=()=>{$("#i-photo-preview").innerHTML='<img alt="Foto do material no catálogo" src="'+attr(image||defaultImage($("#i-name").value))+'">';$("#i-photo-edit").disabled=!image.startsWith("data:image/");};
+  $("#i-photo-remove").onclick=()=>{image="";$("#i-photo").value="";showPhoto();};
+  $("#i-photo-edit").onclick=async()=>{
+    if(!image.startsWith("data:image/"))return;
+    try{const result=await editPETCatalogPhoto(image);if(result){image=result;showPhoto();toast("Enquadramento da foto atualizado.");}}
+    catch(error){toast(error.message,true);}
+  };
   $("#i-photo").onchange=async e=>{
     const file=e.target.files?.[0];if(!file)return;
-    if(!file.type.startsWith("image/")){toast("Selecione uma imagem.",true);return;}
-    try{image=await shrinkImage(file);$("#i-photo-preview").innerHTML='<img src="'+attr(image)+'" alt="Nova imagem">';toast("Imagem pronta para salvar.");}catch(error){toast(error.message,true);}
+    try{
+      const result=await editPETCatalogPhoto(file);
+      if(result){image=result;showPhoto();toast("Foto ajustada. Salve o material para concluir.");}
+      e.target.value="";
+    }catch(error){toast(error.message,true);e.target.value="";}
   };
   $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
   $("#i-cancel").onclick=()=>adminModal();
@@ -311,21 +314,19 @@ function itemEditor(id){
       imagem:image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),
       com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,
       mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
-      visivel_visitante:$("#i-public").checked,permitir_petianos:["todos","petianos"].includes($("#i-loan-audience").value),permitir_visitantes:["todos","visitantes"].includes($("#i-loan-audience").value),grupo_variacoes:$("#i-variation-family").value,
+      visivel_visitante:$("#i-public").checked,permitir_petianos:["todos","petianos"].includes($("#i-loan-audience").value),permitir_visitantes:["todos","visitantes"].includes($("#i-loan-audience").value),grupo_variacoes:family,
       descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{
       await api("/api/admin/item","POST",body);
       $("#item-form")?.dispatchEvent(new Event("pet:item-saved"));
       await adminReload();
-      const returnGroup=window.__variantReturnGroup;
-      window.__variantReturnGroup="";
-      if(returnGroup){adminBuild();openVariantLinker(null,returnGroup);}
-      else adminModal();
+      adminModal();
       toast("Material salvo!");
     }
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent=x?"Salvar alterações":"Cadastrar material";}
   };
 }
+/* Método antigo mantido para compatibilidade com outras operações, mas não é usado para fotos novas. */
 async function shrinkImage(file){
   if(file.size>14*1024*1024)throw Error("Foto muito grande. Escolha uma com até 14 MB.");
   const src=URL.createObjectURL(file);
