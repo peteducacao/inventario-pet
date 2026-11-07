@@ -55,7 +55,9 @@ async function rate(db,req,tag,max,windowH=24) {
 const ITERATIONS=100000;
 const username = value => clean(value,30).toLowerCase();
 const validUsername = value => /^[a-z0-9][a-z0-9._-]{3,23}$/.test(value);
-const validPassword = value => typeof value==="string" && value.length>=10 && value.length<=128;
+// Sem exigência de número mínimo de dígitos. Limite técnico amplo para prevenir abuso de memória.
+const MAX_PASSWORD_LENGTH=2048;
+const validPassword = value => typeof value==="string" && value.length>=1 && value.length<=MAX_PASSWORD_LENGTH;
 const secureEquals = (a,b) => {
   if(typeof a!=="string"||typeof b!=="string"||a.length!==b.length)return false;
   let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;
@@ -79,10 +81,10 @@ const maybeDuplicate=e=>String(e?.message||e).includes("UNIQUE")||String(e?.mess
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
-  const b=await bodyJson(req,4000),nome=clean(b.nome,80),login=username(b.login),password=b.senha;
+  const b=await bodyJson(req,12000),nome=clean(b.nome,80),login=username(b.login),password=b.senha;
   if(nome.length<2)return error("Informe seu nome.");
   if(!validUsername(login))return error("O login deve ter de 4 a 24 caracteres: letras sem acentos, números, ponto, traço ou _.");
-  if(!validPassword(password))return error("A senha precisa ter entre 10 e 128 caracteres.");
+  if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
   if(!await rate(db,req,"cadastro",20))return error("Limite de cadastros atingido. Tente mais tarde.",429);
   const taken=await db.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first();
   if(taken)return error("Este nome de usuário já está em uso.",409);
@@ -105,8 +107,8 @@ async function register(req,env){
   return respond({ok:true,usuario:publicUser(user)},201,{"set-cookie":session});
 }
 async function loginUser(req,env){
-  const db=env.DB,b=await bodyJson(req,4000),login=username(b.login);
-  if(!validUsername(login)||typeof b.senha!=="string"||b.senha.length>128)return error("Login ou senha incorretos.",401);
+  const db=env.DB,b=await bodyJson(req,12000),login=username(b.login);
+  if(!validUsername(login)||!validPassword(b.senha))return error("Login ou senha incorretos.",401);
   if(!await rate(db,req,"login:"+login,12,1))return error("Muitas tentativas de login. Tente mais tarde.",429);
   const u=await db.prepare("SELECT * FROM usuarios WHERE login=? AND ativo=1").bind(login).first();
   if(!u||!await verifyPassword(b.senha,u))return error("Login ou senha incorretos.",401);
@@ -119,9 +121,9 @@ async function upgradeLegacy(req,env){
   const user=await loggedIn(req,env.DB);
   if(!user)return error("Entre no perfil antigo neste aparelho ou peça redefinição ao administrador.",401);
   if(user.login)return error("Esta conta já usa login e senha.",409);
-  const b=await bodyJson(req,4000),login=username(b.login),password=b.senha;
+  const b=await bodyJson(req,12000),login=username(b.login),password=b.senha;
   if(!validUsername(login))return error("Escolha um login de 4 a 24 caracteres (letras, números, ponto, _ ou traço).");
-  if(!validPassword(password))return error("A senha precisa ter entre 10 e 128 caracteres.");
+  if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
   if(await env.DB.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first())return error("Este login já está em uso.",409);
   const {hash,salt}=await securityFields(password);
   try {
@@ -139,8 +141,8 @@ async function changePassword(req,env){
   const u=await loggedIn(req,env.DB);
   if(!u)return error("Entre no seu perfil antes de alterar a senha.",401);
   if(!u.login)return error("Primeiro configure login e senha para o perfil antigo.",409);
-  const b=await bodyJson(req,4000),newPassword=b.nova_senha;
-  if(!validPassword(newPassword))return error("A nova senha precisa ter entre 10 e 128 caracteres.");
+  const b=await bodyJson(req,12000),newPassword=b.nova_senha;
+  if(!validPassword(newPassword))return error("Informe uma nova senha com até 2.048 caracteres.");
   if(!u.must_change_password&&!await verifyPassword(b.senha_atual,u))return error("Senha atual incorreta.",401);
   if(await verifyPassword(newPassword,u))return error("Escolha uma senha diferente da anterior.");
   const {hash,salt}=await securityFields(newPassword);
