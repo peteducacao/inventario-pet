@@ -401,15 +401,22 @@ async function processRequest(req, env) {
     return j({ ok:true });
   }
   if (path === "/api/admin/item" && method === "DELETE") {
-    const id = requireId(url.searchParams.get("id"));
-    const active = await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=? AND status IN ('pendente','aprovada','retirada')").bind(id).first();
-    if (active.n) return bad("Existem reservas ativas deste material. Finalize-as antes de excluir.",409);
-    const old=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
+    const id=requireId(url.searchParams.get("id"));
+    const old=await db.prepare("SELECT id,nome,import_key FROM componentes WHERE id=?").bind(id).first();
+    if(!old)return bad("Material não encontrado.",404);
     if(isFilamentMirror(old))return bad("Altere este filamento na aba Filamentos.",409);
-    await db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
-      .bind(now(),"Admin","Material arquivado",id).run();
-    await auditLog(db,"Arquivou","material",id,old?.nome||"Material");
-    return j({ ok:true,arquivado:true });
+    const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=? AND status IN ('pendente','aprovada','retirada')").bind(id).first();
+    if(Number(active?.n)>0)return bad("Há reservas pendentes ou empréstimos ativos. Conclua-os antes de excluir o material.",409);
+    const finished=await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=?").bind(id).first();
+    // Excluir de verdade, sem criar um novo registro invisível em Arquivados.
+    // A interface baixa antes um backup JSON completo da base do inventário.
+    await db.batch([
+      db.prepare("UPDATE mail_queue SET situacao='cancelado',token_reserva=NULL,ultimo_erro='Material excluído pelo administrador' WHERE reserva_id IN (SELECT id FROM reservas WHERE componente_id=?) AND situacao IN ('pendente','processando')").bind(id),
+      db.prepare("DELETE FROM reservas WHERE componente_id=?").bind(id),
+      db.prepare("DELETE FROM componentes WHERE id=?").bind(id)
+    ]);
+    await auditLog(db,"Excluiu definitivamente","material",id,old.nome+" · "+Number(finished?.n||0)+" reserva(s) concluída(s) vinculada(s) removida(s)");
+    return j({ok:true,excluido:true,reservas_concluidas_removidas:Number(finished?.n||0)});
   }
   if(path==="/api/admin/item/unarchive" && method==="POST"){
     const b=await input(req,1500),id=requireId(b.id);
