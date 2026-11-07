@@ -848,10 +848,10 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
       '</div>';
   }).join("")||'<div class="empty-state">Nenhum material encontrado.</div>'};
 }
-function adminMaterialPickerConfig(mode,currentId){
+function adminMaterialPickerConfig(mode,currentId,requestedGroup=""){
   const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
   const selected=new Set(),current=all.find(x=>x.id===currentId);
-  const group=current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
+  const group=requestedGroup||current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
   if(mode==="variations"&&group){
     // Já vinculados devem aparecer selecionados antes de qualquer clique.
     const linked=String(group).trim().toLocaleLowerCase("pt-BR");
@@ -985,13 +985,14 @@ function openBulkVisibility(currentId){
   $("#bulk-only-members").onclick=()=>save(false);
   draw();
 }
-function openVariantLinker(currentId){
-  const model=adminMaterialPickerConfig("variations",currentId);
+function openVariantLinker(currentId,groupName=""){
+  const model=adminMaterialPickerConfig("variations",currentId,groupName);
+  const fromGroup=Boolean(groupName);
   const existing=[...new Set(model.all.map(x=>x.grupo_variacoes).filter(Boolean))];
   openModal("Organizar variações","Vincule modelos sem juntar seus estoques. Selecione os materiais que devem compartilhar um card.",
     '<div class="modal-main"><div class="field"><label for="variant-group-name">Nome da família</label>'+
-    '<input id="variant-group-name" maxlength="80" list="variant-existing-groups" value="'+attr(model.current?.grupo_variacoes||model.group||"")+'" placeholder="Ex.: Resistores"><datalist id="variant-existing-groups">'+existing.map(x=>'<option value="'+attr(x)+'"></option>').join("")+'</datalist></div>'+
-    '<div class="field"><label for="variant-search">Buscar outros modelos</label><input id="variant-search" placeholder="Buscar material..." value="'+attr(model.current?.nome.split(/\s+/)[0]||"")+'"></div>'+
+    '<input id="variant-group-name" maxlength="80" list="variant-existing-groups" '+(fromGroup?'readonly ':'')+'value="'+attr(model.group||"")+'" placeholder="Ex.: Resistores"><datalist id="variant-existing-groups">'+existing.map(x=>'<option value="'+attr(x)+'"></option>').join("")+'</datalist>'+(fromGroup?'<small class="hint">Para mudar este título, use Renomear grupo na área de famílias.</small>':'')+'</div>'+
+    '<div class="field"><label for="variant-search">Buscar outros modelos</label><input id="variant-search" placeholder="Buscar material..." value="'+attr(fromGroup?"":model.current?.nome.split(/\s+/)[0]||"")+'"></div>'+
     '<div class="admin-bulk-actions"><button class="outline-button small-button" type="button" id="variant-similar">Sugerir semelhantes ('+model.similar.length+')</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-all">Selecionar resultados</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-none">Limpar seleção</button></div>'+
