@@ -15,6 +15,8 @@ jobs:
         with:
           node-version: "22"
       - run: npm install --no-save wrangler@4 jsdom@26
+      - name: Testar fusão dos 26 lotes de Experimentos sem afetar banco remoto
+        run: node --disable-warning=ExperimentalWarning tests/experiments.test.mjs
       - name: Aplicar tabelas ao D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
