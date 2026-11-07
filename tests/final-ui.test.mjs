@@ -116,7 +116,7 @@ assert.equal(d.querySelectorAll("[data-public-action='reservations']").length,0,
 assert.equal(d.querySelectorAll(".grouped-card").length,2,"Resistores e Alcalinas devem ter cards de família.");
 assert.equal(d.querySelectorAll(".catalog-card").length,4,"Estoque agrupado não deveria gerar cards repetidos.");
 assert.equal(d.querySelectorAll(".filament-public-card").length,1,"Filamentos devem continuar na grade do catálogo.");
-assert.match(d.querySelector(".filament-public-card").textContent,/Somente consulta/,"Cor bloqueada deve ficar visível, sem poder reservar.");
+assert.match(d.querySelector(".filament-public-card").textContent,/Reservar/,"Card de visitante deve exibir sempre a ação Reservar, mesmo quando o Admin a desativou.");
 assert.equal(d.querySelector(".filament-public-card [data-reserve-item]"),null,"Filamento bloqueado não pode ter reserva ativa.");
 assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").textContent,/Resistores/);
 assert.equal(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector("h3").textContent,"Resistores","O card deve mostrar só a família.");
