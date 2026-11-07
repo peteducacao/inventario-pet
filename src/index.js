@@ -404,16 +404,25 @@ async function processRequest(req, env) {
         db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'").bind(current,actor,str(b.observacao,500),id)
       ]);
     } else return bad("Ação não permitida para o estado atual desta reserva.",409);
+    // Registrar o resultado para o titular vinculado à reserva. A senha do Admin, por si,
+    // só não identifica uma pessoa; nesse caso não atribuir falsamente uma decisão.
+    const actorName=actor==="Administração"||actor==="Admin"||actor==="PETiane"?"Administração do PET":actor;
     if(r.usuario_id){
       let titulo="",mensagem="",tipo="info";
-      if(action==="aprovar"){titulo="Reserva aprovada";mensagem="Sua solicitação de "+item.nome+" foi aprovada.";tipo="aprovada";}
-      else if(action==="recusar"){titulo="Reserva recusada";mensagem="A solicitação de "+item.nome+" não foi aprovada.";tipo="recusada";}
-      else if(action==="retirar"){titulo="Retirada registrada";mensagem="A retirada de "+item.nome+" foi registrada.";tipo="retirada";}
-      else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução de "+item.nome+" foi confirmada.";tipo="devolucao";}
+      const subject="a reserva #"+id+" de "+item.nome;
+      if(action==="aprovar"){titulo="Reserva aprovada";mensagem="Sua "+subject+" foi aprovada por "+actorName+".";tipo="aprovada";}
+      else if(action==="recusar"){
+        titulo="Reserva recusada";
+        const reason=str(b.observacao,500);
+        mensagem="Sua "+subject+" foi recusada por "+actorName+"."+(reason?" Motivo: "+reason:"");
+        tipo="recusada";
+      }
+      else if(action==="retirar"){titulo="Retirada registrada";mensagem="A retirada da "+subject+" foi registrada por "+actorName+".";tipo="retirada";}
+      else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução da "+subject+" foi confirmada por "+actorName+".";tipo="devolucao";}
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
-    await auditLog(db,action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actor);
-    return j({ ok:true });
+    await auditLog(db,action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
+    return j({ ok:true, notificacao_registrada:Boolean(r.usuario_id) });
   }
   if (path === "/api/admin/settings" && method === "POST") {
     const b = await input(req,4000), days = String(b.limpeza_reservas);
