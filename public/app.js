@@ -290,10 +290,10 @@ function itemEditor(id){
     other.required=!other.hidden;
     if(!other.hidden)other.focus();
   };
-  const showPhoto=()=>{$("#i-photo-preview").innerHTML='<img alt="Foto do material no catálogo" src="'+attr(image||defaultImage($("#i-name").value))+'">';$("#i-photo-edit").disabled=!/^data:image\\//i.test(image);};
+  const showPhoto=()=>{$("#i-photo-preview").innerHTML='<img alt="Foto do material no catálogo" src="'+attr(image||defaultImage($("#i-name").value))+'">';$("#i-photo-edit").disabled=!image.startsWith("data:image/");};
   $("#i-photo-remove").onclick=()=>{image="";$("#i-photo").value="";showPhoto();};
   $("#i-photo-edit").onclick=async()=>{
-    if(!/^data:image\\//i.test(image))return;
+    if(!image.startsWith("data:image/"))return;
     try{const result=await editPETCatalogPhoto(image);if(result){image=result;showPhoto();toast("Enquadramento da foto atualizado.");}}
     catch(error){toast(error.message,true);}
   };
