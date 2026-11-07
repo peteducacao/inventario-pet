@@ -67,7 +67,7 @@ const configured=await adminPost("/api/admin/settings",{limpeza_reservas:"7",mod
 assert.equal(configured.status,200);
 const cleanup=await adminPost("/api/admin/cleanup",{});
 assert.equal(cleanup.status,200,JSON.stringify(cleanup.body));
-assert.equal(cleanup.body.removidos,3,"A limpeza deve eliminar devolvidas, recusadas e canceladas antigas");
+assert.equal(cleanup.body.removidas,3,"A limpeza deve eliminar devolvidas, recusadas e canceladas antigas");
 for(const id of [oldReturned,oldRejected,oldCanceled]){
   assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM reservas WHERE id=?").get(id).n,0,"Concluído antigo não foi removido: "+id);
 }
