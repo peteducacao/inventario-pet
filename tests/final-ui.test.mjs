@@ -38,7 +38,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   w.addEventListener("error",e=>errors.push(String(e.error||e.message)));
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
   let adminAuthenticated=alreadyAdmin;
-  const pendingNotices=[],adminReservationRequests=[];
+  const pendingNotices=[],adminReservationRequests=[],templateSaves=[];
   let noticeRequestCount=0;
   w.fetch=async(uri,init={})=>{
     const path=new URL(uri,w.location.href).pathname;
@@ -60,7 +60,17 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       {id:2,criado_em:"2026-11-06T12:15:00Z",responsavel:"Teste",acao:"Aprovou",tipo:"reserva",registro_id:9,descricao:"Reserva aprovada"},
       {id:1,criado_em:"2026-11-06T12:00:00Z",responsavel:"Teste",acao:"Criou",tipo:"usuario",registro_id:null,descricao:"Usuário novo"}],
       total:5,pagina:1,limpeza_historico:"nunca"};
-    else if(path==="/api/admin/users")body={usuarios:[]};
+    else if(path==="/api/admin/users")body={usuarios:[
+      {id:"PET-AABBCCDDEEFF",nome:"Pessoa teste",email:"pessoa@example.com",login:"teste01",tag:"visitante",ativo:1,notificar_email:1},
+      {id:"PET-ABCDEFAABBCC",nome:"PETiane teste",email:"pet@example.com",login:"pet01",tag:"petiano",ativo:1,notificar_email:0}
+    ]};
+    else if(path==="/api/admin/mail/templates"){
+      if(init.method==="POST"){templateSaves.push(JSON.parse(init.body||"{}"));body={ok:true};}
+      else body={ok:true,templates:[
+        {evento:"antes",nome:"Um dia antes",assunto:"Prazo de {material}",mensagem:"Olá {nome}, entregue em {prazo}. Consulte {link}"},
+        {evento:"manual",nome:"Cobrança manual",assunto:"Cobrança: {material}",mensagem:"Olá {nome}. Devolva {material} até {prazo}."}
+      ]};
+    }
     else if(path==="/api/my/loans")body={emprestimos:[]};
     else if(path==="/api/admin/variations")body={ok:true,vinculados:2};
     else if(path==="/api/admin/visibility")body={ok:true,alterados:2};
@@ -74,7 +84,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests,templateSaves};
 }
 
 const publicUI=build(false);
@@ -236,6 +246,24 @@ await adminClick('[data-admin-tab="historico"]');
 await wait(90);
 assert.match(ad.querySelector("#admin-log-list").textContent,/Quantidade alterada/);
 assert.equal(ad.querySelector("#admin-log-retention option[value='1']").textContent,"24 horas");
+await adminClick('[data-admin-tab="usuarios"]');
+await wait(80);
+assert.equal(ad.querySelectorAll("#admin-users-list [data-user-mail]").length,2,"Todos os botões individuais de avisos precisam existir.");
+assert.equal(ad.querySelectorAll("#admin-users-list [data-user-password]").length,2,"Redefinição de senha deve funcionar com vários usuários.");
+assert.doesNotMatch(ad.querySelector("#admin-users-list").textContent,/forEach is not a function/,"A lista de usuários não pode quebrar ao renderizar.");
+await adminClick('[data-admin-tab="configuracoes"]');
+await wait(100);
+assert.equal(ad.querySelectorAll("#admin-settings-form .settings-toggle").length,4,"Checkboxes grandes devem dar lugar a quatro switches compactos.");
+assert.equal(ad.querySelectorAll("#admin-settings-form [role=switch]").length,4,"Controles de configuração devem ser acessíveis.");
+assert.equal(ad.querySelectorAll("#mail-template-type option").length,2,"Editor de mensagens deve carregar os modelos configurados.");
+assert.match(ad.querySelector("#mail-template-preview-body").textContent,/Ana/,"Prévia deve usar dados fictícios.");
+const editedSubject=ad.querySelector("#mail-template-subject");
+editedSubject.value="Novo aviso do {material}";
+editedSubject.dispatchEvent(new aw.Event("input",{bubbles:true}));
+assert.match(ad.querySelector("#mail-template-preview-subject").textContent,/Novo aviso do Arduino Uno/);
+await adminClick("#mail-template-save");
+assert.equal(adminUI.templateSaves.length,1,"Salvar modelo deve atualizar a API do Gmail.");
+assert.equal(adminUI.templateSaves[0].assunto,"Novo aviso do {material}");
 await adminClick('[data-admin-tab="filamentos"]');
 assert.match(ad.querySelector("#admin-content").textContent,/Preto/,"Admin não vê filamento restrito.");
 await adminClick('[data-filament-edit="21"]');
