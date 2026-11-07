@@ -129,6 +129,7 @@ async function renameVariationGroup(db,body) {
   const groups=await listVariationGroups(db);
   const source=groups.find(g=>norm(g.nome)===norm(current));
   if(!source)return bad("Vínculo não encontrado.",404);
+  if(source.nome===next&&current===next)return j({ok:true,alterados:0});
   if(groups.some(g=>norm(g.nome)===norm(next)&&norm(g.nome)!==norm(current)))
     return bad("Já existe outro vínculo com esse nome.",409);
   const members=await results(db,"SELECT id,grupo_variacoes FROM componentes WHERE TRIM(COALESCE(grupo_variacoes,''))<>''");
