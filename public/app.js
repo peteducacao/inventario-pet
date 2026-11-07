@@ -249,8 +249,12 @@ function itemEditor(id){
     })()+
     '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
     '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade",x?.quantidade||0)+stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
-    switchInput("i-loans-pet","Retirada para PETianes",x?Number(x.permitir_petianos)!==0:true,"Retirada imediata para PETianes autorizados. A categoria também precisa permitir.")+
-    switchInput("i-loans-visitor","Retirada para visitantes",x?Number(x.permitir_visitantes)!==0:true,"Visitantes solicitam a retirada, sujeita à aprovação do PET.")+
+    '<div class="field"><label for="i-loan-audience">Habilitar empréstimo para</label><select id="i-loan-audience">'+
+      [["ninguem","Ninguém"],["petianos","PETianes"],["visitantes","Visitantes"],["todos","Todos"]].map(([key,label])=>{
+        const pet=x?Number(x.permitir_petianos)===1:true,visitor=x?Number(x.permitir_visitantes)===1:true;
+        const value=pet&&visitor?"todos":pet?"petianos":visitor?"visitantes":"ninguem";
+        return '<option value="'+key+'"'+(key===value?' selected':'')+'>'+label+'</option>';
+      }).join("")+'</select><small class="hint">PETianes retiram diretamente. Visitantes solicitam aprovação, que já registra a entrega. A categoria também precisa permitir.</small></div>'+
     '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
     '<details class="editor-advanced"><summary>Opções avançadas de exibição dos números</summary>'+
       switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
@@ -300,7 +304,7 @@ function itemEditor(id){
       imagem:image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),
       com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,
       mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
-      visivel_visitante:$("#i-public").checked,permitir_petianos:$("#i-loans-pet").checked,permitir_visitantes:$("#i-loans-visitor").checked,grupo_variacoes:$("#i-variation-family").value,
+      visivel_visitante:$("#i-public").checked,permitir_petianos:["todos","petianos"].includes($("#i-loan-audience").value),permitir_visitantes:["todos","visitantes"].includes($("#i-loan-audience").value),grupo_variacoes:$("#i-variation-family").value,
       descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{await api("/api/admin/item","POST",body);$("#item-form")?.dispatchEvent(new Event("pet:item-saved"));await adminReload();adminModal();toast("Material salvo!");}
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar material";}
@@ -345,8 +349,8 @@ function renderAdminReservations(target){
 function reservationCard(r){
   const [status,color]=resStatus(r);
   let actions="";
-  if(r.status==="pendente")actions='<button class="primary-button small-button" data-action-reserve="aprovar" data-id="'+r.id+'">Aprovar</button><button class="danger-button small-button" data-action-reserve="recusar" data-id="'+r.id+'">Recusar</button>';
-  if(r.status==="aprovada")actions='<button class="primary-button small-button" data-action-reserve="retirar" data-id="'+r.id+'">Registrar retirada</button><button class="danger-button small-button" data-action-reserve="recusar" data-id="'+r.id+'">Cancelar</button>';
+  if(r.status==="pendente")actions='<button class="primary-button small-button" data-action-reserve="aprovar" data-id="'+r.id+'">Aprovar e entregar</button><button class="danger-button small-button" data-action-reserve="recusar" data-id="'+r.id+'">Recusar</button>';
+  if(r.status==="aprovada")actions='<button class="outline-button small-button" data-action-reserve="retirar" data-id="'+r.id+'">Regularizar aprovação antiga</button><button class="danger-button small-button" data-action-reserve="recusar" data-id="'+r.id+'">Cancelar</button>';
   if(r.status==="retirada")actions='<button class="primary-button small-button" data-action-reserve="devolver" data-id="'+r.id+'">Registrar devolução</button>';
   return '<div class="admin-list-row" style="align-items:flex-start;display:block"><div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start"><div class="main-info"><strong>#'+r.id+' · '+esc(r.componente_nome||"Material removido")+'</strong><small>'+(r.tipo==='retirada_direta'?'PETiano retirou · ':'Reserva solicitada por · ')+esc(r.nome_solicitante)+' · '+moneyless(r.quantidade)+' unidade(s)</small></div><span class="status '+color+'">'+status+'</span></div>'+
     '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin:13px 0;font-size:12px;color:#687b8e">'+
@@ -362,7 +366,7 @@ async function doReserveAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);
   if(!r)return;
   if(action==="devolver")return returnModal(r);
-  const asks={aprovar:"Aprovar esta solicitação? O material ficará reservado para o período.",recusar:"Recusar ou cancelar esta reserva?",retirar:"Confirmar que o material foi entregue ao solicitante?"};
+  const asks={aprovar:"Aprovar e confirmar a entrega do material? A retirada será registrada imediatamente.",recusar:"Recusar ou cancelar esta reserva?",retirar:"Regularizar a retirada de uma aprovação antiga?"};
   if(!confirm(asks[action]||"Confirmar operação?"))return;
   try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:state.actor||"PETiane"});await adminReload();adminModal();toast("Reserva atualizada com sucesso.");}
   catch(error){toast(error.message,true);}

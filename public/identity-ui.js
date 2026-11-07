@@ -151,7 +151,8 @@ function identityProfileModal(){
     '<div class="field"><label for="identity-my-email">Meu e-mail</label><input id="identity-my-email" readonly value="'+attr(u.email||"")+'"></div>'+
     '<div class="field"><label for="identity-public-id">Meu ID público</label><div class="copy-field"><input id="identity-public-id" readonly value="'+attr(u.id)+'"><button type="button" class="outline-button" id="identity-copy-id">Copiar ID</button></div><small class="hint">O administrador pode encontrar você pelo nome de usuário ou ID.</small></div>'+
     (member?'<div class="notice"><strong>Tag PETiano ativa:</strong> você pode registrar retiradas e devoluções sem aprovação.</div>':'<div class="notice">Sua tag é Visitante. Solicitações de reserva aguardam aprovação do PET.</div>')+
-    '<div class="identity-actions">'+(member?'<button type="button" class="primary-button" id="identity-open-withdraw">Registrar retirada</button><button type="button" class="outline-button" id="identity-my-items">Minhas retiradas</button>':'')+
+    '<div class="identity-actions">'+(member?'<button type="button" class="primary-button" id="identity-open-withdraw">Registrar retirada</button>':'')+
+    '<button type="button" class="outline-button" id="identity-my-items">Meus empréstimos e devoluções</button>'+
     '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar minha tag</button>'+
     '<button type="button" class="outline-button" id="identity-email-edit">Alterar meu e-mail</button>'+
     '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button>'+
@@ -159,10 +160,8 @@ function identityProfileModal(){
     '<button type="button" class="danger-button" id="identity-logout">Sair deste dispositivo</button></div></div>';
   openModal("Meu perfil","Login individual e permissões.",body);
   $("#identity-copy-id").onclick=()=>copyValue(u.id,$("#identity-public-id"));
-  if(member){
-    $("#identity-open-withdraw").onclick=()=>memberWithdrawModal();
-    $("#identity-my-items").onclick=memberHistoryModal;
-  }
+  if(member)$("#identity-open-withdraw").onclick=()=>memberWithdrawModal();
+  $("#identity-my-items").onclick=()=>openMyLoans();
   $("#identity-refresh-tag").onclick=async()=>{
     try{
       const r=await api("/api/identity/me");
@@ -277,17 +276,16 @@ function memberReturnModal(loan){
     '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">Confirmar devolução</button></div></form>';
   openModal("Devolver material","Seu estoque será atualizado imediatamente.",body);
   $("#member-return-cancel").onclick=()=>{
-    if(document.body.dataset.loansRoute==="true"){closeModal();openMyLoans();}
-    else memberHistoryModal();
+    closeModal();openMyLoans();
   };
   $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
   $("#member-return-form").onsubmit=async e=>{
     e.preventDefault();const btn=$("#member-return-submit");btn.disabled=true;
     try{
-      await api("/api/member/return","POST",{id:loan.id,defeituosos:Number($("#member-broken").value),observacao:$("#member-return-note").value});
+      await api("/api/my/return","POST",{id:loan.id,defeituosos:Number($("#member-broken").value),observacao:$("#member-return-note").value});
       await publicReload();toast("Devolução registrada!");
       if(document.body.dataset.loansRoute==="true"){closeModal();await openMyLoans();}
-      else await memberHistoryModal();
+      else {closeModal();await openMyLoans();}
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }

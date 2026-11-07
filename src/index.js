@@ -84,7 +84,7 @@ async function auditLog(db, action, type, id, description, actor="Admin"){
   }catch(error){console.error("Erro ao registrar histórico administrativo",String(error).slice(0,200));}
 }
 async function catalog(db, isAdmin = false, member = false) {
-  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos FROM categorias ORDER BY ordem,nome");
+  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes FROM categorias ORDER BY ordem,nome");
   let items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
   if(isAdmin)items=items.filter(item=>!isFilamentMirror(item));
   if (!isAdmin) {
@@ -281,7 +281,15 @@ async function processRequest(req, env) {
       const id=requireId(b.id),f=await db.prepare("SELECT id,cor,componente_id FROM filamentos WHERE id=?").bind(id).first();
       if(!f)return bad("Filamento não encontrado.",404);
       const profile=b.perfil;
-      if(profile==="petianos"||profile==="visitantes"){
+      if(profile==="combinado"){
+        if(typeof b.permitir_petianos!=="boolean"||typeof b.permitir_visitantes!=="boolean")return bad("Selecione uma permissão válida.");
+        const pet=Number(b.permitir_petianos),visitor=Number(b.permitir_visitantes),both=Number(!!(pet||visitor));
+        await db.batch([
+          db.prepare("UPDATE filamentos SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,id),
+          db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,f.componente_id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(pet&&visitor?"Todos":pet?"PETianes":visitor?"Visitantes":"Ninguém"));
+      }else if(profile==="petianos"||profile==="visitantes"){
         if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
         const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
         const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
@@ -306,8 +314,8 @@ async function processRequest(req, env) {
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
     if(action==="criar"){
       const position=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
-      const pet=b.permitir_petianos===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_petianos===true);
-      const visitor=b.permitir_visitantes===undefined?Number(b.permitir_emprestimos===true):Number(b.permitir_visitantes===true);
+      const pet=b.permitir_petianos===undefined?Number(b.permitir_emprestimos!==false):Number(b.permitir_petianos===true);
+      const visitor=b.permitir_visitantes===undefined?Number(b.permitir_emprestimos!==false):Number(b.permitir_visitantes===true);
       const enabled=Number(!!(pet||visitor));
       await db.batch([
         db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled,pet,visitor),
@@ -400,7 +408,16 @@ async function processRequest(req, env) {
       const cat=await db.prepare("SELECT nome,arquivada FROM categorias WHERE id=?").bind(id).first();
       if(!cat||cat.arquivada)return bad("Categoria não encontrada.",404);
       const profile=b.perfil;
-      if(profile==="petianos"||profile==="visitantes"){
+      if(profile==="combinado"){
+        if(typeof b.permitir_petianos!=="boolean"||typeof b.permitir_visitantes!=="boolean")return bad("Selecione uma permissão válida.");
+        const pet=Number(b.permitir_petianos),visitor=Number(b.permitir_visitantes),both=Number(!!(pet||visitor));
+        await db.batch([
+          db.prepare("UPDATE categorias SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,id),
+          db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE categoria_id=?").bind(pet,visitor,both,id),
+          db.prepare("UPDATE filamentos SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(pet,visitor,both,id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","categoria",id,cat.nome+" · "+(pet&&visitor?"Todos":pet?"PETianes":visitor?"Visitantes":"Ninguém"));
+      }else if(profile==="petianos"||profile==="visitantes"){
         if(typeof b.permitir!=="boolean")return bad("Informe a permissão desejada.");
         const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
         const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
@@ -469,7 +486,12 @@ async function processRequest(req, env) {
     const item=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
     if(!item||isFilamentMirror(item))return bad("Material não encontrado ou pertence à aba Filamentos.",404);
     const profile=b.perfil;
-    if(profile==="petianos"||profile==="visitantes"){
+    if(profile==="combinado"){
+        if(typeof b.permitir_petianos!=="boolean"||typeof b.permitir_visitantes!=="boolean")return bad("Selecione uma permissão válida.");
+        const pet=Number(b.permitir_petianos),visitor=Number(b.permitir_visitantes),both=Number(!!(pet||visitor));
+        await db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,id).run();
+        await auditLog(db,"Alterou empréstimos","material",id,item.nome+" · "+(pet&&visitor?"Todos":pet?"PETianes":visitor?"Visitantes":"Ninguém"));
+      }else if(profile==="petianos"||profile==="visitantes"){
       if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
       const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
       const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
@@ -492,9 +514,19 @@ async function processRequest(req, env) {
     if (!item) return bad("Material não encontrado.",404);
     const current = now();
     if (action === "aprovar" && r.status === "pendente") {
+      // Aprovar é entregar: uma única operação atualiza reserva, retirada e estoque.
       const reserved = await maxReserved(db,item.id,r.data_inicio,r.data_devolucao,r.id);
-      if (baseAvailable(item) - reserved < r.quantidade) return bad("Estoque insuficiente para aprovar esta reserva.",409);
-      await db.prepare("UPDATE reservas SET status='aprovada',aprovado_em=?,responsavel_admin=? WHERE id=? AND status='pendente'").bind(current,actor,id).run();
+      if (baseAvailable(item) - reserved < r.quantidade) return bad("Estoque insuficiente para aprovar e entregar este material.",409);
+      const today=todayBR();
+      const handoffDay=r.data_devolucao>=today?today:r.data_inicio;
+      const outcome=await db.batch([
+        db.prepare("UPDATE reservas SET status='retirada',aprovado_em=?,retirado_em=?,data_inicio=?,responsavel_admin=? WHERE id=? AND status='pendente' AND EXISTS(SELECT 1 FROM componentes WHERE id=? AND quantidade-em_uso-com_defeito>=?)").bind(current,current,handoffDay,actor,id,item.id,r.quantidade),
+        db.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso-com_defeito>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada' AND retirado_em=?)").bind(r.quantidade,current,actor,"Reserva aprovada e entregue #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id,current)
+      ]);
+      if(outcome[0].meta?.changes!==1||outcome[1].meta?.changes!==1){
+        // Não permitir que duas aprovações de uma mesma solicitação contem estoque duas vezes.
+        return bad("Não foi possível confirmar a entrega. Atualize o painel e confira o estoque.",409);
+      }
     } else if (action === "recusar" && ["pendente","aprovada"].includes(r.status)) {
       await db.prepare("UPDATE reservas SET status='recusada',responsavel_admin=?,observacao=? WHERE id=?").bind(actor,str(b.observacao,500),id).run();
     } else if (action === "retirar" && r.status === "aprovada") {
@@ -518,7 +550,7 @@ async function processRequest(req, env) {
     if(r.usuario_id){
       let titulo="",mensagem="",tipo="info";
       const subject="a reserva #"+id+" de "+item.nome;
-      if(action==="aprovar"){titulo="Reserva aprovada";mensagem="Sua "+subject+" foi aprovada por "+actorName+".";tipo="aprovada";}
+      if(action==="aprovar"){titulo="Reserva aprovada e retirada registrada";mensagem="Sua "+subject+" foi aprovada e a entrega registrada por "+actorName+". Você já pode registrar a devolução em Meus empréstimos.";tipo="retirada";}
       else if(action==="recusar"){
         titulo="Reserva recusada";
         const reason=str(b.observacao,500);
@@ -529,7 +561,7 @@ async function processRequest(req, env) {
       else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução da "+subject+" foi confirmada por "+actorName+".";tipo="devolucao";}
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
-    await auditLog(db,action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
+    await auditLog(db,action==="aprovar"?"Aprovou e entregou":action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
     return j({ ok:true, notificacao_registrada:Boolean(r.usuario_id) });
   }
   if (path === "/api/admin/settings" && method === "POST") {

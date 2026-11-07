@@ -199,10 +199,11 @@ async function withdraw(req,env,user){
   return respond({ok:true,retirada_id:batch[0].meta.last_row_id},201);
 }
 async function memberReturn(req,env,user){
-  if(!user||user.papel!=="petiano")return error("Somente PETianos autorizados podem devolver diretamente.",403);
+  if(!user)return error("Entre em sua conta para registrar a devolução.",401);
+  if(!user.login||user.must_change_password)return error("Finalize o cadastro da conta para devolver materiais.",403);
   const b=await bodyJson(req,3000),id=Number(b.id),broken=Number(b.defeituosos||0),note=clean(b.observacao,500);
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(broken)||broken<0)return error("Identificação ou quantidade inválida.");
-  const r=await env.DB.prepare("SELECT * FROM reservas WHERE id=? AND usuario_id=? AND tipo='retirada_direta' AND status='retirada'").bind(id,user.id).first();
+  const r=await env.DB.prepare("SELECT * FROM reservas WHERE id=? AND usuario_id=? AND status='retirada'").bind(id,user.id).first();
   if(!r)return error("Retirada não encontrada ou já devolvida.",404);
   if(broken>r.quantidade)return error("A quantidade com defeito não pode ultrapassar a retirada.");
   const component=await env.DB.prepare("SELECT em_uso FROM componentes WHERE id=?").bind(r.componente_id).first();
@@ -216,7 +217,7 @@ async function memberReturn(req,env,user){
   if(done[0].meta?.changes!==1||done[1].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
   await env.DB.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
     .bind(user.id,id,"Devolução registrada","A devolução de seu material foi registrada.","devolucao").run();
-  await identityAudit(env.DB,"Devolução direta","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(broken?" · "+broken+" com defeito":""),actor);
+  await identityAudit(env.DB,"Devolução pelo titular","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(broken?" · "+broken+" com defeito":""),actor);
   return respond({ok:true});
 }
 async function adminUpdate(req,env){
@@ -332,7 +333,7 @@ export async function identityAPI(req,env,adminAuth){
   if(path==="/api/identity/name"&&method==="POST"&&(u?.must_change_password||!u?.login))return error("Configure sua senha antes de continuar.",403);
   if(path.startsWith("/api/member/")&&u&&(u.must_change_password||!u.login))return error("Crie sua senha definitiva antes de usar as retiradas.",403);
   if(path==="/api/member/withdraw"&&method==="POST")return withdraw(req,env,u);
-  if(path==="/api/member/return"&&method==="POST")return memberReturn(req,env,u);
+  if((path==="/api/member/return"||path==="/api/my/return")&&method==="POST")return memberReturn(req,env,u);
   if(path==="/api/member/history"&&method==="GET"){
     if(!u||u.papel!=="petiano")return error("Acesso reservado aos PETianos.",403);
     return listMine(db,u);

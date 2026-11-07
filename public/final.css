@@ -655,3 +655,17 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
 #mail-test-feedback{margin:12px 0 0;font-size:12px;color:#4a687c;line-height:1.6}
 @media(max-width:780px){.mail-schedule-grid{grid-template-columns:1fr}.category-role-controls{flex:1 1 100%}}
 @media(max-width:420px){.mail-schedule-card{padding:11px}.role-loan-controls{gap:5px}.role-loan-toggle{padding:6px}.role-loan-toggle>span{font-size:9px}}
+
+
+/* Escolha única do público autorizado para empréstimos */
+.loan-audience-control{display:flex;flex-direction:column;gap:5px;min-width:148px;max-width:235px;flex:0 1 190px;margin:0}
+.loan-audience-control>span{font-size:10px;font-weight:700;color:#577184;line-height:1.3}
+.loan-audience-select{display:block;appearance:auto!important;width:100%!important;min-height:36px!important;padding:7px 30px 7px 11px!important;border:1px solid #d4e3ea!important;border-radius:10px!important;background:#fff!important;color:#1f475c!important;font-size:12px!important;font-weight:700!important;line-height:1.2!important;cursor:pointer}
+.loan-audience-select:focus-visible{outline:3px solid #81caba;outline-offset:2px}
+.loan-audience-select:disabled{opacity:.6;cursor:progress}
+.category-row>.loan-audience-control{margin-left:auto}
+.category-row>.actions{margin-left:0}
+.material-name>.loan-audience-control{margin-top:7px}
+.filament-admin-label>.loan-audience-control{margin-top:8px}
+.loan-audience-hint{display:block;font-size:10px;color:#778c9a;margin-top:4px;line-height:1.4}
+@media(max-width:740px){.category-row>.loan-audience-control{flex:1 1 170px;margin-left:0}.loan-audience-control{max-width:100%}.category-row>.actions{margin-left:auto}}
