@@ -117,6 +117,25 @@ assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_
 assert.equal((await queueManual(DB,tomorrowDue)).ok,false,"O bloqueio da cobrança manual deve ser aplicado mesmo quando aviso automático está ligado.");
 visitors.manual=true;
 assert.equal((await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}})).status,200);
+
+// Mesmo transporte autenticado do Gmail: mensagens de conta são separadas das cobranças.
+const recoveryHash="a".repeat(64),created=new Date().toISOString(),expiry=new Date(Date.now()+20*60000).toISOString();
+sqlite.prepare("INSERT INTO identity_recovery_tokens(hash,usuario_id,criado_em,expira_em) VALUES(?,?,?,?)").run(recoveryHash,petUser,created,expiry);
+const personalId=Number(sqlite.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,'recuperacao',?,?,?,?,?)")
+  .run(petUser,recoveryHash,"pet@example.com","Recuperar senha - teste","Link de teste",created).lastInsertRowid);
+const personalNext=await(await call("/api/mail/next")).json();
+assert.equal(personalNext.item.id,"conta-"+personalId,"A fila de contas usa IDs separados dos empréstimos.");
+assert.equal(personalNext.item.to,"pet@example.com");
+assert.equal((await call("/api/mail/ack",token,{id:personalNext.item.id,lock:personalNext.item.lock,ok:true})).status,200);
+const sentPersonal=sqlite.prepare("SELECT situacao,mensagem FROM identity_mail_queue WHERE id=?").get(personalId);
+assert.equal(sentPersonal.situacao,"enviado");
+assert.equal(sentPersonal.mensagem,"","O conteúdo sensível do link não deve permanecer no histórico após envio.");
+sqlite.prepare("UPDATE identity_recovery_tokens SET expira_em=? WHERE hash=?").run(new Date(Date.now()-5000).toISOString(),recoveryHash);
+const expiredId=Number(sqlite.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,'recuperacao',?,?,?,?,?)")
+  .run(petUser,recoveryHash,"pet@example.com","Expirado","Link expirado",created).lastInsertRowid);
+await call("/api/mail/next");
+assert.equal(sqlite.prepare("SELECT situacao FROM identity_mail_queue WHERE id=?").get(expiredId).situacao,"cancelado","Nunca enviar link expirado.");
+
 console.log("AGENDAMENTO POR TAG OK: visitantes/PETianes, pré-vencimento e cobrança manual.");
 console.log("MODELOS GMAIL OK: salvar, prévia, validação, edição manual e não duplicação.");
 console.log("GMAIL OK: segurança, fila, preferência por tag, prazos, duplicação e devolução.");
