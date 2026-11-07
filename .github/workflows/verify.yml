@@ -24,6 +24,8 @@ jobs:
           node --check public/admin-stage.js
           node --check src/index.js
           node --check src/identity.js
+      - name: Testar fusão dos 26 lotes de Experimentos sem afetar banco remoto
+        run: node --disable-warning=ExperimentalWarning tests/experiments.test.mjs
       - name: Testar banco local, identidade e reservas
         run: node --disable-warning=ExperimentalWarning tests/identity.test.mjs
       - name: Testar permissões, histórico, grupos e exclusão no banco isolado
