@@ -81,6 +81,33 @@ const securityFields=async secret => {
 const maybeDuplicate=e=>String(e?.message||e).includes("UNIQUE")||String(e?.message||e).includes("constraint failed");
 const duplicateEmailError=e=>String(e?.message||e).includes("EMAIL_JA_CADASTRADO");
 const emailInUse=(db,email,except=null)=>db.prepare("SELECT 1 AS n FROM usuarios WHERE lower(trim(email))=? AND id!=COALESCE(?,-1) LIMIT 1").bind(email,except).first();
+const RECOVERY_REPLY={ok:true,mensagem:"Se existir uma conta ativa com esse e-mail, você receberá instruções de recuperação."};
+async function enqueueIdentityNotice(db,id,email,subject,message,type="aviso",recoveryHash=null){
+  await db.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,?,?,?,?,?,?)")
+    .bind(id,type,recoveryHash,email,subject,message,now()).run();
+}
+async function requestPasswordRecovery(req,env){
+  const payload=await bodyJson(req,3000),email=clean(payload.email,180).toLowerCase();
+  // Não revelar se este endereço pertence a uma conta.
+  if(!validEmail(email))return respond(RECOVERY_REPLY);
+  if(!await rate(env.DB,req,"recuperar",12,24))return respond(RECOVERY_REPLY);
+  const found=await rows(env.DB,"SELECT id,email FROM usuarios WHERE lower(trim(email))=? AND ativo=1 AND login IS NOT NULL LIMIT 2",[email]);
+  if(found.length!==1)return respond(RECOVERY_REPLY);
+  const u=found[0],start=new Date(Date.now()-15*60000).toISOString();
+  const recent=await env.DB.prepare("SELECT 1 AS n FROM identity_recovery_tokens WHERE usuario_id=? AND criado_em>? LIMIT 1").bind(u.id,start).first();
+  if(recent)return respond(RECOVERY_REPLY);
+  const secret=randomHex(32),hash=await sha256(secret),expires=new Date(Date.now()+30*60000).toISOString();
+  const link="https://inventario-pet.pet-educacao.workers.dev/#redefinir="+secret;
+  const mail="Uma recuperação de senha foi solicitada para sua conta do Inventário PET Educação.\n\nAbra este link para definir outra senha (válido por 30 minutos e apenas uma vez):\n"+link+"\n\nSe não solicitou, ignore a mensagem. Sua senha atual continua válida.";
+  await env.DB.batch([
+    env.DB.prepare("UPDATE identity_recovery_tokens SET usado_em=? WHERE usuario_id=? AND usado_em IS NULL").bind(now(),u.id),
+    env.DB.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='' WHERE usuario_id=? AND tipo='recuperacao' AND situacao IN ('pendente','processando')").bind(u.id),
+    env.DB.prepare("INSERT INTO identity_recovery_tokens(hash,usuario_id,criado_em,expira_em) VALUES(?,?,?,?)").bind(hash,u.id,now(),expires),
+    env.DB.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,'recuperacao',?,?,?,?,?)").bind(u.id,hash,email,"Recuperar senha - Inventário PET",mail,now())
+  ]);
+  return respond(RECOVERY_REPLY);
+}
+
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
