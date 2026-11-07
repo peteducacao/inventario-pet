@@ -11,7 +11,7 @@ async function copyValue(value,field){
   catch{if(field){field.focus();field.select();}toast("Selecione o texto para copiar.");}
 }
 function passwordField(id,label,autocomplete="current-password"){
-  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" minlength="10" maxlength="128" required placeholder="Mínimo de 10 caracteres"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>';
+  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>';
 }
 function wirePasswordVisibility(){
   $$("[data-password-show]").forEach(btn=>btn.onclick=()=>{
