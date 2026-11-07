@@ -343,3 +343,38 @@ body:not(.admin-mode) .inventory-section .catalog-numbers{margin:8px 0 9px}
   #catalog-pagination{gap:4px}
   #catalog-pagination button{width:32px;height:35px}
 }
+
+
+/* Famílias de componentes: escolher modelo ao abrir o card, sem cards duplicados. */
+.grouped-card .catalog-photo{cursor:pointer}
+.grouped-card .catalog-body h3{margin-bottom:5px}
+.grouped-card .variant-open{
+  display:flex;align-items:center;justify-content:space-between;width:100%;gap:7px;
+  border:1px solid #cbe9df;border-radius:9px;background:#effaf6;color:#146c62;
+  font-size:11px;font-weight:800;padding:7px 9px;margin:8px 0 4px;text-align:left;cursor:pointer;
+}
+.grouped-card .variant-open:hover,.grouped-card .variant-open:focus-visible{background:#dff6eb;border-color:#84d7bd}
+.grouped-card .variant-open span{font-size:18px;line-height:1}
+.grouped-card .variant-selected{font-size:10px;color:#466678;margin:5px 0 1px}
+.grouped-card .variant-main-button{background:linear-gradient(130deg,#158b83,#08757b)!important;color:#fff!important}
+.variant-picker{display:flex;flex-direction:column;gap:10px}
+.variant-picker-option{display:flex;align-items:center;gap:13px;width:100%;min-height:87px;
+  text-align:left;border:1px solid #deeaee;border-radius:14px;background:#fff;padding:10px 12px;
+  box-shadow:0 2px 8px #24425509;cursor:pointer;color:#1f374b}
+.variant-picker-option:hover,.variant-picker-option:focus-visible{
+  border-color:#7bccb6;background:#f0faf6;outline:none;box-shadow:0 0 0 2px #83d8bd44}
+.variant-picker-photo{width:78px;height:67px;flex:0 0 78px;display:flex;align-items:center;justify-content:center;
+  border-radius:11px;background:linear-gradient(145deg,#fff,#eaf7f6)}
+.variant-picker-photo img{display:block;width:100%;height:100%;object-fit:contain;padding:5px}
+.variant-picker-details{min-width:0;display:flex;flex-direction:column;gap:7px;flex:1}
+.variant-picker-details strong{font-size:13px;line-height:1.3;overflow-wrap:anywhere}
+.variant-picker-details small{font-size:11px;line-height:1.4;color:#617b86}
+.variant-picker-arrow{font-size:25px;color:#158c7c}
+@media(max-width:720px){
+ .grouped-card .variant-open{font-size:10px;padding:7px}
+ .grouped-card .variant-selected{font-size:9.5px}
+ .variant-picker-option{gap:10px;padding:9px}
+ .variant-picker-photo{width:66px;height:62px;flex-basis:66px}
+ .variant-picker-details strong{font-size:12px}
+ .variant-picker-details small{font-size:10px}
+}
