@@ -148,10 +148,14 @@ async function processRequest(req, env) {
   if (path === "/api/reservations" && method === "POST") {
     const body = await input(req, 8000);
     if (body.website) return j({ ok:true });
+    // A página pública pode ser consultada sem login, mas reservas exigem conta pessoal válida.
+    // A sessão de administrador, sozinha, não identifica um solicitante.
+    const identity = await currentIdentity(req, db);
+    if (!identity) return bad("Entre na sua conta pessoal para solicitar uma reserva.",401);
+    if (!identity.login || identity.must_change_password) return bad("Finalize a configuração da sua senha para solicitar reservas.",403);
     const id = requireId(body.componente_id);
     const quantidade = Number(body.quantidade);
-    const identity = await currentIdentity(req, db);
-    const nome = identity ? identity.nome : str(body.nome_solicitante, 100);
+    const nome = identity.nome;
     const contato = str(body.contato, 140);
     const email = str(body.email, 180).toLowerCase();
     if (!validEmail(email)) return bad("Informe um e-mail válido ou deixe o campo vazio.");
@@ -163,7 +167,7 @@ async function processRequest(req, env) {
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(identity))) return bad("Material não encontrado.",404);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
-    await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id) VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now(),identity?.id||null).run();
+    await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id) VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now(),identity.id).run();
     return j({ ok:true, mensagem:"Solicitação enviada. Aguarde a aprovação do PET." },201);
   }
   if (path === "/api/login" && method === "POST") {
