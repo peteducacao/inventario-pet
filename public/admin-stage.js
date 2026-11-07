@@ -1,5 +1,5 @@
 /* Administração Inventário PET: painel próprio e responsivo. */
-const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["filamentos","layers","Filamentos"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["configuracoes","settings","Configurações"]];
+const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["filamentos","layers","Filamentos"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["historico","back","Histórico"],["configuracoes","settings","Configurações"]];
 function adminCounts(){
   const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
   const reservations=state.admin?.reservas||[];
@@ -10,7 +10,7 @@ function adminCounts(){
 }
 function adminLastUpdate(){
   const items=state.admin?.componentes||[];
-  const sorted=[...items.map(x=>x.ultima_alteracao),...(UI.filaments||[]).map(x=>x.atualizado_em)].filter(Boolean).sort();
+  const sorted=[...items.map(x=>x.ultima_alteracao),...(state.admin?.filamentos||[]).map(x=>x.atualizado_em)].filter(Boolean).sort();
   const last=sorted.at(-1),source=state.admin?.configuracoes?.inventario_fonte_atualizacao;
   return "Atualizado: "+(last?niceDate(last):source||"—")+(source?" · Planilha-base: "+source:"");
 }
@@ -30,6 +30,7 @@ function adminModal(){
   if(!state.admin)return enterAdmin();
   closeModal();
   $("#admin-stage").hidden=false;
+  $("#admin-stage").classList.remove("admin-loading");
   document.body.classList.add("admin-mode");
   stored("pet_admin_open","1");
   state.tab=UI.adminTab;
@@ -64,6 +65,7 @@ function adminBuild(){
   adminContent();
 }
 function leaveAdminWithoutLogout(){
+  if(document.body.dataset.adminRoute==="true"){location.href="/";return;}
   stored("pet_admin_open","0");
   $("#admin-stage").hidden=true;document.body.classList.remove("admin-mode");
   closeModal();finalRender();
@@ -93,22 +95,72 @@ function adminContent(){
   if(UI.adminTab==="reservas")return adminReservations(content);
   if(UI.adminTab==="usuarios")return adminUsers(content);
   if(UI.adminTab==="categorias")return adminCategories(content);
+  if(UI.adminTab==="historico")return adminHistory(content);
   return adminSettings(content);
 }
 function adminDashboard(root){
   const c=adminCounts();
-  root.innerHTML='<div class="admin-section-head"><div><h2>Visão geral</h2></div><div class="buttons"><button class="outline-button small-button" type="button" id="admin-stats-toggle">'+(UI.adminSummaryMinimized?"Mostrar resumo":"Minimizar resumo")+' '+iconSvg(UI.adminSummaryMinimized?"down":"up",14)+'</button></div></div>'+
-    '<div class="admin-overview '+(UI.adminSummaryMinimized?"collapsed":"")+'"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div><div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div><div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div><div class="admin-stat"><strong>'+c.pending+'</strong><span>Reservas pendentes</span></div></div>'+
-    '<section class="admin-panel"><div class="admin-section-head"><div><h2>Materiais</h2><p>Acesse e atualize seu inventário.</p></div><div class="buttons"><button type="button" class="outline-button small-button" id="v2-dashboard-all">Ver todos</button><button type="button" class="primary-button small-button" id="v2-dashboard-add">'+iconSvg("plus",15)+' Novo material</button></div></div>'+
-    '<div id="dashboard-materials"></div></section>'+
-    (c.pending?'<section class="admin-panel"><div class="admin-section-head"><h2>Reservas aguardando aprovação</h2><button class="outline-button small-button" id="dashboard-reservations">Analisar</button></div><p>'+c.pending+' solicitação(ões) para conferir.</p></section>':"");
-  $("#admin-stats-toggle").onclick=()=>{UI.adminSummaryMinimized=!UI.adminSummaryMinimized;stored("pet_admin_summary_closed",UI.adminSummaryMinimized?"1":"0");adminDashboard(root)};
-  $("#v2-dashboard-all").onclick=()=>selectAdminTab("materiais");
-  $("#v2-dashboard-add").onclick=()=>adminItemEditor();
-  if(c.pending)$("#dashboard-reservations").onclick=()=>selectAdminTab("reservas");
-  const small=ordered(state.admin.componentes.filter(x=>!isArchived(x)),UI.adminSort).slice(0,6);
-  $("#dashboard-materials").innerHTML='<div class="material-list">'+small.map(adminMaterialRow).join("")+'</div>';
-  wireMaterialActions($("#dashboard-materials"));
+  root.innerHTML='<section class="admin-panel"><h2>Visão geral</h2><p>Resumo do acervo, com acesso rápido às ferramentas.</p>'+
+    '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div>'+
+    '<div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div>'+
+    '<div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div></div>'+
+    '<div class="admin-shortcuts">'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="materiais">'+iconSvg("box",21)+' Materiais e estoque</button>'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="categorias">'+iconSvg("layers",21)+' Categorias e acesso</button>'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="historico">'+iconSvg("back",21)+' Histórico de alterações</button>'+
+    '<button class="admin-shortcut" type="button" data-dashboard-go="filamentos">'+iconSvg("grid",21)+' Filamentos</button>'+
+    '</div></section>'+
+    '<section class="admin-panel"><div class="admin-section-head"><h2>Atividade recente</h2><button class="outline-button small-button" type="button" id="dashboard-log-all">Ver histórico</button></div><div id="dashboard-recent-log" class="admin-log-list">Carregando…</div></section>';
+  $$("[data-dashboard-go]",root).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.dashboardGo));
+  $("#dashboard-log-all").onclick=()=>selectAdminTab("historico");
+  api("/api/admin/log?pagina=1").then(data=>{
+    const el=$("#dashboard-recent-log");if(!el)return;
+    el.innerHTML=(data.eventos||[]).slice(0,4).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração registrada ainda.</div>';
+  }).catch(error=>{const el=$("#dashboard-recent-log");if(el)el.textContent=error.message;});
+}
+function adminLogRow(log){
+  return '<article class="admin-log-row"><strong>'+esc(log.acao)+' · '+esc(log.tipo)+'</strong>'+
+    '<small>'+esc(niceDate(log.criado_em))+' · '+esc(log.responsavel||"Admin")+'</small>'+
+    '<p>'+esc(log.descricao||"Sem detalhes adicionais")+'</p></article>';
+}
+async function adminHistory(root){
+  const selected=UI.logType||"all",page=UI.logPage||1;
+  root.innerHTML='<section class="admin-panel">'+
+    '<div class="admin-section-head"><div><h2>Histórico de alterações</h2><p>Registra cadastros, edições, exclusões, reservas, devoluções e alterações de acesso a partir desta atualização.</p></div></div>'+
+    '<div class="admin-log-controls"><label>Tipo de atividade<select id="admin-log-type">'+
+    [["all","Todas"],["material","Materiais"],["categoria","Categorias"],["filamento","Filamentos"],["reserva","Reservas"],["usuario","Usuários"],["sistema","Sistema"]].map(([k,name])=>'<option value="'+k+'" '+(k===selected?'selected':'')+'>'+name+'</option>').join("")+
+    '</select></label><label>Limpar automaticamente após<select id="admin-log-retention">'+
+    [["nunca","Nunca"],["1","24 horas"],["3","3 dias"],["5","5 dias"],["7","7 dias"],["15","15 dias"],["30","1 mês"]].map(([k,name])=>'<option value="'+k+'">'+name+'</option>').join("")+
+    '</select></label>'+
+    '<button type="button" class="outline-button small-button" id="admin-log-save-period">Salvar prazo</button>'+
+    '<button type="button" class="danger-button small-button" id="admin-log-clear">Limpar manualmente</button></div>'+
+    '<p id="admin-log-count" style="font-size:11px;color:#6e8394"></p>'+
+    '<div id="admin-log-list" class="admin-log-list"><div class="loading-placeholder">Carregando histórico…</div></div>'+
+    '<nav id="admin-log-pages" class="page-controls"></nav></section>';
+  $("#admin-log-type").onchange=e=>{UI.logType=e.target.value;UI.logPage=1;adminHistory(root);};
+  $("#admin-log-save-period").onclick=async()=>{
+    const value=$("#admin-log-retention").value;
+    try{await api("/api/admin/log","POST",{acao:"configurar",prazo:value,responsavel:state.actor||"Admin"});toast("Prazo do histórico salvo.");await adminHistory(root);}
+    catch(error){toast(error.message,true);}
+  };
+  $("#admin-log-clear").onclick=async()=>{
+    const ok=await niceModalConfirm("Limpar todo o histórico?","Esta ação apaga definitivamente os eventos já registrados. Os materiais, categorias, reservas e usuários NÃO serão apagados.","Apagar histórico",true);
+    if(!ok)return;
+    try{const result=await api("/api/admin/log","POST",{acao:"limpar",confirmar:"LIMPAR HISTÓRICO"});UI.logPage=1;await adminHistory(root);toast(result.removidos+" eventos excluídos.");}
+    catch(error){toast(error.message,true);}
+  };
+  $("#admin-log-pages").onclick=e=>{
+    const b=e.target.closest("[data-page]");if(!b)return;
+    UI.logPage=Number(b.dataset.page);adminHistory(root);
+  };
+  try{
+    const data=await api("/api/admin/log?pagina="+page+"&tipo="+encodeURIComponent(selected));
+    if(!document.contains(root)||UI.adminTab!=="historico")return;
+    $("#admin-log-retention").value=data.limpeza_historico||"nunca";
+    $("#admin-log-count").textContent=Number(data.total||0)+" evento(s) registrados.";
+    $("#admin-log-list").innerHTML=(data.eventos||[]).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração neste filtro.</div>';
+    $("#admin-log-pages").innerHTML=pageButtons({page:data.pagina||1,pages:Math.max(1,Math.ceil((data.total||0)/35)),total:data.total||0},"history");
+  }catch(error){const el=$("#admin-log-list");if(el)el.textContent=error.message;}
 }
 function quantityCell(name,num,clazz=""){
   return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
@@ -117,7 +169,7 @@ function adminMaterialRow(x){
   const available=stock(x),isHidden=isArchived(x);
   const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
   return '<div class="material-row">'+thumb(x)+
-    '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+'</small>'+
+    '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small></div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
     '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
@@ -158,12 +210,14 @@ function adminMaterials(root){
   const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("")+
     '<option value="archived" '+(UI.adminCategory==="archived"?"selected":"")+'>Arquivados</option>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Materiais cadastrados</h2></div>'+
-    '<div class="buttons"><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
+    '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade em lote</button><button class="outline-button" type="button" id="admin-group-variations">'+iconSvg("layers",15)+' Variações</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
     '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
+  $("#admin-bulk-visibility").onclick=()=>openBulkVisibility();
+  $("#admin-group-variations").onclick=()=>openVariantLinker();
   $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
   $("#admin-material-category").onchange=e=>{UI.adminCategory=e.target.value;UI.adminPage=1;stored("pet_admin_category",UI.adminCategory);paintAdminMaterials()};
   $("#admin-material-sort").onchange=e=>{UI.adminSort=e.target.value;UI.adminPage=1;stored("pet_admin_sort",UI.adminSort);paintAdminMaterials()};
@@ -308,29 +362,44 @@ async function adminToggleTag(id){
 }
 /* Categorias: arraste no desktop, use setas no celular. */
 function adminCategories(root){
-  const cats=state.admin.categorias;
-  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Arraste para ordenar ou use as setas.</p></div>'+
+  const cats=(state.admin.categorias||[]).filter(x=>!x.arquivada);
+  const archived=(state.admin.categorias||[]).filter(x=>x.arquivada);
+  const itemCounts=cat=>{
+    const items=state.admin.componentes.filter(x=>x.categoria_id===cat.id);
+    const active=items.filter(x=>!isArchived(x)).length;
+    return active+' ativos'+(items.length-active?' · '+(items.length-active)+' arquivados':'');
+  };
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Organize e defina quem pode acessar cada categoria.</p></div>'+
     '<div class="buttons"><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
-    '<div class="category-list" id="v2-category-list">'+cats.map((c,i)=>
-    '<div class="category-row" data-category-id="'+c.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
-    '<strong>'+esc(c.nome)+'</strong><small>'+state.admin.componentes.filter(x=>x.categoria_id===c.id&&!isArchived(x)).length+' itens</small>'+
-    '<div class="actions"><button type="button" class="square-action" data-cat-up="'+c.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
-    '<button type="button" class="square-action" data-cat-down="'+c.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
-    '<button type="button" class="square-action" data-cat-edit="'+c.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
-    '<button type="button" class="square-action danger" data-cat-delete="'+c.id+'" aria-label="Excluir">'+iconSvg("trash")+'</button></div></div>').join("")+'</div></section>';
+    '<div class="category-list" id="v2-category-list">'+cats.map((cat,i)=>
+    '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
+    '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
+    '<small class="tag '+(Number(cat.visivel_visitante)===0?'pending':'')+'">'+(Number(cat.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
+    '<div class="actions"><button type="button" class="square-action" data-cat-up="'+cat.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
+    '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
+    '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
+    '<button type="button" class="square-action danger" data-cat-delete="'+cat.id+'" aria-label="Excluir categoria e seus materiais">'+iconSvg("trash")+'</button></div></div>').join("")+'</div>'+
+    (archived.length?'<details class="editor-advanced"><summary>Categorias excluídas ('+archived.length+')</summary><div class="category-list">'+archived.map(cat=>
+      '<div class="category-row archived"><strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small><button class="outline-button small-button" type="button" data-cat-restore="'+cat.id+'">Restaurar categoria</button></div>').join("")+'</div></details>':'')+
+    '</section>';
   $("#v2-new-category").onclick=()=>editCategory();
-  $$("[data-cat-up]").forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
-  $$("[data-cat-down]").forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
-  $$("[data-cat-edit]").forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
-  $$("[data-cat-delete]").forEach(b=>b.onclick=()=>adminDeleteCategory(Number(b.dataset.catDelete)));
+  $$("[data-cat-up]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
+  $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
+  $$("[data-cat-edit]",root).forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
+  $$("[data-cat-delete]",root).forEach(b=>b.onclick=()=>adminDeleteCategory(Number(b.dataset.catDelete)));
+  $$("[data-cat-restore]",root).forEach(b=>b.onclick=async()=>{
+    if(!await niceModalConfirm("Restaurar categoria?","Os materiais anteriormente arquivados continuarão arquivados até serem restaurados individualmente.","Restaurar"))return;
+    try{await api("/api/admin/category","POST",{acao:"restaurar",id:Number(b.dataset.catRestore)});await adminReload();adminBuild();toast("Categoria restaurada.");}
+    catch(error){toast(error.message,true);}
+  });
   let dragged=null;
-  $$(".category-row").forEach(el=>{
+  $$("[data-category-id]",root).forEach(el=>{
     el.ondragstart=e=>{dragged=Number(el.dataset.categoryId);el.classList.add("dragging");e.dataTransfer.effectAllowed="move";};
     el.ondragend=()=>{el.classList.remove("dragging");dragged=null;};
     el.ondragover=e=>{e.preventDefault();e.dataTransfer.dropEffect="move";};
     el.ondrop=async e=>{
       e.preventDefault();const target=Number(el.dataset.categoryId);if(!dragged||target===dragged)return;
-      const ids=state.admin.categorias.map(c=>c.id),a=ids.indexOf(dragged),b=ids.indexOf(target);
+      const ids=cats.map(cat=>cat.id),a=ids.indexOf(dragged),b=ids.indexOf(target);
       if(a<0||b<0)return;ids.splice(b,0,...ids.splice(a,1));
       await commitCategoryOrder(ids);
     };
@@ -338,16 +407,31 @@ function adminCategories(root){
 }
 async function commitCategoryOrder(ids){
   try{await api("/api/admin/category","POST",{acao:"ordenar",ordem:ids});await adminReload();adminBuild();toast("Ordem salva.");}
-  catch(e){toast(e.message,true);}
+  catch(error){toast(error.message,true);}
 }
-async function adminDeleteCategory(id){
-  const c=state.admin.categorias.find(x=>x.id===id);if(!c)return;
-  if(!await niceModalConfirm("Excluir categoria?",c.nome+" deve estar vazia para ser excluída.","Excluir",true))return;
-  try{await api("/api/admin/category","POST",{acao:"excluir",id});await adminReload();adminBuild();toast("Categoria excluída.");}
-  catch(e){toast(e.message,true);}
+function adminDeleteCategory(id){
+  const cat=state.admin.categorias.find(x=>x.id===id);if(!cat)return;
+  const linked=state.admin.componentes.filter(x=>x.categoria_id===id);
+  const active=linked.filter(x=>!isArchived(x)).length;
+  openModal("Excluir categoria e materiais","Confirmação de segurança",
+    '<form id="delete-category-confirm" class="modal-main">'+
+    '<p>Esta ação retirará <strong>'+esc(cat.nome)+'</strong> e '+active+' material(is) do inventário. Registros antigos de empréstimos serão preservados.</p>'+
+    '<p class="notice warning">Categorias e materiais ficarão arquivados para recuperação. Reservas ou retiradas em aberto impedem esta operação.</p>'+
+    '<label for="cat-delete-name">Digite exatamente <strong>'+esc(cat.nome)+'</strong> para confirmar:</label>'+
+    '<input id="cat-delete-name" required autocomplete="off" placeholder="'+attr(cat.nome)+'">'+
+    '<div class="confirm-actions"><button class="secondary-button" type="button" id="cat-delete-cancel">Cancelar</button>'+
+    '<button class="danger-button" type="submit" id="cat-delete-submit">Excluir categoria e materiais</button></div></form>');
+  $("#cat-delete-cancel").onclick=closeModal;
+  $("#delete-category-confirm").onsubmit=async e=>{
+    e.preventDefault();const name=$("#cat-delete-name").value;
+    if(name!==cat.nome){toast("O nome não corresponde à categoria.",true);return;}
+    const button=$("#cat-delete-submit");button.disabled=true;
+    try{
+      await api("/api/admin/category","POST",{acao:"excluir",id,confirmacao:name});
+      await adminReload();closeModal();adminBuild();toast("Categoria e materiais arquivados.");
+    }catch(error){toast(error.message,true);button.disabled=false;}
+  };
 }
-
-
 /* Filamentos: só cor e quantidade, sem patrimônio nem empréstimo. */
 const FILAMENT_PALETTE=[
   ["Preto","#24272C"],["Branco","#F4F5F1"],["Vermelho","#D83741"],
@@ -356,13 +440,13 @@ const FILAMENT_PALETTE=[
   ["Cinza","#959CA6"],["Marrom","#895F47"],["Dourado","#CDA84B"]
 ];
 function adminFilaments(root){
-  const list=UI.filaments||[];
+  const list=state.admin.filamentos||[];
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Filamentos</h2><p>Organize as cores e quantidades do PET.</p></div>'+
     '<div class="buttons"><button class="primary-button" id="filament-add" type="button">'+iconSvg("plus",16)+' Adicionar cor</button></div></div>'+
     '<div class="filament-admin-grid">'+(list.length?list.map(x=>
     '<div class="filament-admin-card">'+
       '<span class="filament-color-dot" style="background:'+attr(x.hexadecimal)+'" aria-hidden="true"></span>'+
-      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Quantidade: <b>'+Number(x.quantidade)+'</b></small></div>'+
+      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Quantidade: <b>'+Number(x.quantidade)+'</b></small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+'</small></div>'+
       '<div class="filament-admin-buttons"><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
       '<button type="button" class="square-action danger" aria-label="Excluir '+attr(x.cor)+'" title="Excluir" data-filament-delete="'+x.id+'">'+iconSvg("trash")+'</button></div></div>').join(""):
       '<div class="empty-state">Nenhuma cor cadastrada. Adicione a primeira cor de filamento.</div>')+'</div></section>';
@@ -371,7 +455,7 @@ function adminFilaments(root){
   $$("[data-filament-delete]",root).forEach(b=>b.onclick=()=>deleteFilament(Number(b.dataset.filamentDelete)));
 }
 function filamentEditor(id){
-  const color=(UI.filaments||[]).find(x=>x.id===id);
+  const color=(state.admin.filamentos||[]).find(x=>x.id===id);
   const selected=color?.hexadecimal||"#2A69D6";
   openModal(color?"Editar filamento":"Adicionar cor de filamento","Apenas cor e quantidade.",
     '<form id="filament-form" class="modal-main">'+
@@ -379,7 +463,7 @@ function filamentEditor(id){
       '<button type="button" class="filament-preset" style="--sample:'+hex+'" data-filament-choice="'+attr(name)+'" data-hex="'+hex+'" aria-label="Escolher '+attr(name)+'" title="'+attr(name)+'"><span></span></button>').join("")+'</div>'+
     '<div class="field-grid"><div class="field"><label for="filament-name">Cor</label><input id="filament-name" maxlength="55" required value="'+attr(color?.cor||"")+'" placeholder="Ex.: Azul royal"></div>'+
     '<div class="field"><label for="filament-hex">Escolher tonalidade</label><input type="color" id="filament-hex" value="'+selected+'"></div></div>'+
-    '<div class="field"><label for="filament-quantity">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+
+    '<div class="field"><label for="filament-quantity">Quantidade</label><div class="stepper"><button type="button" class="step" data-target="filament-quantity" data-delta="-1">−</button><input type="number" id="filament-quantity" value="'+Number(color?.quantidade||0)+'" min="0" max="1000000" required><button type="button" class="step" data-target="filament-quantity" data-delta="1">+</button></div></div>'+switchInput("filament-public","Exibir para todos",color?Number(color.visivel_visitante)!==0:true,"Desmarcado: esta cor ficará visível apenas aos PETianes.")+
     '<div class="modal-footer" style="border:0;padding:16px 0 0"><button class="secondary-button" id="filament-cancel" type="button">Cancelar</button><button class="primary-button" type="submit" id="filament-save">Salvar</button></div></form>');
   $$("[data-filament-choice]").forEach(b=>b.onclick=()=>{
     $("#filament-name").value=b.dataset.filamentChoice;$("#filament-hex").value=b.dataset.hex;
@@ -390,24 +474,157 @@ function filamentEditor(id){
     e.preventDefault();
     const btn=$("#filament-save");btn.disabled=true;btn.textContent="Salvando…";
     try{
-      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value)});
-      await refreshFilaments();closeModal();adminBuild();toast("Filamento salvo.");
+      await api("/api/admin/filaments","POST",{acao:color?"editar":"criar",id:color?.id,cor:$("#filament-name").value,hexadecimal:$("#filament-hex").value,quantidade:Number($("#filament-quantity").value),visivel_visitante:$("#filament-public").checked});
+      await adminReload();closeModal();adminBuild();toast("Filamento salvo.");
     }catch(e){toast(e.message,true);btn.disabled=false;btn.textContent="Salvar";}
   };
 }
 async function deleteFilament(id){
-  const x=(UI.filaments||[]).find(x=>x.id===id);if(!x)return;
+  const x=(state.admin.filamentos||[]).find(x=>x.id===id);if(!x)return;
   if(!await niceModalConfirm("Excluir esta cor?","Excluir "+x.cor+" do inventário de filamentos?","Excluir",true))return;
-  try{await api("/api/admin/filaments","POST",{acao:"excluir",id});await refreshFilaments();adminBuild();toast("Cor excluída.");}
+  try{await api("/api/admin/filaments","POST",{acao:"excluir",id});await adminReload();adminBuild();toast("Cor excluída.");}
   catch(e){toast(e.message,true);}
 }
 
 
 /* Editor de materiais e configurações do painel renovado. */
+/* Busca inteligente por tipo: sugere, mas nunca aplica mudanças sem confirmação. */
+function materialFamilyHint(name){
+  const n=String(name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  if(/resistor/.test(n))return "Resistores";
+  if(/capacit/.test(n))return "Capacitores";
+  if(/arduino/.test(n))return "Arduino";
+  if(/ponte\s*h/.test(n))return "Pontes H";
+  if(/esp\s*32/.test(n))return "ESP32";
+  if(/tablet/.test(n))return "Tablets";
+  if(/notebook/.test(n))return "Notebooks";
+  if(/motor/.test(n))return "Motores";
+  if(/\bled\b/.test(n))return "LEDs";
+  if(/pilha|bateria/.test(n))return "Baterias";
+  if(/sensor/.test(n))return "Sensores";
+  const first=n.match(/^[a-z]{4,}/)?.[0]||"";
+  return first?first[0].toUpperCase()+first.slice(1):"Outros";
+}
+function materialPickerRows(items,selected,term=""){
+  const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
+    String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
+  return {visible:available,html:available.slice(0,160).map(x=>
+    '<label class="admin-bulk-row"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
+    '<span><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.grupo_variacoes?' · '+esc(x.grupo_variacoes):"")+
+    (Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small></span></label>').join("")||
+    '<div class="empty-state">Nenhum material encontrado.</div>'};
+}
+function adminMaterialPickerConfig(mode,currentId){
+  const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
+  const selected=new Set(),current=all.find(x=>x.id===currentId);
+  if(current)selected.add(current.id);
+  const similar=current?all.filter(x=>x.id!==current.id&&materialFamilyHint(x.nome)===materialFamilyHint(current.nome)):[];
+  const group=current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
+  return {all,selected,current,similar,group,mode};
+}
+function openBulkVisibility(currentId){
+  const model=adminMaterialPickerConfig("visibility",currentId);
+  const initial=model.current?.nome.split(/\s+/)[0]||"";
+  openModal("Visibilidade em lote","Selecione materiais e escolha o público. As sugestões não são aplicadas automaticamente.",
+    '<div class="modal-main"><div class="field"><label for="bulk-search">Buscar materiais</label><input id="bulk-search" placeholder="Ex.: Resistor, Arduino..." value="'+attr(initial)+'"></div>'+
+    '<div class="admin-bulk-actions"><button class="outline-button small-button" id="bulk-similar" type="button">Selecionar semelhantes ('+model.similar.length+')</button>'+
+    '<button class="outline-button small-button" type="button" id="bulk-select-all">Selecionar resultados</button>'+
+    '<button class="outline-button small-button" type="button" id="bulk-clear">Desmarcar todos</button></div>'+
+    '<div class="admin-bulk-list" id="bulk-list"></div>'+
+    '<p class="hint" id="bulk-selected-count"></p>'+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="outline-button" id="bulk-show-all" type="button">Exibir para todos</button>'+
+    '<button class="primary-button" id="bulk-only-members" type="button">Só PETianes</button></div></div>',{size:"wide"});
+  let visible=[];
+  const draw=()=>{
+    const result=materialPickerRows(model.all,model.selected,$("#bulk-search").value);
+    visible=result.visible;$("#bulk-list").innerHTML=result.html;
+    $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
+    $("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
+      const id=Number(b.dataset.bulkId);
+      if(b.checked)model.selected.add(id);else model.selected.delete(id);
+      $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
+    });
+  };
+  $("#bulk-search").oninput=draw;
+  $("#bulk-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
+  $("#bulk-select-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
+  $("#bulk-clear").onclick=()=>{model.selected.clear();draw();};
+  const save=async show=>{
+    if(!model.selected.size){toast("Selecione pelo menos um material.",true);return;}
+    const ok=await niceModalConfirm("Aplicar a "+model.selected.size+" materiais?",show?"Todos os visitantes poderão ver os materiais selecionados.":"Só PETianes poderão ver os materiais selecionados.",show?"Exibir para todos":"Só PETianes");
+    if(!ok)return;
+    try{
+      await api("/api/admin/visibility","POST",{ids:[...model.selected],visivel_visitante:show,responsavel:state.actor||"Admin"});
+      await adminReload();closeModal();adminBuild();toast("Visibilidade alterada em "+model.selected.size+" materiais.");
+    }catch(error){toast(error.message,true);}
+  };
+  $("#bulk-show-all").onclick=()=>save(true);
+  $("#bulk-only-members").onclick=()=>save(false);
+  draw();
+}
+function openVariantLinker(currentId){
+  const model=adminMaterialPickerConfig("variations",currentId);
+  const existing=[...new Set(model.all.map(x=>x.grupo_variacoes).filter(Boolean))];
+  openModal("Organizar variações","Vincule modelos sem juntar seus estoques. Selecione os materiais que devem compartilhar um card.",
+    '<div class="modal-main"><div class="field"><label for="variant-group-name">Nome da família</label>'+
+    '<input id="variant-group-name" maxlength="80" list="variant-existing-groups" value="'+attr(model.current?.grupo_variacoes||model.group||"")+'" placeholder="Ex.: Resistores"><datalist id="variant-existing-groups">'+existing.map(x=>'<option value="'+attr(x)+'"></option>').join("")+'</datalist></div>'+
+    '<div class="field"><label for="variant-search">Buscar outros modelos</label><input id="variant-search" placeholder="Buscar material..." value="'+attr(model.current?.nome.split(/\s+/)[0]||"")+'"></div>'+
+    '<div class="admin-bulk-actions"><button class="outline-button small-button" type="button" id="variant-similar">Sugerir semelhantes ('+model.similar.length+')</button>'+
+    '<button class="outline-button small-button" type="button" id="variant-check-all">Selecionar resultados</button>'+
+    '<button class="outline-button small-button" type="button" id="variant-check-none">Limpar seleção</button></div>'+
+    '<div class="admin-bulk-list" id="variant-list"></div><p class="hint" id="variant-selected"></p>'+
+    '<div class="modal-footer" style="border:0;padding:14px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button type="button" class="outline-button" id="variant-create">Cadastrar nova variação</button>'+
+    '<button type="button" class="outline-button" id="variant-unlink">Desvincular selecionados</button>'+
+    '<button type="button" class="primary-button" id="variant-save">Vincular selecionados</button></div></div>',{size:"wide"});
+  let visible=[];
+  const draw=()=>{
+    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value);
+    visible=r.visible;$("#variant-list").innerHTML=r.html;
+    $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
+    $("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
+      const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
+      $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
+    });
+  };
+  $("#variant-search").oninput=draw;
+  $("#variant-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
+  $("#variant-check-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
+  $("#variant-check-none").onclick=()=>{model.selected.clear();draw();};
+  $("#variant-create").onclick=()=>{
+    window.__newVariantGroup=$("#variant-group-name").value.trim();
+    adminItemEditor();
+  };
+  const save=async unlink=>{
+    const group=unlink?"":$("#variant-group-name").value.trim();
+    if(!model.selected.size){toast("Selecione pelo menos um material.",true);return;}
+    if(!unlink&&group.length<2){toast("Informe um nome de grupo com pelo menos 2 caracteres.",true);return;}
+    const ok=await niceModalConfirm(unlink?"Desvincular variações?":"Vincular variações?",model.selected.size+" materiais serão "+(unlink?"separados em cards individuais.":"ligados ao grupo "+group+"."),unlink?"Desvincular":"Vincular");
+    if(!ok)return;
+    try{
+      await api("/api/admin/variations","POST",{ids:[...model.selected],grupo:group,responsavel:state.actor||"Admin"});
+      await adminReload();closeModal();adminBuild();toast(unlink?"Variações desvinculadas.":"Materiais vinculados no mesmo card.");
+    }catch(error){toast(error.message,true);}
+  };
+  $("#variant-save").onclick=()=>save(false);
+  $("#variant-unlink").onclick=()=>save(true);
+  draw();
+}
 function adminItemEditor(id){
   itemEditor(id);
   const form=$("#item-form");
   if(!form)return;
+  if(id){
+    const publicControl=$("#i-public");
+    if(publicControl){
+      const apply=document.createElement("button");
+      apply.type="button";apply.className="outline-button small-button";apply.textContent="Aplicar aos semelhantes";
+      publicControl.closest(".switch-row")?.insertAdjacentElement("afterend",apply);
+      apply.onclick=()=>openBulkVisibility(id);
+    }
+  }
   let edited=false,saved=false;
   const markDirty=()=>{edited=true};
   form.addEventListener("input",markDirty);
@@ -488,9 +705,9 @@ async function openAdmin(){
   }catch(error){
     if(!/painel|401|autoriz/i.test(error.message)){toast(error.message,true);return;}
   }
-  openModal("Administração","Acesso ao painel do inventário.",
+  openModal("Admin","Entre com a senha para acessar o inventário.",
     '<form class="modal-main" id="v2-admin-login">'+
-    '<div class="field"><label for="v2-admin-password">Senha administrativa</label>'+
+    '<div class="field"><label for="v2-admin-password">Senha</label>'+
     '<div class="password-input-wrap"><input type="password" id="v2-admin-password" autocomplete="current-password" required placeholder="Digite a senha">'+
     '<button type="button" id="v2-admin-show-password" class="show-password" aria-pressed="false">Mostrar</button></div></div>'+
     '<button type="submit" class="primary-button" style="width:100%;min-height:49px" id="v2-admin-submit">Entrar no painel</button></form>');
@@ -506,3 +723,7 @@ async function openAdmin(){
   };
 }
 setupFinalPublic();
+if(document.body.dataset.adminRoute==="true"){
+  const stage=$("#admin-stage");if(stage)stage.classList.add("admin-loading");
+  openAdmin();
+}
