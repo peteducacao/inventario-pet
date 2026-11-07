@@ -12,7 +12,7 @@ async function identityAudit(db,action,type,id,description,actor="Admin"){
 const clean = (v,max=120)=>String(v??"").trim().slice(0,max);
 const sha256 = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,"0")).join("");
 const randomHex = size => [...crypto.getRandomValues(new Uint8Array(size))].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();
-const publicUser = u => ({id:u.public_id,nome:u.nome,tag:u.papel,criado_em:u.criado_em,ativo:u.ativo===1,login:u.login||null,precisa_criar_login:!u.login,trocar_senha:!!u.must_change_password});
+const publicUser = u => ({id:u.public_id,nome:u.nome,email:u.email||"",tag:u.papel,criado_em:u.criado_em,ativo:u.ativo===1,login:u.login||null,precisa_criar_login:!u.login,trocar_senha:!!u.must_change_password});
 const expiry = () => new Date(Date.now()+180*86400000).toISOString();
 const authCookie = "__Host_pet_identity";
 const cookieValue = req => (req.headers.get("cookie")||"").split(";").map(x=>x.trim()).find(x=>x.startsWith(authCookie+"="))?.slice(authCookie.length+1)||"";
@@ -34,7 +34,7 @@ const rows = async(db,sql,args=[]) => (await db.prepare(sql).bind(...args).all()
 async function loggedIn(req,db){
   const token=cookieValue(req);
   if(!/^[0-9a-f-]{60,90}$/.test(token))return null;
-  const user=await db.prepare("SELECT u.id,u.public_id,u.nome,u.papel,u.ativo,u.criado_em,u.ultimo_acesso,u.login,u.password_hash,u.password_salt,u.password_iterations,u.must_change_password FROM usuario_sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.hash=? AND s.expira_em>? AND u.ativo=1").bind(await sha256(token),now()).first();
+  const user=await db.prepare("SELECT u.id,u.public_id,u.nome,u.papel,u.ativo,u.criado_em,u.ultimo_acesso,u.email,u.login,u.password_hash,u.password_salt,u.password_iterations,u.must_change_password FROM usuario_sessoes s JOIN usuarios u ON u.id=s.usuario_id WHERE s.hash=? AND s.expira_em>? AND u.ativo=1").bind(await sha256(token),now()).first();
   return user||null;
 }
 async function addSession(db,id){
@@ -55,6 +55,7 @@ async function rate(db,req,tag,max,windowH=24) {
 const ITERATIONS=100000;
 const username = value => clean(value,30).toLowerCase();
 const validUsername = value => /^[a-z0-9][a-z0-9._-]{3,23}$/.test(value);
+const validEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length<=180;
 // Sem exigência de número mínimo de dígitos. Limite técnico amplo para prevenir abuso de memória.
 const MAX_PASSWORD_LENGTH=2048;
 const validPassword = value => typeof value==="string" && value.length>=1 && value.length<=MAX_PASSWORD_LENGTH;
@@ -81,8 +82,9 @@ const maybeDuplicate=e=>String(e?.message||e).includes("UNIQUE")||String(e?.mess
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
-  const b=await bodyJson(req,12000),nome=clean(b.nome,80),login=username(b.login),password=b.senha;
+  const b=await bodyJson(req,12000),nome=clean(b.nome,80),login=username(b.login),email=clean(b.email,180).toLowerCase(),password=b.senha;
   if(nome.length<2)return error("Informe seu nome.");
+  if(!validEmail(email))return error("Informe um e-mail válido para criar sua conta.");
   if(!validUsername(login))return error("O login deve ter de 4 a 24 caracteres: letras sem acentos, números, ponto, traço ou _.");
   if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
   if(!await rate(db,req,"cadastro",20))return error("Limite de cadastros atingido. Tente mais tarde.",429);
@@ -93,7 +95,7 @@ async function register(req,env){
   for(let attempt=0;attempt<4;attempt++){
     const publicId="PET-"+randomHex(6);
     try{
-      const result=await db.prepare("INSERT INTO usuarios(public_id,nome,papel,ativo,recovery_hash,criado_em,atualizado_em,login,password_hash,password_salt,password_iterations,must_change_password) VALUES (?,?,'visitante',1,?,?,?,?,?,?,?,0)").bind(publicId,nome,recoveryHash,time,time,login,hash,salt,ITERATIONS).run();
+      const result=await db.prepare("INSERT INTO usuarios(public_id,nome,email,papel,ativo,recovery_hash,criado_em,atualizado_em,login,password_hash,password_salt,password_iterations,must_change_password) VALUES (?,?,?,'visitante',1,?,?,?,?,?,?,?,0)").bind(publicId,nome,email,recoveryHash,time,time,login,hash,salt,ITERATIONS).run();
       user=await db.prepare("SELECT * FROM usuarios WHERE id=?").bind(result.meta.last_row_id).first();
       break;
     }catch(e){
@@ -121,14 +123,15 @@ async function upgradeLegacy(req,env){
   const user=await loggedIn(req,env.DB);
   if(!user)return error("Entre no perfil antigo neste aparelho ou peça redefinição ao administrador.",401);
   if(user.login)return error("Esta conta já usa login e senha.",409);
-  const b=await bodyJson(req,12000),login=username(b.login),password=b.senha;
+  const b=await bodyJson(req,12000),login=username(b.login),email=clean(b.email,180).toLowerCase(),password=b.senha;
+  if(!validEmail(email))return error("Informe um e-mail válido para atualizar seu cadastro.");
   if(!validUsername(login))return error("Escolha um login de 4 a 24 caracteres (letras, números, ponto, _ ou traço).");
   if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
   if(await env.DB.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first())return error("Este login já está em uso.",409);
   const {hash,salt}=await securityFields(password);
   try {
     const applied=await env.DB.batch([
-      env.DB.prepare("UPDATE usuarios SET login=?,password_hash=?,password_salt=?,password_iterations=?,must_change_password=0,atualizado_em=? WHERE id=? AND login IS NULL").bind(login,hash,salt,ITERATIONS,now(),user.id),
+      env.DB.prepare("UPDATE usuarios SET login=?,email=?,password_hash=?,password_salt=?,password_iterations=?,must_change_password=0,atualizado_em=? WHERE id=? AND login IS NULL").bind(login,email,hash,salt,ITERATIONS,now(),user.id),
       env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
     ]);
     if(applied[0].meta?.changes!==1)return error("Conta já atualizada. Entre com login e senha.",409);
@@ -153,6 +156,14 @@ async function changePassword(req,env){
   const session=await addSession(env.DB,u.id);
   return respond({ok:true,usuario:{...publicUser(u),trocar_senha:false}},200,{"set-cookie":session});
 }
+async function updateEmail(req,env,user){
+  if(!user)return error("Entre na sua conta para cadastrar o e-mail.",401);
+  if(!user.login||user.must_change_password)return error("Finalize o acesso à sua conta antes de cadastrar o e-mail.",403);
+  const b=await bodyJson(req,3000),email=clean(b.email,180).toLowerCase();
+  if(!validEmail(email))return error("Informe um e-mail válido.");
+  await env.DB.prepare("UPDATE usuarios SET email=?,atualizado_em=? WHERE id=?").bind(email,now(),user.id).run();
+  return respond({ok:true,usuario:{...publicUser(user),email}});
+}
 async function rename(req,env,user){
   if(!user)return error("Cadastre seu perfil antes de editar o nome.",401);
   const b=await bodyJson(req,3000),name=clean(b.nome,80);
@@ -166,10 +177,10 @@ async function listMine(db,user){
 }
 async function withdraw(req,env,user){
   if(!user||user.papel!=="petiano")return error("Somente PETianos autorizados podem retirar materiais diretamente.",403);
-  const b=await bodyJson(req,5000),id=Number(b.componente_id),quantity=Number(b.quantidade),due=clean(b.data_devolucao,10),email=clean(b.email,180).toLowerCase(),note=clean(b.observacao,500);
+  const b=await bodyJson(req,5000),id=Number(b.componente_id),quantity=Number(b.quantidade),due=clean(b.data_devolucao,10),email=clean(user.email,180).toLowerCase(),note=clean(b.observacao,500);
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)return error("Material ou quantidade inválidos.");
   if(due&&(!formatDateValid(due)||due<brazilDate()))return error("Informe uma data de devolução válida.");
-  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return error("Informe um e-mail válido ou deixe o campo vazio.");
+  if(!validEmail(email))return error("Cadastre seu e-mail em Minha conta antes de retirar materiais.");
   const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade,arquivado,categoria_id FROM componentes WHERE id=?").bind(id).first();
   if(!item)return error("Material não encontrado.",404);
   const cat=await env.DB.prepare("SELECT arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first();
@@ -272,6 +283,7 @@ export async function identityAPI(req,env,adminAuth){
   if(path==="/api/identity/login"&&method==="POST")return loginUser(req,env);
   if(path==="/api/identity/upgrade"&&method==="POST")return upgradeLegacy(req,env);
   if(path==="/api/identity/password"&&method==="POST")return changePassword(req,env);
+  if(path==="/api/identity/email"&&method==="POST")return updateEmail(req,env,await loggedIn(req,db));
   if(path==="/api/identity/recover" || path==="/api/identity/recovery-code")return error("Recuperação antiga encerrada. Use login e senha ou solicite redefinição ao administrador.",410);
   if(path==="/api/identity/me"&&method==="GET"){
     const u=await loggedIn(req,db);
