@@ -84,7 +84,7 @@ async function auditLog(db, action, type, id, description, actor="Admin"){
   }catch(error){console.error("Erro ao registrar histórico administrativo",String(error).slice(0,200));}
 }
 async function catalog(db, isAdmin = false, member = false) {
-  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos FROM categorias ORDER BY ordem,nome");
+  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes FROM categorias ORDER BY ordem,nome");
   let items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
   if(isAdmin)items=items.filter(item=>!isFilamentMirror(item));
   if (!isAdmin) {
