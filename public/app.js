@@ -274,7 +274,7 @@ function itemEditor(id){
       mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
       visivel_visitante:$("#i-public").checked,grupo_variacoes:$("#i-variation-family").value,
       descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
-    try{await api("/api/admin/item","POST",body);e.currentTarget.dispatchEvent(new Event("pet:item-saved"));await adminReload();adminModal();toast("Material salvo!");}
+    try{await api("/api/admin/item","POST",body);$("#item-form")?.dispatchEvent(new Event("pet:item-saved"));await adminReload();adminModal();toast("Material salvo!");}
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar material";}
   };
 }
