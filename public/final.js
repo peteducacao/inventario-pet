@@ -221,6 +221,18 @@ function flashPopup(title,text){
   openModal(title,"",'<div class="confirm-body"><p>'+esc(text||"")+'</p><div class="confirm-actions"><button class="primary-button" type="button" id="v2-done">Entendi</button></div></div>');
   $("#v2-done").onclick=closeModal;
 }
+function showReturnFromAdminIdentityNotice(){
+  if(state.identity)return;
+  // O Admin tem senha própria; nunca atribuir uma identidade pessoal automaticamente.
+  openModal("Verificar sua conta pessoal",
+    "Sua sessão administrativa está ativa, mas você não entrou como PETiane ou visitante.",
+    '<div class="modal-main"><p class="notice" style="margin:0 0 16px">Você pode consultar o catálogo sem conta. Para reservar ou acompanhar seus empréstimos, entre com seu login pessoal.</p>'+
+    '<div class="modal-footer" style="border:0;padding:0;display:flex;flex-wrap:wrap;gap:10px">'+
+    '<button type="button" id="post-admin-personal-login" class="primary-button">Entrar na minha conta</button>'+
+    '<button type="button" id="post-admin-browse-catalog" class="outline-button">Consultar catálogo</button></div></div>');
+  $("#post-admin-personal-login").onclick=()=>identityLoginModal(true);
+  $("#post-admin-browse-catalog").onclick=closeModal;
+}
 function closeUserMenu(){document.querySelector(".pop-menu")?.remove();}
 function openUserMenu(){
   closeUserMenu();
