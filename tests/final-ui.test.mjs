@@ -50,9 +50,13 @@ function build(isAdmin,alreadyAdmin=false){
       else {status=401;body={error:"Entre no painel administrativo."};}
     }else if(path==="/api/login"){adminAuthenticated=true;body={ok:true};}
     else if(path==="/api/logout"){adminAuthenticated=false;body={ok:true};}
-    else if(path==="/api/admin/log")body={ok:true,eventos:[{id:1,criado_em:"2026-11-06T12:00:00Z",
-      responsavel:"Teste",acao:"Editou",tipo:"material",descricao:"Quantidade alterada"}],
-      total:1,pagina:1,limpeza_historico:"nunca"};
+    else if(path==="/api/admin/log")body={ok:true,eventos:[
+      {id:5,criado_em:"2026-11-06T13:00:00Z",responsavel:"Teste",acao:"Editou",tipo:"material",registro_id:1,descricao:"Quantidade alterada"},
+      {id:4,criado_em:"2026-11-06T12:45:00Z",responsavel:"Teste",acao:"Editou",tipo:"categoria",registro_id:2,descricao:"Equipamentos"},
+      {id:3,criado_em:"2026-11-06T12:30:00Z",responsavel:"Teste",acao:"Editou",tipo:"filamento",registro_id:21,descricao:"Preto"},
+      {id:2,criado_em:"2026-11-06T12:15:00Z",responsavel:"Teste",acao:"Aprovou",tipo:"reserva",registro_id:9,descricao:"Reserva aprovada"},
+      {id:1,criado_em:"2026-11-06T12:00:00Z",responsavel:"Teste",acao:"Criou",tipo:"usuario",registro_id:null,descricao:"Usuário novo"}],
+      total:5,pagina:1,limpeza_historico:"nunca"};
     else if(path==="/api/admin/users")body={usuarios:[]};
     else if(path==="/api/my/loans")body={emprestimos:[]};
     else if(path==="/api/admin/variations")body={ok:true,vinculados:2};
@@ -166,10 +170,24 @@ ad.querySelector("#v2-admin-login").dispatchEvent(new aw.Event("submit",{bubbles
 await wait(180);
 assert.ok(ad.querySelector(".admin-layout"),"Admin separado não abriu.");
 assert.equal(ad.querySelector(".admin-overview.three")?.children.length,3,"Painel precisa ter três indicadores.");
-assert.ok(ad.querySelector("#dashboard-last-change"),"Atalho de última alteração deve estar na visão geral.");
+assert.ok(ad.querySelector("#dashboard-recent-log"),"Últimas alterações precisam estar dentro da visão geral.");
+assert.equal(ad.querySelector(".admin-shortcuts"),null,"Atalhos fixos devem sair da visão geral.");
+assert.equal(ad.querySelector("#dashboard-last-change"),null,"O destaque isolado não deve ocupar espaço.");
+assert.equal(ad.querySelectorAll("#admin-content > .admin-panel").length,1,"Atividade recente não deve ser repetida abaixo.");
 await wait(90);
-assert.match(ad.querySelector("#dashboard-last-change").textContent,/Quantidade alterada/);
-assert.ok(ad.querySelector("#dashboard-last-open"),"Última alteração deve ter link à área correspondente.");
+assert.equal(ad.querySelectorAll(".dashboard-change").length,4,"Mostrar somente quatro últimas alterações.");
+assert.equal(ad.querySelectorAll(".dashboard-change-emoji").length,4,"Cada alteração deve ter emoji.");
+assert.match(ad.querySelector(".dashboard-change").textContent,/Quantidade alterada/);
+assert.doesNotMatch(ad.querySelector("#dashboard-recent-log").textContent,/Usuário novo/,"A quinta alteração não deve aparecer.");
+await adminClick('[data-dashboard-log-id="5"]');
+assert.ok(ad.querySelector("#admin-material-list"),"Material recente deve abrir Materiais.");
+assert.equal(ad.querySelector("#admin-material-search").value,"Resistor 100Ω","Atalho deve localizar o material.");
+await adminClick('[data-admin-tab="painel"]');
+await wait(80);
+await adminClick('[data-dashboard-log-id="4"]');
+assert.ok(ad.querySelector("#admin-content").textContent.includes("Categorias"),"Categoria recente deve abrir Categorias.");
+await adminClick('[data-admin-tab="painel"]');
+await wait(80);
 assert.doesNotMatch(ad.querySelector(".admin-overview.three").textContent,/Reservas pendentes/);
 assert.ok(ad.querySelector('[data-admin-tab="historico"]'));
 await adminClick('[data-admin-tab="historico"]');
