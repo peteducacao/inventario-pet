@@ -23,6 +23,10 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/loans-permissions.test.mjs
       - name: Testar fila Gmail e listagem somente de pendentes
         run: node --disable-warning=ExperimentalWarning tests/gmail.test.mjs
+      - name: Testar central de Ajuda e impressão/PDF
+        run: node tests/help.test.mjs
+      - name: Testar limpeza e reset seguro das reservas em banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/reservations-cleanup.test.mjs
       - name: Testar backup completo e restauração no banco isolado
         run: node --disable-warning=ExperimentalWarning tests/backup-v2.test.mjs
       - name: Aplicar tabelas ao D1
@@ -77,6 +81,8 @@ jobs:
       # ADMIN_PASSWORD já está configurada no Cloudflare. Não a sobrescrever
       # durante cada deploy: Workers Versions bloqueia regravação quando a
       # última versão não está ativada e isso interrompia os testes seguintes.
+      - name: Confirmar central de Ajuda publicada
+        run: node tests/live-help.mjs
       - name: Conferir ilustrações publicadas
         run: node tests/live-art.mjs
       - name: Confirmar famílias no catálogo publicado
