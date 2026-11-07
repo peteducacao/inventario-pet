@@ -408,6 +408,14 @@ assert.equal(ad.querySelectorAll(".bulk-visibility-badge.category-locked").lengt
 
 await adminClick("#modal-root [data-close]");
 await adminClick('[data-item-edit="1"]');
+assert.ok(ad.querySelector(".item-edit-modal"),"Editor compacto deve usar modal próprio.");
+assert.ok(ad.querySelector(".item-editor-intro"),"A edição rápida precisa ter instruções curtas.");
+assert.ok(ad.querySelector("#i-name")?.closest("details")===null,"Nome deve ficar visível sem expandir seções.");
+assert.ok(ad.querySelector("#i-quantity")?.closest("details")===null,"Estoque deve ficar visível sem expandir seções.");
+assert.equal(ad.querySelector("#item-editor-identification").open,false,"Identificação deve começar recolhida.");
+assert.equal(ad.querySelector("#item-editor-media").open,false,"Fotos, vínculos e exibição devem começar recolhidos.");
+assert.ok(ad.querySelector("#i-save")?.closest(".item-editor-savebar"),"Salvar deve ficar na barra fixa inferior.");
+assert.match(ad.querySelector("#i-save").textContent,/Salvar alterações/);
 assert.ok(ad.querySelector("#i-public"),"Visibilidade individual não está disponível.");
 assert.ok(ad.querySelector("#i-variation-family"),"Campo de grupo de variações não está disponível.");
 assert.equal(ad.querySelector("#i-unit").tagName,"SELECT","Unidade precisa ter seletor.");
@@ -417,6 +425,17 @@ assert.equal(ad.querySelector("#i-available"),null,"Aviso redundante de disponí
 await adminClick("#i-link-variations");
 assert.ok(ad.querySelector("#variant-similar"));
 assert.ok(ad.querySelector("#variant-group-name"),"Variações continuam editáveis dentro do material.");
+assert.equal(ad.querySelector("#variant-group-name").value,"Resistores","O nome salvo da família deve aparecer no organizador.");
+assert.equal(ad.querySelector('[data-bulk-id="1"]')?.checked,true,"O modelo atual já vinculado deve aparecer marcado.");
+assert.equal(ad.querySelector('[data-bulk-id="2"]')?.checked,true,"O outro modelo já vinculado deve aparecer marcado também.");
+assert.equal(ad.querySelector('[data-bulk-id="3"]')?.checked,false,"Material de outra família não deve aparecer marcado.");
+assert.ok(ad.querySelectorAll(".variant-photo-row.is-selected").length>=2,"Itens já vinculados devem ter destaque visual.");
+assert.match(ad.querySelector("#variant-list").textContent,/Já vinculado/);
+assert.match(ad.querySelector("#variant-selected").textContent,/2 já vinculados/);
+ad.querySelector('[data-bulk-id="2"]').click();await wait(20);
+assert.equal(ad.querySelector('[data-bulk-id="2"]').checked,false,"É necessário poder desmarcar um vínculo manualmente.");
+ad.querySelector('[data-bulk-id="2"]').click();await wait(20);
+assert.equal(ad.querySelector('[data-bulk-id="2"]').checked,true,"A marcação deve acompanhar a ação imediatamente.");
 assert.ok(ad.querySelector('[data-variant-photo="1"]'),"Foto individual deve continuar disponível.");
 assert.ok(ad.querySelector('[data-variant-file="1"][type="file"]'),"Upload por variação deve continuar disponível.");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
