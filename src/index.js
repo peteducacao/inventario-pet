@@ -492,9 +492,19 @@ async function processRequest(req, env) {
     if (!item) return bad("Material não encontrado.",404);
     const current = now();
     if (action === "aprovar" && r.status === "pendente") {
+      // Aprovar é entregar: uma única operação atualiza reserva, retirada e estoque.
       const reserved = await maxReserved(db,item.id,r.data_inicio,r.data_devolucao,r.id);
-      if (baseAvailable(item) - reserved < r.quantidade) return bad("Estoque insuficiente para aprovar esta reserva.",409);
-      await db.prepare("UPDATE reservas SET status='aprovada',aprovado_em=?,responsavel_admin=? WHERE id=? AND status='pendente'").bind(current,actor,id).run();
+      if (baseAvailable(item) - reserved < r.quantidade) return bad("Estoque insuficiente para aprovar e entregar este material.",409);
+      const today=todayBR();
+      const handoffDay=r.data_devolucao>=today?today:r.data_inicio;
+      const outcome=await db.batch([
+        db.prepare("UPDATE reservas SET status='retirada',aprovado_em=?,retirado_em=?,data_inicio=?,responsavel_admin=? WHERE id=? AND status='pendente'").bind(current,current,handoffDay,actor,id),
+        db.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso-com_defeito>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada' AND retirado_em=?)").bind(r.quantidade,current,actor,"Reserva aprovada e entregue #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id,current)
+      ]);
+      if(outcome[0].meta?.changes!==1||outcome[1].meta?.changes!==1){
+        // Não permitir que duas aprovações de uma mesma solicitação contem estoque duas vezes.
+        return bad("Não foi possível confirmar a entrega. Atualize o painel e confira o estoque.",409);
+      }
     } else if (action === "recusar" && ["pendente","aprovada"].includes(r.status)) {
       await db.prepare("UPDATE reservas SET status='recusada',responsavel_admin=?,observacao=? WHERE id=?").bind(actor,str(b.observacao,500),id).run();
     } else if (action === "retirar" && r.status === "aprovada") {
@@ -518,7 +528,7 @@ async function processRequest(req, env) {
     if(r.usuario_id){
       let titulo="",mensagem="",tipo="info";
       const subject="a reserva #"+id+" de "+item.nome;
-      if(action==="aprovar"){titulo="Reserva aprovada";mensagem="Sua "+subject+" foi aprovada por "+actorName+".";tipo="aprovada";}
+      if(action==="aprovar"){titulo="Reserva aprovada e retirada registrada";mensagem="Sua "+subject+" foi aprovada e a entrega registrada por "+actorName+". Você já pode registrar a devolução em Meus empréstimos.";tipo="retirada";}
       else if(action==="recusar"){
         titulo="Reserva recusada";
         const reason=str(b.observacao,500);
@@ -529,7 +539,7 @@ async function processRequest(req, env) {
       else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução da "+subject+" foi confirmada por "+actorName+".";tipo="devolucao";}
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
-    await auditLog(db,action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
+    await auditLog(db,action==="aprovar"?"Aprovou e entregou":action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
     return j({ ok:true, notificacao_registrada:Boolean(r.usuario_id) });
   }
   if (path === "/api/admin/settings" && method === "POST") {
