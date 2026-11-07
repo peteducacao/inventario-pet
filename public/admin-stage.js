@@ -446,23 +446,38 @@ async function adminReservationAction(id,action){
     }
   }catch(e){toast(e.message,true);}
 }
-/* Usuários: tag, redefinição de senha e exclusão segura. */
+/* Usuários: uma lista vertical, separada por perfil e com contadores gerais. */
 let adminUserFilter="todos";
 let adminUserQuery="";
 async function adminUsers(root){
-  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Usuários</h2></div></div>'+
-    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-users-search" placeholder="Buscar nome, login, e-mail ou ID..." value="'+attr(adminUserQuery)+'"></div>'+
-    '<select id="admin-users-filter" aria-label="Filtro de usuários" class="admin-filter"><option value="todos">Todos</option><option value="petiano">PETianos</option><option value="visitante">Visitantes</option></select></div>'+
+  root.innerHTML='<section class="admin-panel admin-users-panel"><div class="admin-section-head"><div><h2>Usuários</h2><p>Consulte os perfis e altere as permissões de cada pessoa.</p></div></div>'+
+    '<div class="admin-users-summary" id="admin-users-summary" role="group" aria-label="Filtrar usuários por perfil">'+
+      '<button type="button" class="admin-users-counter" data-users-view="todos" aria-pressed="true"><span>Total de usuários</span><strong data-users-count="todos">—</strong></button>'+
+      '<button type="button" class="admin-users-counter" data-users-view="petiano" aria-pressed="false"><span>PETianes</span><strong data-users-count="petiano">—</strong></button>'+
+      '<button type="button" class="admin-users-counter" data-users-view="visitante" aria-pressed="false"><span>Visitantes</span><strong data-users-count="visitante">—</strong></button>'+
+    '</div>'+
+    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-users-search" placeholder="Buscar nome, login, e-mail ou ID..." aria-label="Buscar usuários" value="'+attr(adminUserQuery)+'"></div></div>'+
+    '<p class="admin-users-result" id="admin-users-result" aria-live="polite">Carregando usuários…</p>'+
     '<div id="admin-users-list" class="user-list">Carregando…</div><nav id="admin-users-pages" class="page-controls"></nav></section>';
-  $("#admin-users-filter").value=adminUserFilter;
-  $("#admin-users-filter").onchange=e=>{adminUserFilter=e.target.value;UI.usersPage=1;paintUsers();};
+  $$("[data-users-view]",root).forEach(button=>button.onclick=()=>{
+    const filter=button.dataset.usersView;
+    if(!["todos","petiano","visitante"].includes(filter))return;
+    adminUserFilter=filter;UI.usersPage=1;paintUsers();
+  });
   $("#admin-users-search").oninput=e=>{adminUserQuery=e.target.value;UI.usersPage=1;paintUsers();};
   $("#admin-users-pages").onclick=e=>{const b=e.target.closest("[data-page]");if(!b)return;UI.usersPage=Number(b.dataset.page);paintUsers();};
   try{
     const res=await api("/api/admin/users");
     if(!document.contains(root)||UI.adminTab!=="usuarios")return;
-    UI.users=res.usuarios||[];paintUsers();
-  }catch(e){if(document.contains(root))$("#admin-users-list").innerHTML='<div class="empty-state">'+esc(e.message)+'</div>';}
+    UI.users=res.usuarios||[];
+    UI.userTotals=res.totais||null;
+    paintUsers();
+  }catch(e){
+    if(document.contains(root)){
+      $("#admin-users-list").innerHTML='<div class="empty-state">'+esc(e.message)+'</div>';
+      $("#admin-users-result").textContent="Não foi possível carregar os usuários.";
+    }
+  }
 }
 function userRow(x){
   const member=x.tag==="petiano";
@@ -477,10 +492,33 @@ function userRow(x){
 function paintUsers(){
   const list=$("#admin-users-list");if(!list)return;
   const users=UI.users||[];
-  const query=adminUserQuery.toLowerCase().trim();
-  const found=users.filter(x=>(adminUserFilter==="todos"||x.tag===adminUserFilter)&&(!query||[x.nome,x.login,x.email,x.id].some(v=>String(v||"").toLowerCase().includes(query))));
-  const p=paginate(found,UI.usersPage||1);UI.usersPage=p.page;
-  list.innerHTML=found.length?p.items.map(userRow).join(""):'<div class="empty-state">Nenhum usuário encontrado.</div>';
+  const count=key=>users.filter(x=>key==="todos"||x.tag===key).length;
+  const totals=UI.userTotals||{todos:count("todos"),petiano:count("petiano"),visitante:count("visitante")};
+  for(const key of ["todos","petiano","visitante"]){
+    const value=key==="todos"?totals.todos:key==="petiano"?totals.petiano:totals.visitante;
+    const label=$('[data-users-count="'+key+'"]');
+    if(label)label.textContent=String(Number(value)||0);
+    const button=$('[data-users-view="'+key+'"]');
+    if(button){const active=adminUserFilter===key;button.classList.toggle("active",active);button.setAttribute("aria-pressed",String(active));}
+  }
+  const query=adminUserQuery.toLocaleLowerCase("pt-BR").trim();
+  const found=users.filter(x=>(adminUserFilter==="todos"||x.tag===adminUserFilter)&&
+    (!query||[x.nome,x.login,x.email,x.id].some(v=>String(v||"").toLocaleLowerCase("pt-BR").includes(query))));
+  const sorted=[...found].sort((a,b)=>
+    (a.tag==="petiano"?0:1)-(b.tag==="petiano"?0:1)||
+    String(a.nome||"").localeCompare(String(b.nome||""),"pt-BR",{sensitivity:"base"}));
+  const p=paginate(sorted,UI.usersPage||1);UI.usersPage=p.page;
+  const groups=[["petiano","PETianes"],["visitante","Visitantes"]];
+  list.innerHTML=found.length?groups.map(([tag,title])=>{
+    const rows=p.items.filter(x=>x.tag===tag);
+    if(!rows.length)return "";
+    return '<section class="admin-user-group" aria-label="'+title+'">'+
+      '<h3 class="admin-user-group-title">'+title+' <span>'+found.filter(x=>x.tag===tag).length+'</span></h3>'+
+      rows.map(userRow).join("")+'</section>';
+  }).join(""):'<div class="empty-state">Nenhum usuário encontrado nesta seleção.</div>';
+  const result=$("#admin-users-result");
+  if(result)result.textContent=found.length+" "+(found.length===1?"usuário encontrado":"usuários encontrados")+
+    (query?" na busca":"");
   $("#admin-users-pages").innerHTML=pageButtons(p,"users");
   $$("[data-user-role]",list).forEach(b=>b.onclick=()=>adminToggleTag(b.dataset.userRole));
   $$("[data-user-mail]",list).forEach(b=>b.onclick=async()=>{
