@@ -166,17 +166,18 @@ async function listMine(db,user){
 }
 async function withdraw(req,env,user){
   if(!user||user.papel!=="petiano")return error("Somente PETianos autorizados podem retirar materiais diretamente.",403);
-  const b=await bodyJson(req,5000),id=Number(b.componente_id),quantity=Number(b.quantidade),due=clean(b.data_devolucao,10),note=clean(b.observacao,500);
+  const b=await bodyJson(req,5000),id=Number(b.componente_id),quantity=Number(b.quantidade),due=clean(b.data_devolucao,10),email=clean(b.email,180).toLowerCase(),note=clean(b.observacao,500);
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)return error("Material ou quantidade inválidos.");
-  if(!formatDateValid(due)||due<brazilDate())return error("Informe uma data de devolução válida.");
+  if(due&&(!formatDateValid(due)||due<brazilDate()))return error("Informe uma data de devolução válida.");
+  if(email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return error("Informe um e-mail válido ou deixe o campo vazio.");
   const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade,arquivado,categoria_id FROM componentes WHERE id=?").bind(id).first();
   if(!item)return error("Material não encontrado.",404);
   const cat=await env.DB.prepare("SELECT arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first();
   if(item.arquivado===1||cat?.arquivada===1)return error("Material arquivado. Procure o administrador.",409);
   if(item.quantidade-item.em_uso-item.com_defeito<quantity)return error("Estoque insuficiente para retirada.",409);
   const stamp=now(),actor=user.nome+" ("+user.public_id+")",today=brazilDate();
-  const fields=["componente_id","nome_solicitante","contato","email","quantidade","data_inicio","data_devolucao","status","observacao","solicitado_em","retirado_em","responsavel_admin","usuario_id","tipo"];
-  const values=[id,user.nome,"","",quantity,today,due,"retirada",note,stamp,stamp,actor,user.id,"retirada_direta"];
+  const fields=["componente_id","nome_solicitante","contato","email","quantidade","data_inicio","data_devolucao","status","observacao","solicitado_em","retirado_em","responsavel_admin","usuario_id","tipo","sem_prazo"];
+  const values=[id,user.nome,"",email,quantity,today,due||today,"retirada",note,stamp,stamp,actor,user.id,"retirada_direta",due?0:1];
   const batch=await env.DB.batch([
     env.DB.prepare("INSERT INTO reservas ("+fields.join(",")+") VALUES ("+fields.map(()=>"?").join(",")+")").bind(...values),
     env.DB.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(quantity,stamp,actor,"Retirada direta: "+quantity+" unidade(s)",id)
