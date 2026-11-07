@@ -22,6 +22,7 @@ db.prepare("UPDATE componentes SET grupo_variacoes='Controle customizado' WHERE 
 db.exec(readFileSync("migrations/0012_linkar_variacoes_iniciais.sql","utf8"));
 db.exec(readFileSync("migrations/0013_gmail_queue.sql","utf8"));
 db.exec(readFileSync("migrations/0014_email_usuarios.sql","utf8"));
+db.exec(readFileSync("migrations/0015_autorizacao_emprestimos.sql","utf8"));
 for(const name of ["Alcalina 1.5V Pilha normal","Alcalina 1.5V Pilha Palito","Alcalina 9V"]){
   const row=find(name);
   assert.ok(row,name+" ausente");
