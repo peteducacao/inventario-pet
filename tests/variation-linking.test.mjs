@@ -20,6 +20,7 @@ assert.equal(find("Alcalina 9V").grupo_variacoes,"");
 // A escolha manual do administrador nunca deve ser substituída pelo vínculo automático.
 db.prepare("UPDATE componentes SET grupo_variacoes='Controle customizado' WHERE arquivado=0 AND nome='Joystique duplo'").run();
 db.exec(readFileSync("migrations/0012_linkar_variacoes_iniciais.sql","utf8"));
+db.exec(readFileSync("migrations/0013_gmail_queue.sql","utf8"));
 for(const name of ["Alcalina 1.5V Pilha normal","Alcalina 1.5V Pilha Palito","Alcalina 9V"]){
   const row=find(name);
   assert.ok(row,name+" ausente");
