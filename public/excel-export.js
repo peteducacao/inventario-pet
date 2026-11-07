@@ -27,15 +27,14 @@
     const groups=data.grupos_variacoes||[],filaments=data.filamentos||[],reservations=data.reservas||[];
     const catMap=new Map(categories.map(x=>[Number(x.id),x.nome]));
     const familyName=v=>String(v||"").trim();
-    const available=x=>Math.max(0,Number(x.quantidade||0)-Number(x.em_uso||0)-Number(x.com_defeito||0));
-    const audience=x=>Number(x.permitir_petianos)===1&&Number(x.permitir_visitantes)===1?"Todos":
-      Number(x.permitir_petianos)===1?"PETianes":Number(x.permitir_visitantes)===1?"Visitantes":"Ninguém";
+    const available=x=>Math.max(0,Number(x.quantidade||0)-Number(x.em_uso||0));
+    const audience=x=>Number(x.permitir_visitantes)===1?"Visitantes (inclui PETianes)":"PETianes";
     const members=new Map();
     items.forEach(x=>{const k=familyName(x.grupo_variacoes).toLocaleLowerCase("pt-BR");if(k){if(!members.has(k))members.set(k,[]);members.get(k).push(x);}});
     const names=[...new Set([...groups.map(g=>familyName(typeof g==="string"?g:g.nome)),
       ...items.map(x=>familyName(x.grupo_variacoes))].filter(Boolean))]
       .sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
-    const quantities=x=>[Number(x.quantidade||0),available(x),Number(x.em_uso||0),Number(x.com_defeito||0)];
+    const quantities=x=>[Number(x.quantidade||0),Number(x.em_uso||0),available(x)];
     const stockTotal=items.reduce((v,x)=>v+Number(x.quantidade||0),0);
     return [
       ["Resumo",table(["Indicador","Valor"],[
@@ -46,20 +45,19 @@
         ["Quantidade total",stockTotal],
         ["Disponíveis",items.reduce((v,x)=>v+available(x),0)],
         ["Em uso",items.reduce((v,x)=>v+Number(x.em_uso||0),0)],
-        ["Com defeito",items.reduce((v,x)=>v+Number(x.com_defeito||0),0)],
         ["Cores de filamento",filaments.length],
         ["Registros de movimentação",reservations.length],
       ])],
-      ["Materiais",table(["ID","Material","Categoria","Vínculo","Quantidade","Disponível","Em uso","Defeito","Unidade","Identificação","Patrimônio","Visibilidade","Permissão de empréstimo","Observações","Defeitos descritos","Última alteração"],items.sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")).map(x=>
+      ["Materiais",table(["ID","Material","Categoria","Vínculo","Quantidade","Em uso","Disponível","Unidade","Identificação","Patrimônio","Visibilidade","Permissão de empréstimo","Observações","Última alteração"],items.sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR")).map(x=>
         [x.id,x.nome,catMap.get(Number(x.categoria_id))||"Sem categoria",familyName(x.grupo_variacoes)||"Não",...quantities(x),x.unidade||"unidades",x.identificacao||"",x.patrimonio||"",
-        Number(x.visivel_visitante)===1?"Todos":"Só PETianes",audience(x),x.observacoes||"",x.descricao_defeito||"",x.ultima_alteracao||""]))],
-      ["Vínculos",table(["Grupo","Componente","ID","Quantidade","Disponível","Em uso","Defeito"],names.flatMap(name=>{
+        Number(x.visivel_visitante)===1?"Todos":"Só PETianes",audience(x),x.observacoes||"",x.ultima_alteracao||""]))],
+      ["Vínculos",table(["Grupo","Componente","ID","Quantidade","Em uso","Disponível"],names.flatMap(name=>{
         const groupItems=members.get(name.toLocaleLowerCase("pt-BR"))||[];
-        return groupItems.length?groupItems.map(x=>[name,x.nome,x.id,...quantities(x)]):[[name,"(Grupo vazio)","",0,0,0,0]];
+        return groupItems.length?groupItems.map(x=>[name,x.nome,x.id,...quantities(x)]):[[name,"(Grupo vazio)","",0,0,0]];
       }))],
       ["Categorias",table(["ID","Categoria","Ativa","Visível para visitantes","PETianes retiram","Visitantes reservam","Materiais vinculados"],categories.map(c=>
         [c.id,c.nome,c.arquivada?"Não":"Sim",Number(c.visivel_visitante)===1?"Sim":"Não",Number(c.permitir_petianos)===1?"Sim":"Não",Number(c.permitir_visitantes)===1?"Sim":"Não",items.filter(x=>Number(x.categoria_id)===Number(c.id)).length]))],
-      ["Estoque",table(["Tipo","Material ou cor","Grupo","Quantidade","Disponível","Em uso","Defeito","Unidade"],[
+      ["Estoque",table(["Tipo","Material ou cor","Grupo","Quantidade","Em uso","Disponível","Unidade"],[
         ...items.map(x=>["Material",x.nome,familyName(x.grupo_variacoes),...quantities(x),x.unidade||"unidades"]),
         ...filaments.map(x=>["Filamento",x.cor,"",...quantities(x),"rolos"])
       ])],

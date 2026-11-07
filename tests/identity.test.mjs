@@ -107,8 +107,8 @@ assert.equal((await call("/api/member/history","GET",null,loginB.cookie)).status
 
 const deniedActive=await post("/api/admin/users/delete",{id:a.body.usuario.id},"",true);
 assert.equal(deniedActive.status,409,"Não apagar conta com retirada aberta.");
-assert.equal((await post("/api/member/return",{id:loan.id,defeituosos:1},loginA.cookie)).status,200);
-assert.equal((await post("/api/member/return",{id:loan.id,defeituosos:0},loginA.cookie)).status,404);
+assert.equal((await post("/api/member/return",{id:loan.id,descartados:1},loginA.cookie)).status,200);
+assert.equal((await post("/api/member/return",{id:loan.id,descartados:0},loginA.cookie)).status,404);
 // O PETiane não deve receber avisos por ações que ele mesmo fez.
 const petNotices=await call("/api/notifications","GET",null,loginA.cookie);
 assert.equal(petNotices.status,200);
@@ -131,7 +131,9 @@ assert.ok(adminPetNotices.body.notificacoes.some(n=>n.titulo==="Mensagem da admi
   "Notificações importantes da administração devem continuar visíveis.");
 assert.equal(adminPetNotices.body.nao_lidas,1);
 assert.equal(db.prepare("SELECT em_uso,com_defeito FROM componentes WHERE id=?").get(item.id).em_uso,item.em_uso);
-assert.equal(db.prepare("SELECT em_uso,com_defeito FROM componentes WHERE id=?").get(item.id).com_defeito,item.com_defeito+1);
+assert.equal(db.prepare("SELECT em_uso,com_defeito FROM componentes WHERE id=?").get(item.id).com_defeito,0);
+assert.equal(db.prepare("SELECT quantidade FROM componentes WHERE id=?").get(item.id).quantidade,item.quantidade-1,
+  "Uma unidade descartada reduz o total, não aumenta o estoque disponível.");
 
 assert.equal((await post("/api/admin/users/password",{id:a.body.usuario.id,login:"sergio01"})).status,401,"Somente o admin pode redefinir senha.");
 const reset=await post("/api/admin/users/password",{id:a.body.usuario.id,login:"sergio01"},"",true);

@@ -186,13 +186,13 @@ async function withdraw(req,env,user){
   const cat=await env.DB.prepare("SELECT arquivada,permitir_emprestimos,permitir_petianos FROM categorias WHERE id=?").bind(item.categoria_id).first();
   if(item.arquivado===1||cat?.arquivada===1)return error("Material arquivado. Procure o administrador.",409);
   if(!cat||Number(cat.permitir_petianos)===0||Number(item.permitir_petianos)===0)return error("Retirada para PETianes desativada nesta categoria ou material.",409);
-  if(item.quantidade-item.em_uso-item.com_defeito<quantity)return error("Estoque insuficiente para retirada.",409);
+  if(item.quantidade-item.em_uso<quantity)return error("Estoque insuficiente para retirada.",409);
   const stamp=now(),actor=user.nome+" ("+user.public_id+")",today=brazilDate();
   const fields=["componente_id","nome_solicitante","contato","email","quantidade","data_inicio","data_devolucao","status","observacao","solicitado_em","retirado_em","responsavel_admin","usuario_id","tipo","sem_prazo"];
   const values=[id,user.nome,"",email,quantity,today,due||today,"retirada",note,stamp,stamp,actor,user.id,"retirada_direta",due?0:1];
   const batch=await env.DB.batch([
     env.DB.prepare("INSERT INTO reservas ("+fields.join(",")+") VALUES ("+fields.map(()=>"?").join(",")+")").bind(...values),
-    env.DB.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(quantity,stamp,actor,"Retirada direta: "+quantity+" unidade(s)",id)
+    env.DB.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=?").bind(quantity,stamp,actor,"Retirada direta: "+quantity+" unidade(s)",id,quantity)
   ]);
   if(batch[0].meta?.changes!==1||batch[1].meta?.changes!==1)return error("Não foi possível registrar a retirada.",409);
   await identityAudit(env.DB,"Retirada direta","material",id,item.nome+" · "+quantity+" unidade(s)",actor);
@@ -201,34 +201,36 @@ async function withdraw(req,env,user){
 async function memberReturn(req,env,user){
   if(!user)return error("Entre em sua conta para registrar a devolução.",401);
   if(!user.login||user.must_change_password)return error("Finalize o cadastro da conta para devolver materiais.",403);
-  const b=await bodyJson(req,3000),id=Number(b.id),broken=Number(b.defeituosos||0),note=clean(b.observacao,500);
-  if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(broken)||broken<0)return error("Identificação ou quantidade inválida.");
+  const b=await bodyJson(req,3000),id=Number(b.id),discarded=Number(b.descartados ?? b.defeituosos ?? 0),note=clean(b.observacao,500);
+  if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(discarded)||discarded<0)return error("Identificação ou quantidade inválida.");
   const r=await env.DB.prepare("SELECT * FROM reservas WHERE id=? AND usuario_id=? AND status='retirada'").bind(id,user.id).first();
   if(!r)return error("Retirada não encontrada ou já devolvida.",404);
-  if(broken>r.quantidade)return error("A quantidade com defeito não pode ultrapassar a retirada.");
-  const component=await env.DB.prepare("SELECT em_uso FROM componentes WHERE id=?").bind(r.componente_id).first();
-  if(!component||component.em_uso<r.quantidade)return error("Estoque em uso inconsistente. Procure o administrador.",409);
+  if(discarded>r.quantidade)return error("O descarte não pode ultrapassar a quantidade retirada.");
+  const component=await env.DB.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").bind(r.componente_id).first();
+  if(!component||component.em_uso<r.quantidade||component.quantidade<discarded)return error("Estoque em uso inconsistente. Procure o administrador.",409);
   const stamp=now(),actor=user.nome+" ("+user.public_id+")";
   // Em uma mesma transacao, atualizar o estoque apenas se a retirada ainda estiver ativa.
   const done=await env.DB.batch([
-    env.DB.prepare("UPDATE componentes SET em_uso=em_uso-?,com_defeito=com_defeito+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND usuario_id=? AND status='retirada')").bind(r.quantidade,broken,stamp,actor,"Devolução de "+r.quantidade+" unidade(s)"+(broken?" • "+broken+" com defeito":""),r.componente_id,r.quantidade,id,user.id),
+    env.DB.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND usuario_id=? AND status='retirada')")
+      .bind(r.quantidade,discarded,stamp,actor,"Devolução de "+r.quantidade+" unidade(s)"+(discarded?" • "+discarded+" descartada(s)":""),r.componente_id,r.quantidade,discarded,id,user.id),
+    env.DB.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=?").bind(discarded,r.componente_id,discarded),
     env.DB.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND usuario_id=? AND status='retirada'").bind(stamp,actor,note||r.observacao,id,user.id)
   ]);
-  if(done[0].meta?.changes!==1||done[1].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
+  if(done[0].meta?.changes!==1||done[2].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
   // O PETiane já confirmou a própria devolução: não gerar aviso redundante.
   // Para visitantes, a notificação interna de confirmação permanece.
   if(user.papel!=="petiano"){
     await env.DB.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
       .bind(user.id,id,"Devolução registrada","A devolução de seu material foi registrada.","devolucao").run();
   }
-  await identityAudit(env.DB,"Devolução pelo titular","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(broken?" · "+broken+" com defeito":""),actor);
+  await identityAudit(env.DB,"Devolução pelo titular","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(discarded?" · "+discarded+" descartada(s)":""),actor);
   return respond({ok:true});
 }
 async function adminUpdate(req,env){
   const b=await bodyJson(req,3000);
   const id=clean(b.id,30).toUpperCase(),tag=clean(b.tag,20).toLowerCase();
   if(!/^PET-[0-9A-F]{12}$/.test(id))return error("ID inválido.");
-  if(!["visitante","petiano"].includes(tag))return error("Tag inválida.");
+  if(!["visitante","petiano"].includes(tag))return error("Cargo inválido.");
   const active=b.ativo===false?0:1;
   const user=await env.DB.prepare("SELECT id FROM usuarios WHERE public_id=?").bind(id).first();
   if(!user)return error("Usuário não encontrado.",404);

@@ -13,7 +13,7 @@ const flag = x => Number(x)===1;
 const byId = id => state.data.componentes.find(x=>x.id===Number(id));
 const nameCategory = id => state.data.categorias.find(x=>x.id===id)?.nome||"Sem categoria";
 const moneyless = n => new Intl.NumberFormat("pt-BR").format(Number(n)||0);
-const available = x => flag(x.mostrar_quantidade)?Math.max(0,x.quantidade-x.em_uso-x.com_defeito):0;
+const available = x => Math.max(0,Number(x.quantidade||0)-Number(x.em_uso||0));
 let toastTimer;
 function toast(message,error=false) {
   const el=$("#toast"); el.textContent=message;el.classList.toggle("error",error);el.classList.add("visible");
@@ -44,8 +44,7 @@ function render(){
   const all=state.data.componentes;
   $("#stat-items").textContent=moneyless(all.length);
   $("#stat-stock").textContent=moneyless(all.reduce((a,x)=>a+available(x),0));
-  $("#stat-used").textContent=moneyless(all.reduce((a,x)=>a+(flag(x.mostrar_em_uso)?x.em_uso:0),0));
-  $("#stat-broken").textContent=moneyless(all.reduce((a,x)=>a+(flag(x.mostrar_defeito)?x.com_defeito:0),0));
+  $("#stat-used").textContent=moneyless(all.reduce((a,x)=>a+Number(x.em_uso||0),0));
   const cats=state.data.categorias;
   $("#category-filters").innerHTML=[{id:"all",nome:"Todos"},...cats].map(c=>'<button type="button" class="chip '+(String(state.filter)===String(c.id)?"active":"")+'" data-category="'+esc(c.id)+'">'+esc(c.nome)+'</button>').join("");
   const query=state.query.toLocaleLowerCase("pt-BR").trim();
@@ -64,13 +63,12 @@ function render(){
 }
 function card(x, category){
   const img=x.imagem?'<img loading="lazy" src="'+attr(x.imagem)+'" alt="Fotografia de '+attr(x.nome)+'" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="fallback-icon" hidden>'+iconFor(category)+'</span>':'<span class="fallback-icon">'+iconFor(category)+'</span>';
-  const status=!flag(x.mostrar_quantidade)?'<span class="stock-none">Sem estoque</span>':'<div class="count-row">'+
-    '<div class="count-pill good"><span>Disponível</span><strong>'+moneyless(available(x))+'</strong></div>'+
+  const status='<div class="count-row">'+
     '<div class="count-pill"><span>Quantidade</span><strong>'+moneyless(x.quantidade)+'</strong></div>'+
-    (flag(x.mostrar_em_uso)?'<div class="count-pill"><span>Em uso</span><strong>'+moneyless(x.em_uso)+'</strong></div>':"")+
-    (flag(x.mostrar_defeito)?'<div class="count-pill '+(x.com_defeito?"bad":"")+'"><span>Com defeito</span><strong>'+moneyless(x.com_defeito)+'</strong></div>':"")+'</div>';
+    '<div class="count-pill"><span>Em uso</span><strong>'+moneyless(x.em_uso)+'</strong></div>'+
+    '<div class="count-pill good"><span>Disponível</span><strong>'+moneyless(available(x))+'</strong></div></div>';
   return '<article class="item-card"><button class="item-photo" type="button" data-photo="'+x.id+'" aria-label="Ampliar fotografia de '+attr(x.nome)+'">'+img+(state.data.demonstracao?'<span class="test-tag">EXEMPLO</span>':"")+'</button><div class="item-body"><div class="item-name">'+esc(x.nome)+'</div><div class="item-meta">'+(x.identificacao?esc(x.identificacao)+' · ':"")+(x.patrimonio?'Patrimônio: '+esc(x.patrimonio):'Sem número de patrimônio cadastrado')+'</div>'+status+
-    (flag(x.mostrar_defeito)&&x.com_defeito&&x.descricao_defeito?'<button class="link-button" style="text-align:left;margin-top:11px" data-defect="'+x.id+'">ⓘ Ver informações do defeito</button><div class="expand-defect" id="defect-'+x.id+'" hidden>'+esc(x.descricao_defeito)+'</div>':"")+
+
     '<div class="item-footer"><span class="date-small">Atualizado: '+esc(fmt(x.ultima_alteracao))+'</span><button class="link-button" data-reserve-item="'+x.id+'" type="button">'+(state.identity?.tag==='petiano' && !state.identity?.precisa_criar_login && !state.identity?.trocar_senha?'Retirar ›':'Reservar ›')+'</button></div></div></article>';
 }
 function openModal(title,subtitle,body,opts={}) {
@@ -241,14 +239,13 @@ function itemEditor(id){
     '<section class="item-editor-essentials" aria-labelledby="item-editor-stock-title">'+
       '<h3 id="item-editor-stock-title">Estoque</h3>'+
       '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade total",x?.quantidade||0)+
-        stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
+        stepInput("i-used","Em uso",x?.em_uso||0)+
+        '<div class="field"><label for="i-available">Disponível (automático)</label><input id="i-available" type="number" readonly value="'+Math.max(0,Number(x?.quantidade||0)-Number(x?.em_uso||0))+'"></div></div>'+
     '</section>'+
-    '<div class="field"><label for="i-loan-audience">Habilitar empréstimo para</label><select id="i-loan-audience">'+
-      [["ninguem","Ninguém"],["petianos","PETianes"],["visitantes","Visitantes"],["todos","Todos"]].map(([key,label])=>{
-        const pet=x?Number(x.permitir_petianos)===1:true,visitor=x?Number(x.permitir_visitantes)===1:true;
-        const value=pet&&visitor?"todos":pet?"petianos":visitor?"visitantes":"ninguem";
-        return '<option value="'+key+'"'+(key===value?' selected':'')+'>'+label+'</option>';
-      }).join("")+'</select></div>'+
+    '<div class="field"><label for="i-loan-audience">Habilitar empréstimo para</label>'+
+      '<select id="i-loan-audience">'+
+      '<option value="petianos" '+(x&&Number(x.permitir_visitantes)!==1?'selected':'')+'>PETianes</option>'+
+      '<option value="visitantes" '+(!x||Number(x.permitir_visitantes)===1?'selected':'')+'>Visitantes (inclui PETianes)</option></select></div>'+
     '<details class="item-editor-section" id="item-editor-identification"><summary>Identificação e observações <small>Modelo, patrimônio, unidade e anotações</small></summary>'+
       '<div class="item-editor-extra">'+
       '<div class="field-grid">'+inputField("i-id","Modelo / referência (opcional)",x?.identificacao||"",{max:120})+
@@ -262,7 +259,7 @@ function itemEditor(id){
         })()+
         '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
       '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
-      '<div class="field"><label for="i-description">Informações sobre defeitos (opcional)</label><textarea id="i-description" maxlength="1400">'+esc(x?.descricao_defeito||"")+'</textarea></div>'+
+
       (x?.ultima_alteracao?'<div class="audit"><strong>Última alteração salva</strong><span>'+esc(x.ultimo_responsavel||"PETiane")+' · '+esc(fmt(x.ultima_alteracao))+'</span><p>'+esc(x.detalhes_alteracao||"Registro atualizado")+'</p></div>':"")+
       '</div></details>'+
     '<details class="item-editor-section" id="item-editor-media"><summary>Foto e exibição <small>Imagem e opções de visualização</small></summary>'+
@@ -273,11 +270,6 @@ function itemEditor(id){
       '<input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px">'+
       '<div class="item-photo-actions"><button type="button" class="outline-button small-button" id="i-photo-edit" '+(!/^data:image\//i.test(x?.imagem||"")?'disabled ':'')+'>Ajustar foto atual</button>'+
       '<button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div></div>'+
-      '<details class="editor-advanced"><summary>Exibição das quantidades no catálogo</summary>'+
-        switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
-        switchInput("i-show-used","Exibir em uso",x?flag(x.mostrar_em_uso):true)+
-        switchInput("i-show-broken","Exibir com defeito",x?flag(x.mostrar_defeito):false)+
-      '</details>'+
       '</div></details>'+
     '</div>'+
     '<div class="modal-footer item-editor-savebar"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button>'+
@@ -305,17 +297,21 @@ function itemEditor(id){
       e.target.value="";
     }catch(error){toast(error.message,true);e.target.value="";}
   };
-  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
+  const updateAvailable=()=>{
+    $("#i-available").value=Math.max(0,Number($("#i-quantity").value||0)-Number($("#i-used").value||0));
+  };
+  $$(".step").forEach(b=>b.onclick=()=>{stepNumber(b.dataset.target,Number(b.dataset.delta));updateAvailable();});
+  $("#i-quantity").oninput=updateAvailable;
+  $("#i-used").oninput=updateAvailable;
   $("#i-cancel").onclick=()=>adminModal();
   $("#item-form").onsubmit=async e=>{
     e.preventDefault();const submit=$("#i-save");submit.disabled=true;submit.textContent="Salvando…";
     const body={id:x?.id||null,responsavel:state.actor||"PETiane",categoria_id:Number($("#i-category").value),
       nome:$("#i-name").value,identificacao:$("#i-id").value,patrimonio:$("#i-patrimony").value,
       imagem:image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),
-      com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,
-      mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
-      visivel_visitante:$("#i-public").checked,permitir_petianos:["todos","petianos"].includes($("#i-loan-audience").value),permitir_visitantes:["todos","visitantes"].includes($("#i-loan-audience").value),grupo_variacoes:family,
-      descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
+      com_defeito:0,mostrar_quantidade:true,mostrar_em_uso:true,mostrar_defeito:false,
+      visivel_visitante:$("#i-public").checked,permitir_petianos:true,permitir_visitantes:$("#i-loan-audience").value==="visitantes",grupo_variacoes:family,
+      descricao_defeito:"",observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{
       await api("/api/admin/item","POST",body);
       $("#item-form")?.dispatchEvent(new Event("pet:item-saved"));
@@ -390,14 +386,14 @@ async function doReserveAction(id,action){
 }
 function returnModal(r){
   openModal("Registrar devolução","Reserva #"+r.id+" · "+(r.componente_nome||"Material"),'<form class="modal-main" id="return-form"><p>Confirme a devolução de <strong>'+moneyless(r.quantidade)+' unidade(s)</strong> por <strong>'+esc(r.nome_solicitante)+'</strong>.</p>'+
-    stepInput("return-broken","Quantas unidades voltaram com defeito?",0)+
+    stepInput("return-discard","Unidades descartadas (opcional)",0)+
     '<div class="field"><label for="return-note">Observações (opcional)</label><textarea maxlength="500" id="return-note" placeholder="Condição do material ou outras observações"></textarea></div>'+
-    '<p class="notice">Ao salvar, as quantidades em uso e com defeito serão atualizadas automaticamente. Essa reserva ficará concluída.</p>'+
+    '<p class="notice">As unidades devolvidas voltam ao disponível. As descartadas saem do total. A reserva será concluída.</p>'+
     '<div class="modal-footer" style="padding:17px 0 0;border:0"><button type="button" id="return-cancel" class="secondary-button">Cancelar</button><button type="submit" class="primary-button">Confirmar devolução</button></div></form>');
   $("#return-cancel").onclick=adminModal;
   $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
   $("#return-form").onsubmit=async e=>{e.preventDefault();try{
-    await api("/api/admin/reservation","POST",{id:r.id,acao:"devolver",responsavel:state.actor||"PETiane",defeituosos:Number($("#return-broken").value),observacao:$("#return-note").value});
+    await api("/api/admin/reservation","POST",{id:r.id,acao:"devolver",responsavel:state.actor||"PETiane",descartados:Number($("#return-discard").value),observacao:$("#return-note").value});
     await adminReload();adminModal();toast("Devolução registrada!");
   }catch(error){toast(error.message,true)}};
 }

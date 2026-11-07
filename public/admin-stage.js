@@ -4,7 +4,6 @@ function adminCounts(){
   const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
   const reservations=state.admin?.reservas||[];
   return {items:items.length,used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
-    defective:items.reduce((n,x)=>n+(Number(x.com_defeito)||0),0),
     available:items.reduce((n,x)=>n+stock(x),0),
     pending:reservations.filter(x=>x.status==="pendente").length};
 }
@@ -154,7 +153,7 @@ function adminDashboard(root){
   root.innerHTML='<section class="admin-panel"><h2>Visão geral</h2><p>Resumo do acervo e últimas movimentações.</p>'+
     '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div>'+
     '<div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div>'+
-    '<div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div></div>'+
+    '<div class="admin-stat"><strong>'+c.available+'</strong><span>Disponíveis</span></div></div>'+
     '<div class="dashboard-changes-head"><h3>Últimas alterações</h3><button type="button" class="outline-button small-button" id="dashboard-log-all">Ver histórico</button></div>'+
     '<div id="dashboard-recent-log" class="dashboard-changes-list" aria-live="polite"><p class="dashboard-changes-loading">Carregando alterações…</p></div></section>';
   $("#dashboard-log-all").onclick=()=>selectAdminTab("historico");
@@ -219,14 +218,15 @@ function quantityCell(name,num,clazz=""){
   return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
 }
 function audienceValue(pet,visitor){
-  return pet&&visitor?"todos":pet?"petianos":visitor?"visitantes":"ninguem";
+  return visitor?"visitantes":"petianos";
 }
 function audiencePayload(value){
-  return {perfil:"combinado",permitir_petianos:value==="todos"||value==="petianos",permitir_visitantes:value==="todos"||value==="visitantes"};
+  // A opção Visitantes já inclui PETianes.
+  return {perfil:"combinado",permitir_petianos:true,permitir_visitantes:value==="visitantes"};
 }
 function loanAudienceSelect(kind,id,pet,visitor){
   const selected=audienceValue(pet,visitor);
-  const options=[["ninguem","Ninguém"],["petianos","PETianes"],["visitantes","Visitantes"],["todos","Todos"]];
+  const options=[["petianos","PETianes"],["visitantes","Visitantes"]];
   return '<label class="loan-audience-control"><span>Habilitar empréstimo para</span>'+
     '<select class="loan-audience-select" data-loan-audience="'+kind+'" data-loan-id="'+Number(id)+'" aria-label="Habilitar empréstimo para">'+
     options.map(([value,label])=>'<option value="'+value+'"'+(value===selected?' selected':'')+'>'+label+'</option>').join("")+
@@ -239,10 +239,10 @@ function adminMaterialRow(x){
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small>'+
 
-    '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
+    '<small class="mobile-meta" style="display:none">Quantidade: '+x.quantidade+' · Em uso: '+x.em_uso+' · Disponível: '+available+'</small>'+
     loanAudienceSelect("item",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
     (Number(cat?.permitir_petianos)!==1||Number(cat?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A liberação também depende da categoria</small>':'')+'</div>'+
-    quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
+    quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Disponível",available,"available")+
     '<span class="material-status '+(!available?"empty":"")+'">'+status+'</span>'+
     '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
     '<button class="square-action" type="button" title="Editar" aria-label="Editar" data-item-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
@@ -372,9 +372,9 @@ function adminViewMaterial(id){
   const image=itemImage(x);
   openModal(x.nome,"",'<div class="modal-main"><div class="photo-editor">'+
     '<div class="photo-editor-preview">'+(image?'<img src="'+attr(image)+'" alt="'+attr(x.nome)+'">':"")+'</div>'+
-    '<div><strong>'+esc(nameCategory(x.categoria_id))+'</strong><p>'+(x.patrimonio?'Patrimônio: '+esc(x.patrimonio):'Sem patrimônio')+'</p><p>'+x.quantidade+' total · '+x.em_uso+' em uso · '+x.com_defeito+' com defeito</p></div></div>'+
+    '<div><strong>'+esc(nameCategory(x.categoria_id))+'</strong><p>'+(x.patrimonio?'Patrimônio: '+esc(x.patrimonio):'Sem patrimônio')+'</p><p>'+x.quantidade+' total · '+x.em_uso+' em uso · '+stock(x)+' disponível</p></div></div>'+
     (x.observacoes?'<p class="notice">'+esc(x.observacoes)+'</p>':"")+
-    (x.descricao_defeito?'<p class="notice warning">'+esc(x.descricao_defeito)+'</p>':"")+
+
     '<p style="font-size:11px;color:#7e91a2">Última alteração: '+niceDate(x.ultima_alteracao)+'</p>'+
     '<div class="modal-footer" style="border:0;padding:14px 0 0"><button type="button" class="secondary-button" id="v2-view-close">Fechar</button><button type="button" class="primary-button" id="v2-view-edit">Editar</button></div></div>');
   $("#v2-view-close").onclick=closeModal;
@@ -563,7 +563,7 @@ async function adminReservationAction(id,action){
         '<p class="notice"><strong>Para:</strong> '+esc(draft.destinatario)+'</p>'+
         '<div class="field"><label for="admin-mail-subject">Assunto</label><input id="admin-mail-subject" required maxlength="180" value="'+attr(draft.assunto)+'"></div>'+
         '<div class="field"><label for="admin-mail-body">Mensagem</label><textarea id="admin-mail-body" required rows="11" maxlength="5000">'+esc(draft.mensagem)+'</textarea></div>'+
-        '<p class="hint">O envio respeita a tag e o prazo. Você pode alterar o texto desta cobrança sem mudar o modelo padrão.</p>'+
+        '<p class="hint">O envio respeita o cargo e o prazo. Você pode alterar o texto desta cobrança sem mudar o modelo padrão.</p>'+
         '<div class="modal-footer"><button type="button" class="secondary-button" id="admin-mail-cancel">Cancelar</button>'+
         '<button type="submit" class="primary-button" id="admin-mail-send">Colocar na fila de envio</button></div></form>');
       $("#admin-mail-cancel").onclick=closeModal;
@@ -634,7 +634,7 @@ function userRow(x){
   return '<div class="user-row"><span class="user-icon">'+esc((x.nome||"P")[0].toUpperCase())+'</span>'+
     '<div><strong>'+esc(x.nome)+'</strong><small>'+esc(x.login||"Sem login")+' · '+esc(x.id)+(x.email?' · '+esc(x.email):' · E-mail pendente')+'</small></div>'+
     '<span class="tag '+(member?"picked":"")+'">'+(member?"PETiano":"Visitante")+'</span>'+
-    '<div class="user-actions"><button class="outline-button small-button" type="button" data-user-role="'+attr(x.id)+'" title="Alterar tag">'+iconSvg("tag",15)+' Tag</button>'+
+    '<div class="user-actions"><button class="outline-button small-button" type="button" data-user-role="'+attr(x.id)+'" title="Alterar cargo">'+iconSvg("tag",15)+' Cargo</button>'+
     '<button class="outline-button small-button" type="button" data-user-mail="'+attr(x.id)+'" title="Autorizar ou desativar avisos desta pessoa">'+(Number(x.notificar_email)===0?"🔕 Avisos desligados":"✉ Avisos permitidos")+'</button>'+
     '<button class="outline-button small-button" type="button" data-user-password="'+attr(x.id)+'" title="Redefinir senha">'+iconSvg("key",15)+' Senha</button>'+
     '<button class="danger-button small-button" type="button" data-user-delete="'+attr(x.id)+'" title="Excluir usuário">'+iconSvg("trash",15)+' Excluir</button></div></div>';
@@ -674,7 +674,7 @@ function paintUsers(){
   $$("[data-user-mail]",list).forEach(b=>b.onclick=async()=>{
     const u=users.find(x=>x.id===b.dataset.userMail);if(!u)return;
     const enabled=Number(u.notificar_email)===0;
-    if(!await niceModalConfirm("Avisos deste usuário?",u.nome+": "+(enabled?"permitir":"desativar")+" notificações por e-mail. A configuração geral da tag também será respeitada.","Confirmar"))return;
+    if(!await niceModalConfirm("Avisos deste usuário?",u.nome+": "+(enabled?"permitir":"desativar")+" notificações por e-mail. A configuração geral do cargo também será respeitada.","Confirmar"))return;
     try{await api("/api/admin/users","POST",{id:u.id,tag:u.tag,ativo:Number(u.ativo)===1,notificar_email:enabled});await adminUsers($("#admin-content"));toast("Preferência individual atualizada.");}
     catch(e){toast(e.message,true);}
   });
@@ -688,8 +688,8 @@ function paintUsers(){
 async function adminToggleTag(id){
   const user=(UI.users||[]).find(u=>u.id===id);if(!user)return;
   const next=user.tag==="petiano"?"visitante":"petiano";
-  if(!await niceModalConfirm("Alterar tag de usuário?",user.nome+" passará a ser "+(next==="petiano"?"PETiano":"Visitante")+".","Confirmar"))return;
-  try{await api("/api/admin/users","POST",{id,tag:next});await adminUsers($("#admin-content"));toast("Tag atualizada.");}
+  if(!await niceModalConfirm("Alterar cargo do usuário?",user.nome+" passará a ser "+(next==="petiano"?"PETiano":"Visitante")+".","Confirmar"))return;
+  try{await api("/api/admin/users","POST",{id,tag:next});await adminUsers($("#admin-content"));toast("Cargo atualizado.");}
   catch(e){toast(e.message,true);}
 }
 /* Categorias: arraste no desktop, use setas no celular. */
@@ -791,7 +791,7 @@ function adminFilaments(root){
     '<div class="filament-admin-grid">'+(list.length?list.map(x=>
     '<div class="filament-admin-card">'+
       '<span class="filament-color-dot" style="background:'+attr(x.hexadecimal)+'" aria-hidden="true"></span>'+
-      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
+      '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
       loanAudienceSelect("filament",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
       (Number(category?.permitir_petianos)!==1||Number(category?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A categoria Filamentos também precisa permitir</small>':'')+'</div>'+
       '<div class="filament-admin-buttons"><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
@@ -1086,7 +1086,7 @@ function openVariantLinker(currentId,groupName=""){
     $("#variant-linked-list").innerHTML=linked.length?linked.map(x=>
       '<div class="variant-manager-row"><div class="variant-manager-photo">'+thumb(x)+'</div>'+
       '<div class="variant-manager-description"><strong>'+esc(x.nome)+'</strong>'+
-      '<small>'+x.quantidade+' un. · '+x.em_uso+' em uso · '+x.com_defeito+' defeito</small></div>'+
+      '<small>'+x.quantidade+' un. · '+x.em_uso+' em uso · '+stock(x)+' disponível</small></div>'+
       '<button class="outline-button small-button" type="button" data-variant-remove="'+x.id+'">Retirar</button></div>'
     ).join(""):'<div class="variant-manager-empty">Grupo vazio. Busque um material para vincular.</div>';
     const term=$("#variant-search").value.trim();
@@ -1240,14 +1240,14 @@ function adminSettings(root){
     '<div class="mail-template-actions"><button type="button" class="primary-button" id="mail-template-save">Salvar texto deste modelo</button></div></section>';
   const mailEvents=[["antes","1 dia antes da devolução"],["hoje","No dia da devolução"],["atraso2","2 dias de atraso"],["atraso7","7 dias de atraso"],["manual","Cobrança manual"]];
   const scheduleEditor='<section class="admin-panel mail-schedule-panel"><div class="admin-section-head"><div><h2>Quando enviar e-mails?</h2>'+
-    '<p>Escolha os tipos de mensagem de cada tag. PETianes e Visitantes têm controles separados. A opção geral da tag, acima, também precisa estar ativada.</p></div></div>'+
+    '<p>Escolha os tipos de mensagem de cada cargo. PETianes e Visitantes têm controles separados. A opção geral do cargo, acima, também precisa estar ativada.</p></div></div>'+
     '<form id="mail-event-form"><div class="mail-schedule-grid">'+
-    [["visitante","Visitantes","Solicitam reserva, que precisa ser aprovada e registrada como retirada."],["petiano","PETianes","Retiradas diretas; a tag fica sem e-mails por padrão."]].map(([tag,label,description])=>
+    [["visitante","Visitantes","Solicitam reserva, que precisa ser aprovada e registrada como retirada."],["petiano","PETianes","Retiradas diretas; o cargo fica sem e-mails por padrão."]].map(([tag,label,description])=>
       '<div class="mail-schedule-card"><h3>'+label+'</h3><p>'+description+'</p>'+
       mailEvents.map(([key,label])=>settingsToggle("mail-event-"+tag+"-"+key,label,"",true)).join("")+
       '</div>').join("")+'</div>'+
     '<p class="hint">Avisos automáticos só são gerados após a retirada real e na data correspondente. A cobrança manual depende de uma retirada ativa com prazo.</p>'+
-    '<div class="mail-template-actions"><button type="submit" class="primary-button" id="mail-event-save" disabled>Salvar regras por tag</button></div></form></section>';
+    '<div class="mail-template-actions"><button type="submit" class="primary-button" id="mail-event-save" disabled>Salvar regras por cargo</button></div></form></section>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Configurações</h2></div></div>'+
     '<form id="admin-settings-form" class="settings-grid">'+
     '<div class="settings-block"><div class="field"><label for="v2-cleanup">Excluir registros concluídos após</label>'+
@@ -1291,7 +1291,7 @@ function adminSettings(root){
     }
     try{const result=await api("/api/admin/mail/events","POST",{profiles});toast(result.mensagem||"Regras de e-mail atualizadas.");}
     catch(error){toast(error.message,true);}
-    finally{eventSave.disabled=false;eventSave.textContent="Salvar regras por tag";}
+    finally{eventSave.disabled=false;eventSave.textContent="Salvar regras por cargo";}
   };
   api("/api/admin/mail/events").then(result=>{
     if(!document.contains(root)||UI.adminTab!=="configuracoes")return;

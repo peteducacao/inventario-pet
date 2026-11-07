@@ -47,11 +47,11 @@ function validateItem(data) {
     identificacao: str(data.identificacao, 120),
     quantidade: integer(data.quantidade),
     em_uso: integer(data.em_uso),
-    com_defeito: integer(data.com_defeito),
-    mostrar_quantidade: data.mostrar_quantidade ? 1 : 0,
-    mostrar_em_uso: data.mostrar_em_uso ? 1 : 0,
-    mostrar_defeito: data.mostrar_defeito ? 1 : 0,
-    descricao_defeito: str(data.descricao_defeito, 1400),
+    com_defeito: 0, // campo legado: descarte subtrai do total
+    mostrar_quantidade: 1,
+    mostrar_em_uso: 1,
+    mostrar_defeito: 0,
+    descricao_defeito: "",
     observacoes: str(data.observacoes, 1200),
     unidade: str(data.unidade||"unidades", 40),
     visivel_visitante: data.visivel_visitante === undefined ? 1 : (data.visivel_visitante ? 1 : 0),
@@ -61,8 +61,8 @@ function validateItem(data) {
     permitir_emprestimos: (data.permitir_petianos===undefined && data.permitir_visitantes===undefined)?(data.permitir_emprestimos===undefined?1:Number(!!data.permitir_emprestimos)):Number(!!(data.permitir_petianos||data.permitir_visitantes))
   };
   if (!x.nome) throw new Error("Informe o nome do material.");
-  if ([x.quantidade, x.em_uso, x.com_defeito].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
-  if (x.em_uso + x.com_defeito > x.quantidade) throw new Error("A soma em uso + defeito ultrapassa a quantidade total.");
+  if ([x.quantidade, x.em_uso].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
+  if (x.em_uso > x.quantidade) throw new Error("Em uso não pode ultrapassar a quantidade total.");
   if (x.imagem && !(/^\/img\/[a-zA-Z0-9_.-]+\.(svg|webp|jpg|jpeg|png)$/.test(x.imagem) || /^https:\/\//.test(x.imagem) || /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(x.imagem))) throw new Error("A imagem deve ser uma foto válida.");
   return x;
 }
@@ -151,7 +151,7 @@ const maxReserved = async (db, id, start, end, except = -1) => {
   const found = await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND id!=? AND status='aprovada' AND data_inicio<=? AND data_devolucao>=?").bind(id, except, end, start).first();
   return found?.n || 0;
 };
-const baseAvailable = item => Math.max(0, item.quantidade - item.em_uso - item.com_defeito);
+const baseAvailable = item => Math.max(0, Number(item.quantidade||0) - Number(item.em_uso||0));
 async function safeRate(db, req, prefix, max, hours = 1) {
   const ip = req.headers.get("CF-Connecting-IP") || "unknown";
   const hash = await toHash(prefix + ":" + ip + ":" + new Date().toISOString().slice(0, 10));
@@ -405,7 +405,7 @@ async function processRequest(req, env) {
       const component=await db.prepare("SELECT em_uso,com_defeito FROM componentes WHERE id=?").bind(old.componente_id).first();
       if(!component)return bad("Vínculo do filamento não encontrado.",409);
       const approved=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(old.componente_id).first();
-      if(q<Number(component.em_uso)+Number(component.com_defeito)+Number(approved?.n||0))return bad("A quantidade não cobre os materiais emprestados, com defeito e já aprovados.",409);
+      if(q<Number(component.em_uso)+Number(approved?.n||0))return bad("A quantidade não cobre os materiais em uso e já aprovados.",409);
       const pet=b.permitir_petianos===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_petianos):Number(b.permitir_emprestimos===true)):Number(b.permitir_petianos===true);
       const visitor=b.permitir_visitantes===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_visitantes):Number(b.permitir_emprestimos===true)):Number(b.permitir_visitantes===true);
       const enabled=Number(!!(pet||visitor));
@@ -605,8 +605,8 @@ async function processRequest(req, env) {
       const today=todayBR();
       const handoffDay=r.data_devolucao>=today?today:r.data_inicio;
       const outcome=await db.batch([
-        db.prepare("UPDATE reservas SET status='retirada',aprovado_em=?,retirado_em=?,data_inicio=?,responsavel_admin=? WHERE id=? AND status='pendente' AND EXISTS(SELECT 1 FROM componentes WHERE id=? AND quantidade-em_uso-com_defeito>=?)").bind(current,current,handoffDay,actor,id,item.id,r.quantidade),
-        db.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso-com_defeito>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada' AND retirado_em=?)").bind(r.quantidade,current,actor,"Reserva aprovada e entregue #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id,current)
+        db.prepare("UPDATE reservas SET status='retirada',aprovado_em=?,retirado_em=?,data_inicio=?,responsavel_admin=? WHERE id=? AND status='pendente' AND EXISTS(SELECT 1 FROM componentes WHERE id=? AND quantidade-em_uso>=?)").bind(current,current,handoffDay,actor,id,item.id,r.quantidade),
+        db.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada' AND retirado_em=?)").bind(r.quantidade,current,actor,"Reserva aprovada e entregue #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id,current)
       ]);
       if(outcome[0].meta?.changes!==1||outcome[1].meta?.changes!==1){
         // Não permitir que duas aprovações de uma mesma solicitação contem estoque duas vezes.
@@ -617,17 +617,24 @@ async function processRequest(req, env) {
     } else if (action === "retirar" && r.status === "aprovada") {
       if (baseAvailable(item) < r.quantidade) return bad("Não há estoque suficiente para registrar a retirada.",409);
       await db.batch([
-        db.prepare("UPDATE componentes SET em_uso=em_uso+?, ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso-com_defeito>=?").bind(r.quantidade,current,actor,"Retirada da reserva #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade),
+        db.prepare("UPDATE componentes SET em_uso=em_uso+?, ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=?").bind(r.quantidade,current,actor,"Retirada da reserva #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade),
         db.prepare("UPDATE reservas SET status='retirada',retirado_em=?,responsavel_admin=? WHERE id=? AND status='aprovada'").bind(current,actor,id)
       ]);
     } else if (action === "devolver" && r.status === "retirada") {
-      const broken = Number(b.defeituosos || 0);
-      if (!Number.isSafeInteger(broken) || broken < 0 || broken > r.quantidade) return bad("Quantidade de unidades defeituosas inválida.");
-      if (item.em_uso < r.quantidade) return bad("O estoque em uso está inconsistente. Verifique antes da devolução.",409);
-      await db.batch([
-        db.prepare("UPDATE componentes SET em_uso=em_uso-?,com_defeito=com_defeito+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(r.quantidade,broken,current,actor,"Devolução da reserva #"+id+(broken?" • "+broken+" com defeito":""),item.id),
-        db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'").bind(current,actor,str(b.observacao,500),id)
+      const discarded=Number(b.descartados ?? b.defeituosos ?? 0);
+      if(!Number.isSafeInteger(discarded)||discarded<0||discarded>r.quantidade)
+        return bad("Quantidade de unidades descartadas inválida.");
+      if(item.em_uso<r.quantidade||item.quantidade<discarded)
+        return bad("O estoque em uso está inconsistente. Verifique antes da devolução.",409);
+      const result=await db.batch([
+        db.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=?")
+          .bind(r.quantidade,discarded,current,actor,"Devolução da reserva #"+id+(discarded?" • "+discarded+" unidade(s) descartada(s)":""),item.id,r.quantidade,discarded),
+        db.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=?").bind(discarded,item.id,discarded),
+        db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'")
+          .bind(current,actor,str(b.observacao,500),id)
       ]);
+      if(result[0].meta?.changes!==1||result[2].meta?.changes!==1)
+        return bad("Não foi possível confirmar a devolução. Confira o estoque.",409);
     } else return bad("Ação não permitida para o estado atual desta reserva.",409);
     // Registrar o resultado para o titular vinculado à reserva. A senha do Admin, por si,
     // só não identifica uma pessoa; nesse caso não atribuir falsamente uma decisão.
@@ -716,8 +723,8 @@ async function processRequest(req, env) {
     ops.push(db.prepare("INSERT OR IGNORE INTO categorias(nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes) SELECT 'Filamentos',COALESCE(MAX(ordem),0)+1,1,0,0,0,0 FROM categorias"));
     const materialFields=[...fields,"arquivado","import_key"];
     for (const raw of b.componentes){
-      const v=validateItem({...raw,mostrar_quantidade:raw.mostrar_quantidade??1,
-        mostrar_em_uso:raw.mostrar_em_uso??1,mostrar_defeito:raw.mostrar_defeito??0});
+      const damaged=Math.max(0,Number(raw.com_defeito||0));
+      const v=validateItem({...raw,quantidade:Math.max(Number(raw.em_uso||0),Number(raw.quantidade||0)-damaged)});
       const vals=[...fields.map(k=>v[k]),raw.arquivado?1:0,str(raw.import_key,120)||null];
       ops.push(db.prepare("INSERT INTO componentes(id,"+materialFields.join(",")+
         ",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES("+
@@ -747,7 +754,8 @@ async function processRequest(req, env) {
       const knownMirrors=new Set(b.componentes.map(x=>Number(x.id)));
       for(const color of b.filamentos)ops.push(db.prepare(
         "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,componente_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
-      ).bind(color.id,str(color.cor,55),str(color.hexadecimal,7),Number(color.quantidade)||0,
+      ).bind(color.id,str(color.cor,55),str(color.hexadecimal,7),
+        Math.max(0,Number(color.quantidade||0)-Math.max(0,Number(b.componentes.find(x=>Number(x.id)===Number(color.componente_id))?.com_defeito||0))),
         Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1,
         color.permitir_emprestimos?1:0,color.permitir_petianos===undefined?Number(!!color.permitir_emprestimos):Number(!!color.permitir_petianos),color.permitir_visitantes===undefined?Number(!!color.permitir_emprestimos):Number(!!color.permitir_visitantes),knownMirrors.has(Number(color.componente_id))?Number(color.componente_id):null));
       // Backups antigos não possuíam vínculo: reconstruir os materiais espelhados
@@ -755,6 +763,7 @@ async function processRequest(req, env) {
       ops.push(db.prepare("INSERT OR IGNORE INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,f.atualizado_em FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.componente_id IS NULL"));
       ops.push(db.prepare("UPDATE filamentos SET componente_id=(SELECT c.id FROM componentes c WHERE c.import_key='FILAMENTO-'||filamentos.id) WHERE componente_id IS NULL"));
     }
+    ops.push(db.prepare("UPDATE filamentos SET quantidade=(SELECT quantidade FROM componentes WHERE id=filamentos.componente_id) WHERE componente_id IS NOT NULL"));
     if(v2&&Array.isArray(b.historico)){
       ops.push(db.prepare("DELETE FROM historico_admin"));
       for(const event of b.historico)ops.push(db.prepare(

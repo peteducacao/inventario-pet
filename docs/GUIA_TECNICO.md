@@ -42,7 +42,7 @@ public/
   app.js                           Estado comum, fetch, modais e UI base
   final.js                         Catálogo moderno, menu e cards
   admin-stage.js                   Abas, controles e operações administrativas
-  identity-ui.js                   Conta, tag, retiradas e devoluções
+  identity-ui.js                   Conta, cargo, retiradas e devoluções
   component-art.js                 Ilustrações dos materiais
   final.css                        Layout responsivo
   ajuda/index.html                 Manual para consulta e impressão/PDF
@@ -72,9 +72,9 @@ docs/GUIA_TECNICO.md               Este guia
 | `configuracoes` | Preferências, prazo de limpeza e avisos |
 | `historico_admin` | Rastreabilidade das ações administrativas |
 
-**Disponibilidade:** `MAX(0, quantidade - em_uso - com_defeito)`, descontadas as reservas aprovadas que incidam sobre as datas consultadas, conforme regra específica da API.
+**Disponibilidade:** `MAX(0, quantidade - em_uso)`, descontadas as reservas aprovadas que incidam sobre as datas consultadas, conforme regra específica da API.
 
-**Permissões:** `visivel_visitante` é só consulta/visibilidade. `permitir_petianos` e `permitir_visitantes` autorizam retirada/reserva; precisam ser `1` em **categoria e componente**. O seletor oferece PETianes, Visitantes, Todos e Ninguém; não vincule a autorização à visibilidade. Não use o campo legado `permitir_emprestimos` isoladamente como substituto dos dois campos de perfil.
+**Permissões:** `visivel_visitante` é só consulta/visibilidade. `permitir_petianos` e `permitir_visitantes` autorizam retirada/reserva; precisam ser `1` em **categoria e componente**. O seletor oferece somente **PETianes** (restrito) e **Visitantes** (todos, inclusive PETianes); não vincule a autorização à visibilidade. Não use o campo legado `permitir_emprestimos` isoladamente como substituto dos dois campos de perfil.
 
 **Filamentos:** cada `filamentos.id` aponta para `filamentos.componente_id`, cujo registro `componentes.import_key` é `FILAMENTO-<id>`. Isso permite que todas as rotas de empréstimo e devolução operem sobre um único estoque por cor. Preserve o material espelho e não o duplique pelo editor comum.
 
@@ -84,7 +84,7 @@ docs/GUIA_TECNICO.md               Este guia
 A migration `migrations/0018_reorganizar_robotica_equipamentos.sql` renomeia **Eletrônica** para **Robótica** e transfere os notebooks e tablets (incluindo os registros originalmente nas categorias **Tablets** e **Notebooks**) para a categoria **Equipamentos**, já existente. A migração conserva o identificador dos materiais, patrimônio, identificações, quantidade total, em uso, defeitos, reservas e permissões individuais. As categorias que ficaram vazias são **arquivadas**, não excluídas, e a ação é registrada no histórico administrativo. Não criar uma nova categoria Eletrônica nem duplicar tablets/notebooks. O catálogo também restaura o filtro “Todos” quando um filtro persistido se referir a uma categoria que deixou de aparecer.
 
 ### Materiais: cadastro, fotos e visibilidade
-O editor `itemEditor` de `public/app.js` é exclusivo para **materiais**. Mantém nome, categoria, quantidades, unidades, identificação, patrimônio, defeitos, empréstimos e visibilidade; salva fotos somente nesta área. O campo **Possui vínculo?** é informativo (Sim/Não), derivado de `grupo_variacoes`. Não há seletor de vínculos ou botão para alterá-los no formulário. A API `POST /api/admin/item` ignora o campo `grupo_variacoes` fornecido pelo editor: ao editar preserva o grupo salvo, ao cadastrar usa vazio; apenas os endpoints de vínculos alteram esse campo.
+O editor `itemEditor` de `public/app.js` é exclusivo para **materiais**. Mantém nome, categoria, quantidades, unidades, identificação, patrimônio, empréstimos e visibilidade; salva fotos somente nesta área. O campo **Possui vínculo?** é informativo (Sim/Não), derivado de `grupo_variacoes`. Não há seletor de vínculos ou botão para alterá-los no formulário. A API `POST /api/admin/item` ignora o campo `grupo_variacoes` fornecido pelo editor: ao editar preserva o grupo salvo, ao cadastrar usa vazio; apenas os endpoints de vínculos alteram esse campo.
 
 A foto escolhida no formulário abre o editor em `public/photo-editor.js`, carregado antes de `app.js`. Permite girar, arrastar, ampliar/reduzir e escolher a apresentação completa ou com recorte. A saída padronizada é 4:3 (padrão 720×540, redimensionada/comprimida progressivamente se necessário), com fundo branco, preservando a proporção. Modo inicial: foto inteira sem corte. A prévia no editor usa `object-fit: contain`, assim como o catálogo; somente após clicar **Usar esta foto** a imagem é colocada no formulário, e a API só recebe a imagem ao **Salvar alterações**. O editor nunca muda fotos em Vínculos. A compressão mantém o limite de foto do D1/API; validar na rede móvel e em imagens verticais.
 
@@ -114,10 +114,10 @@ O catálogo público (`public/final.js`) agrupa os materiais por `grupo_variacoe
 3. `reservas.status = pendente`, aguardando intervenção administrativa.
 4. Admin usa `POST /api/admin/reservation` `acao=aprovar` ou `acao=recusar`.
 5. **Aprovar e entregar** converte direto para `retirada`, registra datas, responsável e aumenta `componentes.em_uso`. É proibido forçar uma segunda operação de retirada em reservas novas.
-6. A própria conta pode devolver pelo `POST /api/my/return`; Admin também pode devolver. Registrar defeitos ajusta `com_defeito`.
+6. A própria conta pode devolver pelo `POST /api/my/return`; Admin também pode devolver. Descartar unidades na devolução (campo opcional `descartados`) reduz `quantidade` e `em_uso`, sem criar estoque defeituoso. `com_defeito` permanece coluna técnica legada zerada.
 
 ### PETiane
-1. Tag `petiano` é atribuída pelo Admin em `Usuários`. Sessão pessoal e e-mail devem estar válidos.
+1. Cargo `petiano` é atribuído pelo Admin em `Usuários`. Sessão pessoal e e-mail devem estar válidos.
 2. `POST /api/member/withdraw` registra `tipo=retirada_direta` e status `retirada` imediatamente, sem aprovação.
 3. `POST /api/my/return` ou `/api/member/return` registra devolução do titular, sem segunda aprovação.
 
@@ -219,10 +219,10 @@ Os testes que usam `jsdom` requerem essa dependência no ambiente. Não teste ex
 | Material visível, botão indisponível | Autorização por **categoria + material + perfil**, não visibilidade |
 | Reserva pendente não aparece | Login pessoal, e-mail, API `/api/reservations` e filtro Pendentes |
 | Aprovação não baixa estoque | Fluxo `/api/admin/reservation` `aprovar` precisa transicionar direto para `retirada` |
-| PETiane não consegue retirar | Tag ativa, senha definitiva, e-mail, estoque, permissão do item e categoria |
+| PETiane não consegue retirar | Cargo ativo, senha definitiva, e-mail, estoque, permissão do item e categoria |
 | Filamento tem estoque duplicado | Conferir vínculo `FILAMENTO-<id>` entre `filamentos` e `componentes` |
 | “Todas” ainda lista registros concluídos | “Todas” inclui os mesmos registros de Concluídas; verifique prazo/status e execução da limpeza |
-| E-mail não chegou | Tipo de evento, tag, data, fila, trigger Apps Script, quota Gmail, logs |
+| E-mail não chegou | Tipo de evento, cargo, data, fila, trigger Apps Script, quota Gmail, logs |
 | E-mail enviado ainda aparece como pendente | Checar ACK `/api/mail/ack` e a API `/api/admin/mail/log` |
 | Admin pede login fora de contexto | Verifique cookie e rota `/admin/`, sem substituir identidade pessoal |
 | Alteração no Git não refletiu | Confirmar deploy completo do SHA da `main`, conferir cache e assets |
@@ -232,3 +232,7 @@ Os testes que usam `jsdom` requerem essa dependência no ambiente. Não teste ex
 Compartilhe o repositório (não credenciais). Peça que leia **AGENTS.md → este guia → código e migrations pertinentes → testes**; registre o problema, limite o escopo e exija teste antes de publicar. A operação do Cloudflare e do Google depende de contas e permissões reais: não presuma que ter acesso ao GitHub dá acesso ao D1 remoto ou ao Gmail. Antes de qualquer mudança potencialmente destrutiva, peça backup e aprovação.
 
 **Manutenção da documentação:** manter este arquivo, `AGENTS.md` e a Central de Ajuda sincronizados com mudanças funcionais.
+
+### Estoque sem defeitos (migração 0021)
+
+`migrations/0021_estoque_sem_defeitos.sql` baixa do total as unidades anteriormente marcadas com defeito, registra a conversão em `baixas_estoque` e zera o campo legado `com_defeito`, preservando unidades efetivamente em uso. O frontend mostra **Quantidade, Em uso e Disponível** e o servidor usa a mesma subtração, validando solicitações de reserva, aprovação e retirada direta. Ao devolver, `descartados` é opcional, limitado à quantidade retirada: reduz o total (também em `filamentos` quando for rolo) sem gerar estoque defeituoso. Backups antigos que continham `com_defeito` passam por conversão no restore. Na interface, o antigo rótulo Tag virou **Cargo**, sem mudar a chave técnica `tag` nem os papéis da API.
