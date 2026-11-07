@@ -67,6 +67,45 @@ function accountFields(prefix,nome=""){
     passwordField(prefix+"-password","Criar senha","new-password")+
     passwordField(prefix+"-confirm","Repetir senha","new-password");
 }
+function identityRecoveryModal(){
+  openModal("Recuperar senha","Informe o e-mail cadastrado para receber um link de recuperação.",
+    '<form class="modal-main" id="identity-recovery-form">'+
+    '<div class="field"><label for="identity-recovery-email">E-mail da conta</label><input type="email" id="identity-recovery-email" maxlength="180" autocomplete="email" required placeholder="seuemail@exemplo.com"></div>'+
+    '<p class="hint">Se o cadastro existir, enviaremos um link que expira em 30 minutos. Confira também a caixa de spam.</p>'+
+    '<button type="submit" class="primary-button" id="identity-recovery-submit" style="width:100%">Enviar link</button>'+
+    '<button type="button" class="outline-button" id="identity-recovery-back" style="width:100%;margin-top:10px">Voltar ao login</button></form>');
+  $("#identity-recovery-back").onclick=()=>identityLoginModal(true);
+  $("#identity-recovery-form").onsubmit=async e=>{
+    e.preventDefault();
+    const btn=$("#identity-recovery-submit");btn.disabled=true;btn.textContent="Solicitando…";
+    try{
+      const r=await api("/api/identity/recover","POST",{email:$("#identity-recovery-email").value.trim()});
+      $("#identity-recovery-form").innerHTML='<p class="notice">'+esc(r.mensagem)+'</p><button type="button" class="primary-button" id="identity-recovery-return" style="width:100%">Voltar ao login</button>';
+      $("#identity-recovery-return").onclick=()=>identityLoginModal(true);
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Enviar link";}
+  };
+}
+function identityResetFromEmailModal(token){
+  if(!/^[A-F0-9]{64}$/.test(String(token||""))){identityLoginModal();toast("Link de recuperação inválido.",true);return;}
+  openModal("Definir nova senha","O link de recuperação pode ser utilizado uma única vez.",
+    '<form class="modal-main" id="identity-email-reset-form">'+
+    passwordField("identity-email-reset-password","Nova senha","new-password")+
+    passwordField("identity-email-reset-confirm","Repetir nova senha","new-password")+
+    '<button type="submit" class="primary-button" id="identity-email-reset-submit" style="width:100%">Salvar nova senha</button></form>');
+  wirePasswordVisibility();
+  $("#identity-email-reset-form").onsubmit=async e=>{
+    e.preventDefault();
+    const pass=$("#identity-email-reset-password").value;
+    if(pass!==$("#identity-email-reset-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword(pass))return;
+    const btn=$("#identity-email-reset-submit");btn.disabled=true;btn.textContent="Redefinindo…";
+    try{
+      await api("/api/identity/reset-by-email","POST",{token,nova_senha:pass});
+      setIdentity(null);identityLoginModal(true);toast("Senha redefinida. Entre com a nova senha.");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar nova senha";}
+  };
+}
+
 function identityLoginModal(first=false){
   openModal("Entrar no inventário","Use seu nome de usuário e sua senha. O cargo Visitante ou PETiano continua vinculada à sua conta.",
     '<form class="modal-main" id="identity-login-form">'+
@@ -76,11 +115,7 @@ function identityLoginModal(first=false){
     '<div class="modal-footer" style="border:0;padding:12px 0 0"><button type="submit" class="primary-button" id="identity-login-submit" style="width:100%">Entrar</button></div>'+
     '<div class="identity-separator">Primeiro acesso?</div><button type="button" class="outline-button" id="identity-open-register" style="width:100%">Criar minha conta</button></form>');
   wirePasswordVisibility();
-  $("#identity-forgot").onclick=()=>{
-    openModal("Esqueci minha senha","Recuperação de acesso pelo PET.",
-      '<div class="modal-main"><p>Peça a um administrador do PET para encontrar seu cadastro na aba <strong>Usuários</strong> e clicar em <strong>Redefinir senha</strong>.</p><p class="notice">O administrador vai gerar uma senha temporária e informar seu nome de usuário. Você deverá escolher uma senha definitiva ao entrar.</p><button type="button" class="primary-button" id="identity-forgot-back" style="width:100%">Voltar ao login</button></div>');
-    $("#identity-forgot-back").onclick=identityLoginModal;
-  };
+  $("#identity-forgot").onclick=identityRecoveryModal;
   $("#identity-open-register").onclick=()=>identityRegisterModal(true);
   $("#identity-login-form").onsubmit=async e=>{
     e.preventDefault();
