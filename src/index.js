@@ -281,7 +281,15 @@ async function processRequest(req, env) {
       const id=requireId(b.id),f=await db.prepare("SELECT id,cor,componente_id FROM filamentos WHERE id=?").bind(id).first();
       if(!f)return bad("Filamento não encontrado.",404);
       const profile=b.perfil;
-      if(profile==="petianos"||profile==="visitantes"){
+      if(profile==="combinado"){
+        if(typeof b.permitir_petianos!=="boolean"||typeof b.permitir_visitantes!=="boolean")return bad("Selecione uma permissão válida.");
+        const pet=Number(b.permitir_petianos),visitor=Number(b.permitir_visitantes),both=Number(!!(pet||visitor));
+        await db.batch([
+          db.prepare("UPDATE filamentos SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,id),
+          db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,f.componente_id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(pet&&visitor?"Todos":pet?"PETianes":visitor?"Visitantes":"Ninguém"));
+      }else if(profile==="petianos"||profile==="visitantes"){
         if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
         const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
         const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
@@ -400,7 +408,16 @@ async function processRequest(req, env) {
       const cat=await db.prepare("SELECT nome,arquivada FROM categorias WHERE id=?").bind(id).first();
       if(!cat||cat.arquivada)return bad("Categoria não encontrada.",404);
       const profile=b.perfil;
-      if(profile==="petianos"||profile==="visitantes"){
+      if(profile==="combinado"){
+        if(typeof b.permitir_petianos!=="boolean"||typeof b.permitir_visitantes!=="boolean")return bad("Selecione uma permissão válida.");
+        const pet=Number(b.permitir_petianos),visitor=Number(b.permitir_visitantes),both=Number(!!(pet||visitor));
+        await db.batch([
+          db.prepare("UPDATE categorias SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,id),
+          db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE categoria_id=?").bind(pet,visitor,both,id),
+          db.prepare("UPDATE filamentos SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(pet,visitor,both,id)
+        ]);
+        await auditLog(db,"Alterou empréstimos","categoria",id,cat.nome+" · "+(pet&&visitor?"Todos":pet?"PETianes":visitor?"Visitantes":"Ninguém"));
+      }else if(profile==="petianos"||profile==="visitantes"){
         if(typeof b.permitir!=="boolean")return bad("Informe a permissão desejada.");
         const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
         const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
@@ -469,7 +486,12 @@ async function processRequest(req, env) {
     const item=await db.prepare("SELECT nome,import_key FROM componentes WHERE id=?").bind(id).first();
     if(!item||isFilamentMirror(item))return bad("Material não encontrado ou pertence à aba Filamentos.",404);
     const profile=b.perfil;
-    if(profile==="petianos"||profile==="visitantes"){
+    if(profile==="combinado"){
+        if(typeof b.permitir_petianos!=="boolean"||typeof b.permitir_visitantes!=="boolean")return bad("Selecione uma permissão válida.");
+        const pet=Number(b.permitir_petianos),visitor=Number(b.permitir_visitantes),both=Number(!!(pet||visitor));
+        await db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,id).run();
+        await auditLog(db,"Alterou empréstimos","material",id,item.nome+" · "+(pet&&visitor?"Todos":pet?"PETianes":visitor?"Visitantes":"Ninguém"));
+      }else if(profile==="petianos"||profile==="visitantes"){
       if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
       const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
       const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
