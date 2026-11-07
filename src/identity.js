@@ -213,9 +213,10 @@ async function memberReturn(req,env,user){
   const done=await env.DB.batch([
     env.DB.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND usuario_id=? AND status='retirada')")
       .bind(r.quantidade,discarded,stamp,actor,"Devolução de "+r.quantidade+" unidade(s)"+(discarded?" • "+discarded+" descartada(s)":""),r.componente_id,r.quantidade,discarded,id,user.id),
+    env.DB.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=?").bind(discarded,r.componente_id,discarded),
     env.DB.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND usuario_id=? AND status='retirada'").bind(stamp,actor,note||r.observacao,id,user.id)
   ]);
-  if(done[0].meta?.changes!==1||done[1].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
+  if(done[0].meta?.changes!==1||done[2].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
   // O PETiane já confirmou a própria devolução: não gerar aviso redundante.
   // Para visitantes, a notificação interna de confirmação permanece.
   if(user.papel!=="petiano"){
