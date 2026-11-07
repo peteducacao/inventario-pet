@@ -7,7 +7,8 @@
 -- deixam o arquivo e permanecem íntegros para permitir devolver o empréstimo.
 UPDATE componentes SET arquivado=0
 WHERE arquivado=1 AND (
-  EXISTS(SELECT 1 FROM reservas r WHERE r.componente_id=componentes.id
+  em_uso>0
+  OR EXISTS(SELECT 1 FROM reservas r WHERE r.componente_id=componentes.id
     AND r.status IN ('pendente','aprovada','retirada'))
   OR EXISTS(SELECT 1 FROM filamentos f WHERE f.componente_id=componentes.id)
 );
