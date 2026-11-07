@@ -106,58 +106,66 @@ function adminContent(){
   if(UI.adminTab==="historico")return adminHistory(content);
   return adminSettings(content);
 }
+function dashboardRecentEvent(log){
+  const kind=String(log.tipo||"sistema").toLowerCase();
+  const config={
+    material:{emoji:"📦",label:"Material",tab:"materiais"},
+    categoria:{emoji:"🗂️",label:"Categoria",tab:"categorias"},
+    filamento:{emoji:"🧵",label:"Filamento",tab:"filamentos"},
+    reserva:{emoji:"📋",label:"Reserva",tab:"reservas"},
+    usuario:{emoji:"👤",label:"Usuário",tab:"usuarios"},
+    sistema:{emoji:"⚙️",label:"Sistema",tab:"historico"}
+  }[kind]||{emoji:"📝",label:"Alteração",tab:"historico"};
+  return '<button type="button" class="dashboard-change" data-dashboard-log-id="'+attr(log.id)+'" aria-label="'+attr(config.label+': '+log.acao+'. '+(log.descricao||"")+'. Abrir '+config.tab)+'">'+
+    '<span class="dashboard-change-emoji" aria-hidden="true">'+config.emoji+'</span>'+
+    '<span class="dashboard-change-content"><span class="dashboard-change-title">'+esc(log.acao||"Alteração")+' · '+esc(config.label)+'</span>'+
+    '<span class="dashboard-change-description">'+esc(log.descricao||"Sem detalhes adicionais")+'</span>'+
+    '<span class="dashboard-change-date">'+esc(niceDate(log.criado_em))+' · '+esc(log.responsavel||"Admin")+'</span></span>'+
+    '<span class="dashboard-change-chevron" aria-hidden="true">'+iconSvg("chevron",19)+'</span>'+
+    '</button>';
+}
+function dashboardOpenEvent(log){
+  const destinations={material:"materiais",categoria:"categorias",filamento:"filamentos",reserva:"reservas",usuario:"usuarios",sistema:"historico"};
+  const tab=destinations[log.tipo]||"historico";
+  if(tab==="materiais"){
+    const item=log.registro_id!=null?state.admin?.componentes?.find(x=>String(x.id)===String(log.registro_id)):null;
+    // Um material arquivado deve ser encontrado na aba Arquivados, não na lista comum.
+    UI.adminCategory=item&&isArchived(item)?"archived":"all";
+    UI.adminSearch=item?.nome||"";
+    UI.adminPage=1;
+    stored("pet_admin_category",UI.adminCategory);
+    stored("pet_admin_search",UI.adminSearch);
+    stored("pet_admin_page",1);
+  }
+  if(tab==="reservas"){
+    UI.reservationFilter="todas";UI.reservationPage=1;
+    stored("pet_admin_reservas","todas");
+  }
+  if(tab==="historico"){
+    UI.logType="all";UI.logPage=1;
+  }
+  selectAdminTab(tab);
+}
 function adminDashboard(root){
   const c=adminCounts();
-  root.innerHTML='<section class="admin-panel"><h2>Visão geral</h2><p>Resumo do acervo, com acesso rápido às ferramentas.</p>'+
+  root.innerHTML='<section class="admin-panel"><h2>Visão geral</h2><p>Resumo do acervo e últimas movimentações.</p>'+
     '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div>'+
     '<div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div>'+
     '<div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div></div>'+
-    '<div id="dashboard-last-change" class="dashboard-last-change" aria-live="polite"><span class="dashboard-last-label">Última alteração</span><p>Carregando…</p></div>'+
-    '<div class="admin-shortcuts">'+
-    '<button class="admin-shortcut" type="button" data-dashboard-go="materiais">'+iconSvg("box",21)+' Materiais e estoque</button>'+
-    '<button class="admin-shortcut" type="button" data-dashboard-go="categorias">'+iconSvg("layers",21)+' Categorias e acesso</button>'+
-    '<button class="admin-shortcut" type="button" data-dashboard-go="historico">'+iconSvg("back",21)+' Histórico de alterações</button>'+
-    '<button class="admin-shortcut" type="button" data-dashboard-go="filamentos">'+iconSvg("grid",21)+' Filamentos</button>'+
-    '</div></section>'+
-    '<section class="admin-panel"><div class="admin-section-head"><h2>Atividade recente</h2><button class="outline-button small-button" type="button" id="dashboard-log-all">Ver histórico</button></div><div id="dashboard-recent-log" class="admin-log-list">Carregando…</div></section>';
-  $$("[data-dashboard-go]",root).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.dashboardGo));
+    '<div class="dashboard-changes-head"><h3>Últimas alterações</h3><button type="button" class="outline-button small-button" id="dashboard-log-all">Ver histórico</button></div>'+
+    '<div id="dashboard-recent-log" class="dashboard-changes-list" aria-live="polite"><p class="dashboard-changes-loading">Carregando alterações…</p></div></section>';
   $("#dashboard-log-all").onclick=()=>selectAdminTab("historico");
   api("/api/admin/log?pagina=1").then(data=>{
-    const recent=$("#dashboard-recent-log"),latest=$("#dashboard-last-change");
-    if(!recent||!latest||UI.adminTab!=="painel")return;
-    const events=data.eventos||[];
-    recent.innerHTML=events.slice(0,4).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração registrada ainda.</div>';
-    if(!events.length){
-      latest.innerHTML='<span class="dashboard-last-label">Última alteração</span><p>Nenhuma alteração registrada ainda.</p>';
-      return;
-    }
-    const log=events[0];
-    const destinations={material:["materiais","Ver material"],categoria:["categorias","Ver categorias"],filamento:["filamentos","Ver filamentos"],reserva:["reservas","Ver reservas"],usuario:["usuarios","Ver usuários"],sistema:["historico","Ver histórico"]};
-    const destination=destinations[log.tipo]||["historico","Ver histórico"];
-    const target=log.tipo==="material"&&log.registro_id?
-      state.admin?.componentes?.find(x=>Number(x.id)===Number(log.registro_id)):null;
-    latest.innerHTML='<span class="dashboard-last-label">Última alteração</span>'+
-      '<strong>'+esc(log.acao)+' · '+esc(log.tipo)+'</strong>'+
-      '<p>'+esc(log.descricao||"Sem detalhes adicionais")+'</p>'+
-      '<small>'+esc(niceDate(log.criado_em))+' · '+esc(log.responsavel||"Admin")+'</small>'+
-      '<button class="outline-button small-button" type="button" id="dashboard-last-open">'+iconSvg("chevron",15)+' '+destination[1]+'</button>';
-    $("#dashboard-last-open").onclick=()=>{
-      if(destination[0]==="materiais"){
-        UI.adminSearch=target?.nome||"";
-        UI.adminCategory="all";UI.adminPage=1;
-        stored("pet_admin_search",UI.adminSearch);
-        stored("pet_admin_category","all");
-      }
-      if(destination[0]==="reservas"){
-        UI.reservationFilter="todas";
-        stored("pet_admin_reservas","todas");
-      }
-      selectAdminTab(destination[0]);
-    };
+    const recent=$("#dashboard-recent-log");
+    if(!recent||UI.adminTab!=="painel")return;
+    const events=(data.eventos||[]).slice(0,4);
+    recent.innerHTML=events.length?events.map(dashboardRecentEvent).join(""):
+      '<div class="empty-state">Nenhuma alteração registrada ainda.</div>';
+    $$("[data-dashboard-log-id]",recent).forEach((button,index)=>
+      button.onclick=()=>dashboardOpenEvent(events[index]));
   }).catch(error=>{
-    const recent=$("#dashboard-recent-log"),latest=$("#dashboard-last-change");
-    if(recent)recent.textContent=error.message;
-    if(latest)latest.innerHTML='<span class="dashboard-last-label">Última alteração</span><p>Não foi possível carregar a atividade recente.</p>';
+    const recent=$("#dashboard-recent-log");
+    if(recent&&UI.adminTab==="painel")recent.innerHTML='<div class="empty-state">Não foi possível carregar as últimas alterações. '+esc(error.message)+'</div>';
   });
 }
 function adminLogRow(log){
