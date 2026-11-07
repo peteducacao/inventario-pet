@@ -59,15 +59,11 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: 23d809e1e820e30b3f95c24ea771f579
         run: npx wrangler deploy
-      - name: Configurar senha do painel
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: 23d809e1e820e30b3f95c24ea771f579
-          ADMIN_PASSWORD: ${{ secrets.PET_ADMIN_PASSWORD }}
-        run: |
-          if [ -z "$ADMIN_PASSWORD" ]; then echo "Falta PET_ADMIN_PASSWORD"; exit 1; fi
-          printf '%s' "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD
-
+      # ADMIN_PASSWORD já está configurada no Cloudflare. Não a sobrescrever
+      # durante cada deploy: Workers Versions bloqueia regravação quando a
+      # última versão não está ativada e isso interrompia os testes seguintes.
+      - name: Conferir ilustrações publicadas
+        run: node tests/live-art.mjs
       - name: Verificar acesso publico e bloqueios de seguranca
         run: |
           node --input-type=module <<'NODE'
