@@ -994,103 +994,106 @@ function openBulkVisibility(currentId){
   $("#bulk-only-members").onclick=()=>save(false);
   draw();
 }
+/* Gestão de famílias: membros já vinculados ficam separados dos candidatos. */
 function openVariantLinker(currentId,groupName=""){
   const model=adminMaterialPickerConfig("variations",currentId,groupName);
   const fromGroup=Boolean(groupName);
-  const existing=[...new Set(model.all.map(x=>x.grupo_variacoes).filter(Boolean))];
-  openModal("Organizar variações","Vincule modelos sem juntar seus estoques. Selecione os materiais que devem compartilhar um card.",
-    '<div class="modal-main"><div class="field"><label for="variant-group-name">Nome da família</label>'+
-    '<input id="variant-group-name" maxlength="80" list="variant-existing-groups" '+(fromGroup?'readonly ':'')+'value="'+attr(model.group||"")+'" placeholder="Ex.: Resistores"><datalist id="variant-existing-groups">'+existing.map(x=>'<option value="'+attr(x)+'"></option>').join("")+'</datalist>'+(fromGroup?'<small class="hint">Para mudar este título, use Renomear grupo na área de famílias.</small>':'')+'</div>'+
-    '<div class="field"><label for="variant-search">Buscar outros modelos</label><input id="variant-search" placeholder="Buscar material..." value="'+attr(fromGroup?"":model.current?.nome.split(/\s+/)[0]||"")+'"></div>'+
-    '<div class="admin-bulk-actions"><button class="outline-button small-button" type="button" id="variant-similar">Sugerir semelhantes ('+model.similar.length+')</button>'+
-    '<button class="outline-button small-button" type="button" id="variant-check-all">Selecionar resultados</button>'+
-    '<button class="outline-button small-button" type="button" id="variant-check-none">Limpar seleção</button></div>'+
-    '<p class="variant-linked-info"><strong>Verde: já vinculado ao grupo salvo.</strong> Azul: selecionado agora para vincular. Ao escolher outra família, os vínculos já salvos dela serão marcados automaticamente. Desmarcar não desvincula: para remover um vínculo, selecione o material e use <strong>Desvincular marcados</strong>.</p>'+
-    '<div class="admin-bulk-list" id="variant-list"></div><p class="hint" id="variant-selected"></p>'+
-    '<div class="modal-footer" style="border:0;padding:14px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
-    '<button type="button" class="outline-button" id="variant-create">Cadastrar nova variação</button>'+
-    '<button type="button" class="outline-button" id="variant-unlink">Desvincular marcados</button>'+
-    '<button type="button" class="primary-button" id="variant-save">Vincular marcados</button></div></div>',{size:"wide"});
-  let visible=[];
+  const startingName=String(model.group||"").trim();
+  const normalized=value=>String(value||"").trim().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR");
+  const itemLabel=x=>'<strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
+    ' · Total: '+Number(x.quantidade||0)+' · Em uso: '+Number(x.em_uso||0)+'</small>';
+  openModal(fromGroup?"Organizar grupo: "+startingName:"Criar ou organizar um grupo",
+    "O grupo reúne modelos num único card; o estoque de cada material continua separado.",
+    '<div class="modal-main variant-manager">'+
+      '<div class="field"><label for="variant-group-name">Nome do grupo</label>'+
+        '<input id="variant-group-name" maxlength="80" '+(fromGroup?'readonly ':'')+'value="'+attr(startingName)+'" placeholder="Ex.: Arduino">'+
+        '<small class="hint">'+(fromGroup?'Para trocar o nome, use Renomear grupo no painel.':
+          'Escolha um nome e adicione um material. O grupo só aparece após receber seu primeiro modelo.')+'</small></div>'+
+      '<section class="variant-manager-block linked"><div class="variant-manager-heading"><h3>Já fazem parte deste grupo</h3>'+
+        '<strong id="variant-linked-count">0</strong></div>'+
+        '<div id="variant-linked-list" class="variant-manager-list"></div></section>'+
+      '<section class="variant-manager-block available"><div class="variant-manager-heading"><h3>Adicionar materiais ao grupo</h3></div>'+
+        '<div class="field"><label for="variant-search">Buscar material existente</label>'+
+        '<input id="variant-search" type="search" placeholder="Ex.: Arduino Uno, ESP32, pilha..." autocomplete="off" value="'+attr(startingName)+'"></div>'+
+        '<div id="variant-available-list" class="variant-manager-list"></div>'+
+        '<p class="hint">Clique em <strong>Adicionar ao grupo</strong> para salvar o vínculo. Se o material já pertence a outra família, você verá uma confirmação antes de movê-lo.</p></section>'+
+      '<div class="modal-footer variant-manager-actions">'+
+        '<button type="button" class="outline-button" id="variant-create">+ Cadastrar novo modelo neste grupo</button>'+
+        '<button type="button" class="primary-button" id="variant-close">Concluir</button></div></div>',{size:"wide"});
+  let saving=false;
+  const refreshModel=()=>{
+    model.all=state.admin.componentes.filter(x=>!isArchived(x)&&
+      !state.admin.categorias.find(cat=>Number(cat.id)===Number(x.categoria_id))?.arquivada);
+  };
+  const groupName=()=>$("#variant-group-name")?.value.trim()||"";
+  const linked=()=>model.all.filter(x=>normalized(x.grupo_variacoes)===normalized(groupName())&&normalized(groupName()));
+  const makeRow=(x,already)=>{
+    const current=String(x.grupo_variacoes||"").trim();
+    return '<div class="variant-manager-row" data-variant-item="'+Number(x.id)+'">'+
+      '<div class="variant-manager-photo">'+thumb(x)+'</div>'+
+      '<div class="variant-manager-description">'+itemLabel(x)+
+        (!already&&current?'<span class="variant-manager-other">Pertence a: '+esc(current)+'</span>':'')+
+        '</div>'+
+      (already?
+        '<button class="outline-button small-button" type="button" data-variant-remove="'+Number(x.id)+'">Retirar do grupo</button>':
+        '<button class="primary-button small-button" type="button" data-variant-add="'+Number(x.id)+'">'+
+          (current?'Mover para este grupo':'Adicionar ao grupo')+'</button>')+'</div>';
+  };
   const draw=()=>{
-    const r=materialPickerRows(model.all,model.selected,$("#variant-search").value,true,false,$("#variant-group-name").value);
-    visible=r.visible;$("#variant-list").innerHTML=r.html;
-    const linked=model.all.filter(x=>model.selected.has(x.id)&&
-      String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===
-      String($("#variant-group-name").value||"").trim().toLocaleLowerCase("pt-BR")).length;
-    $("#variant-selected").textContent=model.selected.size+" marcados · "+linked+
-      " já vinculados ao grupo · "+(model.selected.size-linked)+" a vincular.";
-    $$("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
-      const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
-      draw();
-    });
-    $$("[data-variant-photo]",$("#variant-list")).forEach(button=>button.onclick=()=>{
-      $("#variant-list [data-variant-file='"+button.dataset.variantPhoto+"']")?.click();
-    });
-    $$("[data-variant-file]",$("#variant-list")).forEach(input=>input.onchange=async event=>{
-      const file=event.target.files?.[0];if(!file)return;
-      const id=Number(input.dataset.variantFile);
-      const original=model.all.find(x=>x.id===id);
-      if(!original)return;
-      const button=$("#variant-list [data-variant-photo='"+id+"']");
-      if(button){button.disabled=true;button.textContent="Salvando…";}
-      try{
-        if(!["image/png","image/jpeg","image/webp"].includes(file.type))throw Error("Escolha uma foto PNG, JPG ou WEBP.");
-        const image=await shrinkImage(file);
-        await api("/api/admin/item/photo","POST",{id,imagem:image,responsavel:state.actor||"Admin"});
-        // Manter os nomes, quantidades e a seleção em andamento.
-        original.imagem=image;
-        const adminEntry=state.admin.componentes.find(x=>x.id===id);
-        if(adminEntry)adminEntry.imagem=image;
-        const catalogEntry=state.data.componentes.find(x=>x.id===id);
-        if(catalogEntry)catalogEntry.imagem=image;
-        toast("Foto de "+original.nome+" salva.");
-        draw();
-      }catch(error){
-        toast(error.message,true);
-        if(button){button.disabled=false;button.textContent="Enviar foto";}
-      }
-    });
+    const name=groupName();
+    const members=linked().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+    $("#variant-linked-count").textContent=String(members.length);
+    $("#variant-linked-list").innerHTML=members.length?members.map(x=>makeRow(x,true)).join(""):
+      '<div class="variant-manager-empty">Este grupo ainda não tem nenhum material vinculado.</div>';
+    const term=$("#variant-search").value.trim();
+    const free=model.all.filter(x=>!members.some(m=>m.id===x.id)&&
+      (!term||[x.nome,x.identificacao,x.grupo_variacoes].some(v=>matchesCatalogSearch(v,term))));
+    // Recomendação inicial: candidatos sem grupo primeiro, depois outros grupos.
+    free.sort((a,b)=>Number(Boolean(a.grupo_variacoes))-Number(Boolean(b.grupo_variacoes))||
+      a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+    $("#variant-available-list").innerHTML=free.length?
+      free.slice(0,45).map(x=>makeRow(x,false)).join(""):
+      '<div class="variant-manager-empty">Nenhum outro material encontrado. Tente outro nome ou cadastre um modelo.</div>';
+    $$("[data-variant-add]",$("#variant-available-list")).forEach(button=>button.onclick=()=>updateMember(Number(button.dataset.variantAdd),true));
+    $$("[data-variant-remove]",$("#variant-linked-list")).forEach(button=>button.onclick=()=>updateMember(Number(button.dataset.variantRemove),false));
   };
-  $("#variant-search").oninput=draw;
-  const loadGroupSelection=()=>{
-    const name=String($("#variant-group-name").value||"").trim().toLocaleLowerCase("pt-BR");
-    model.selected.clear();
-    if(name){
-      for(const item of model.all){
-        if(String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===name)model.selected.add(item.id);
-      }
+  const updateMember=async(id,add)=>{
+    if(saving)return;
+    const name=groupName(),current=model.all.find(x=>x.id===id);
+    if(!current)return;
+    if(add&&name.length<2){toast("Digite o nome do grupo antes de adicionar um material.",true);$("#variant-group-name").focus();return;}
+    const oldName=String(current.grupo_variacoes||"").trim();
+    if(add&&oldName&&normalized(oldName)!==normalized(name)){
+      const yes=await niceModalConfirm("Mover material para outro grupo?",
+        current.nome+" deixará o grupo "+oldName+" e passará para "+name+". Quantidades e empréstimos não serão alterados.",
+        "Mover material");
+      if(!yes)return;
+    }else if(!add){
+      const yes=await niceModalConfirm("Retirar deste grupo?",
+        current.nome+" ficará como material individual no catálogo. O estoque continuará igual.","Retirar",true);
+      if(!yes)return;
     }
-    draw();
+    saving=true;
+    try{
+      await api("/api/admin/variations","POST",{
+        ids:[id],grupo:add?name:"",responsavel:state.actor||"Admin"});
+      await adminReload();
+      refreshModel();
+      draw();
+      toast(add?current.nome+" vinculado a "+name+".":current.nome+" removido do grupo.");
+    }catch(error){toast(error.message,true);}
+    finally{saving=false;}
   };
-  $("#variant-group-name").onchange=loadGroupSelection;
-  $("#variant-group-name").oninput=loadGroupSelection;
-  $("#variant-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
-  $("#variant-check-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
-  $("#variant-check-none").onclick=()=>{model.selected.clear();draw();};
+  $("#variant-group-name").oninput=draw;
+  $("#variant-search").oninput=draw;
   $("#variant-create").onclick=()=>{
-    window.__newVariantGroup=$("#variant-group-name").value.trim();
+    const name=groupName();
+    if(name.length<2){toast("Informe o nome do grupo antes de cadastrar um modelo.",true);$("#variant-group-name").focus();return;}
+    window.__newVariantGroup=name;
+    window.__variantReturnGroup=name;
     adminItemEditor();
   };
-  const save=async unlink=>{
-    const group=unlink?"":$("#variant-group-name").value.trim();
-    if(!model.selected.size){toast("Selecione pelo menos um material.",true);return;}
-    if(!unlink&&group.length<2){toast("Informe um nome de grupo com pelo menos 2 caracteres.",true);return;}
-    const linked=model.all.filter(x=>model.selected.has(x.id)&&
-      String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===group.toLocaleLowerCase("pt-BR"));
-    const changed=unlink?[...model.selected]:[...model.selected].filter(id=>!linked.some(x=>x.id===id));
-    if(!changed.length){toast(unlink?"Marque os materiais que deseja desvincular.":"Todos os materiais marcados já pertencem a essa família.");return;}
-    const ok=await niceModalConfirm(unlink?"Desvincular "+changed.length+" materiais?":"Vincular "+changed.length+" materiais?",
-      changed.length+" material(is) "+(unlink?"deixarão suas famílias atuais e aparecerão em cards separados.":"passarão para o grupo "+group+". Os demais vínculos serão preservados."),
-      unlink?"Desvincular":"Vincular",unlink);
-    if(!ok)return;
-    try{
-      await api("/api/admin/variations","POST",{ids:changed,grupo:group,responsavel:state.actor||"Admin"});
-      await adminReload();closeModal();adminBuild();toast(unlink?"Variações desvinculadas.":"Materiais vinculados no mesmo card.");
-    }catch(error){toast(error.message,true);}
-  };
-  $("#variant-save").onclick=()=>save(false);
-  $("#variant-unlink").onclick=()=>save(true);
+  $("#variant-close").onclick=()=>{closeModal();adminBuild();};
   draw();
 }
 function adminItemEditor(id){
