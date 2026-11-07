@@ -113,7 +113,8 @@ function groupPublicMaterials(items){
   return list;
 }
 function finalCard(original,siblings=[]){
-  const groupKey=String(original.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR");
+  const familyName=String(original.grupo_variacoes||"").trim();
+  const groupKey=familyName.toLocaleLowerCase("pt-BR");
   const selection=siblings.find(a=>a.id===UI.variantChoice[groupKey]);
   const grouped=siblings.length>1;
   const x=selection||original;
@@ -154,8 +155,9 @@ function finalCard(original,siblings=[]){
   return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" '+imageAction+' aria-label="'+attr(photoLabel)+'">'+
     '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
-    '<div class="catalog-body"><h3>'+esc(grouped?original.grupo_variacoes:x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
-    (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':"")+openModel:"")+
+    '<div class="catalog-body"><h3>'+esc(familyName||x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
+    (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':"")+openModel:
+      (familyName?'<span class="variant-selected">Modelo: '+esc(x.nome)+'</span>':""))+
     (asset&&!showGroupTotals?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':"")+
     '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+total+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Defeito</span><strong class="'+(broken?"stock-defect":"")+'">'+broken+'</strong></div></div>'+
     action+'</div></article>';
@@ -207,9 +209,16 @@ function finalRender(){
   $("#stat-broken").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.com_defeito||0),0)+colorItems.reduce((s,x)=>s+Number(x.com_defeito||0),0));
   $("#category-filters").innerHTML=[{id:"all",nome:"Todos"},...(state.data.categorias||[]).filter(c=>ordinary.some(x=>x.categoria_id===c.id)||colorItems.some(x=>Number(x.categoria_id)===Number(c.id)))].map(c=>
     '<button type="button" class="chip '+(String(UI.category)===String(c.id)?"active":"")+'" data-category="'+attr(c.id)+'">'+esc(c.nome)+'</button>').join("");
-  const q=(state.query||"").toLocaleLowerCase("pt-BR").trim();
-  const filtered=items.filter(x=>(UI.category==="all"||String(x.categoria_id)===String(UI.category))&&
-    (!q||[x.nome,x.identificacao,x.patrimonio].some(v=>String(v||"").toLocaleLowerCase("pt-BR").includes(q))));
+  const q=String(state.query||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+  const inCategory=items.filter(x=>UI.category==="all"||String(x.categoria_id)===String(UI.category));
+  const normalize=value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR");
+  const matches=x=>[x.nome,x.identificacao,x.patrimonio,x.grupo_variacoes].some(v=>normalize(v).includes(q));
+  // Buscar pelo grupo ou por qualquer modelo deve manter todos os modelos
+  // vinculados no mesmo card (não transformar um grupo num item solto).
+  const matchingGroups=new Set(inCategory.filter(x=>q&&matches(x)&&x.grupo_variacoes)
+    .map(x=>normalize(x.grupo_variacoes)));
+  const filtered=inCategory.filter(x=>!q||matches(x)||
+    (x.grupo_variacoes&&matchingGroups.has(normalize(x.grupo_variacoes))));
   const p=paginate(groupPublicMaterials(ordered(filtered,UI.sort)),UI.page,12);
   UI.page=p.page;stored("pet_public_page",p.page);
   $("#category-sections").innerHTML=p.total?'<div class="card-grid">'+p.items.map(group=>finalCard(group[0],group)).join("")+'</div>':

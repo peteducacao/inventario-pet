@@ -238,8 +238,7 @@ function adminMaterialRow(x){
   const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+'</small>'+
-    (x.grupo_variacoes?'<div class="admin-group-inline"><span>Grupo: <strong>'+esc(x.grupo_variacoes)+'</strong></span>'+
-      '<button type="button" class="admin-group-rename" data-rename-group="'+attr(x.grupo_variacoes)+'" aria-label="Renomear grupo '+attr(x.grupo_variacoes)+'" title="Editar o nome exibido no card de todas as variações">'+iconSvg("edit",13)+' Renomear grupo</button></div>':"")+
+    (isHidden&&x.grupo_variacoes?'<small class="admin-archived-group">Grupo anterior: '+esc(x.grupo_variacoes)+'</small>':"")+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
     loanAudienceSelect("item",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
     (Number(cat?.permitir_petianos)!==1||Number(cat?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A liberação também depende da categoria</small>':'')+'</div>'+
@@ -263,6 +262,7 @@ function wireMaterialActions(root){
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
   $$("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
+  $$("[data-group-links]",root).forEach(b=>b.onclick=()=>openVariantLinker(null,b.dataset.groupLinks));
   $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
 }
 function adminRenameVariationGroup(name){
@@ -330,9 +330,18 @@ function adminMaterials(root){
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais ou grupos..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
-    '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>';
+    '<section class="admin-groups-area" id="admin-groups-area" aria-label="Grupos de variações">'+
+      '<details class="admin-groups-wrapper" id="admin-groups-section" open>'+
+        '<summary><span>Grupos de variações <span id="admin-group-count" class="admin-groups-count"></span></span><small>Um grupo por família · edite o título e os vínculos aqui</small></summary>'+
+        '<div class="admin-group-create"><button type="button" class="outline-button small-button" id="admin-group-new">'+iconSvg("plus",14)+' Criar grupo de variações</button></div>'+
+        '<div class="admin-groups-grid" id="admin-group-list"></div>'+
+      '</details></section>'+
+    '<section class="admin-individual-area" aria-label="Materiais individuais">'+
+      '<div class="admin-section-head admin-individual-heading"><div><h3 id="admin-individual-title">Materiais individuais</h3><p id="admin-individual-count"></p></div></div>'+
+      '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
   $("#admin-bulk-visibility").onclick=()=>openBulkVisibility();
+  $("#admin-group-new").onclick=()=>openVariantLinker();
   $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
   $("#admin-material-category").onchange=e=>{UI.adminCategory=e.target.value;UI.adminPage=1;stored("pet_admin_category",UI.adminCategory);paintAdminMaterials()};
   $("#admin-material-sort").onchange=e=>{UI.adminSort=e.target.value;UI.adminPage=1;stored("pet_admin_sort",UI.adminSort);paintAdminMaterials()};
@@ -346,22 +355,71 @@ function sortOptions(value){
   return [["az","A–Z"],["za","Z–A"],["recent","Última alteração"],["old","Mais antigo"],["available","Mais disponíveis"],["less","Menos disponíveis"]].map(([key,label])=>
     '<option value="'+key+'" '+(value===key?"selected":"")+'>'+label+'</option>').join("");
 }
+function adminGroupKey(value){
+  return String(value||"").trim().toLocaleLowerCase("pt-BR");
+}
+function adminGroupedFamilies(items){
+  const groups=new Map();
+  for(const item of items){
+    const key=adminGroupKey(item.grupo_variacoes);
+    if(!key)continue;
+    if(!groups.has(key))groups.set(key,{name:String(item.grupo_variacoes).trim(),members:[]});
+    groups.get(key).members.push(item);
+  }
+  return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"}));
+}
+function adminFamilyModelRow(x){
+  return '<div class="admin-family-model-row" data-group-model="'+Number(x.id)+'">'+thumb(x)+
+    '<div class="admin-family-model-text"><strong>'+esc(x.nome)+'</strong>'+
+      '<small>Total: '+Number(x.quantidade||0)+' · Em uso: '+Number(x.em_uso||0)+' · Defeito: '+Number(x.com_defeito||0)+'</small></div>'+
+    '<button class="outline-button small-button" type="button" data-item-edit="'+Number(x.id)+'" aria-label="Editar '+attr(x.nome)+'">Editar</button></div>';
+}
+function adminFamilyCard(group){
+  const items=group.members,quantity=items.reduce((v,x)=>v+Number(x.quantidade||0),0),
+    inUse=items.reduce((v,x)=>v+Number(x.em_uso||0),0);
+  const sample=items[0],names=[...new Set(items.map(x=>nameCategory(x.categoria_id)))];
+  return '<article class="admin-family-card" data-admin-group="'+attr(group.name)+'">'+
+    '<div class="admin-family-head"><div class="admin-family-thumb">'+thumb(sample)+'</div>'+
+      '<div class="admin-family-title"><h4>'+esc(group.name)+'</h4>'+
+        '<small>'+items.length+' '+(items.length===1?'material vinculado':'materiais vinculados')+' · '+esc(names.join(", "))+'</small></div></div>'+
+    '<div class="admin-family-stat">Total: <strong>'+quantity+'</strong> · Em uso: <strong>'+inUse+'</strong>'+
+      (items.length===1?'<small class="admin-family-warning">Este grupo tem só um material. Vincule outro modelo para formar uma família.</small>':'')+'</div>'+
+    '<div class="admin-family-actions">'+
+      '<button type="button" class="outline-button small-button" data-rename-group="'+attr(group.name)+'">'+iconSvg("edit",14)+' Renomear grupo</button>'+
+      '<button type="button" class="primary-button small-button" data-group-links="'+attr(group.name)+'">'+iconSvg("box",14)+' Organizar vínculos</button></div>'+
+    '<details class="admin-family-models"><summary>Ver '+items.length+' '+(items.length===1?'material':'modelos')+'</summary>'+
+      '<div class="admin-family-model-list">'+items.map(adminFamilyModelRow).join("")+'</div></details></article>';
+}
 function paintAdminMaterials(){
   const list=$("#admin-material-list");if(!list)return;
-  const query=UI.adminSearch.toLowerCase().trim();
-  const visible=state.admin.componentes.filter(x=>{
-    if(UI.adminCategory==="archived"){if(!isArchived(x))return false;}
-    else if(isArchived(x)||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
-    return !query||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes].some(v=>String(v||"").toLowerCase().includes(query));
+  const search=String(UI.adminSearch||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+  const matches=x=>!search||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes]
+    .some(value=>String(value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").includes(search));
+  const archived=UI.adminCategory==="archived";
+  const active=state.admin.componentes.filter(x=>!isArchived(x));
+  const families=adminGroupedFamilies(active);
+  const groupKeys=new Set(families.map(g=>adminGroupKey(g.name)));
+  const groups=archived?[]:families.filter(g=>
+    (UI.adminCategory==="all"||g.members.some(x=>String(x.categoria_id)===UI.adminCategory))&&
+    (!search||adminGroupKey(g.name).normalize("NFD").replace(/[\u0300-\u036f]/g,"").includes(search)||g.members.some(matches)));
+  const individuals=state.admin.componentes.filter(x=>{
+    if(archived){if(!isArchived(x))return false;}
+    else if(isArchived(x)||groupKeys.has(adminGroupKey(x.grupo_variacoes))||(UI.adminCategory!=="all"&&String(x.categoria_id)!==UI.adminCategory))return false;
+    return matches(x);
   });
-  const p=paginate(ordered(visible,UI.adminSort),UI.adminPage);
+  const groupsArea=$("#admin-groups-area"),groupsList=$("#admin-group-list");
+  groupsArea.hidden=archived;
+  groupsList.innerHTML=groups.map(adminFamilyCard).join("");
+  $("#admin-group-count").textContent=String(groups.length);
+  const p=paginate(ordered(individuals,UI.adminSort),UI.adminPage);
   UI.adminPage=p.page;stored("pet_admin_page",p.page);
+  $("#admin-individual-title").textContent=archived?"Materiais arquivados":"Materiais individuais";
+  $("#admin-individual-count").textContent=p.total+" "+(p.total===1?"material":"materiais")+" nesta seleção";
   list.innerHTML=p.total?'<div class="material-list">'+p.items.map(adminMaterialRow).join("")+'</div>':
-    '<div class="empty-state">Nenhum material encontrado.</div>';
+    '<div class="empty-state">'+(groups.length?"Os modelos vinculados estão dentro dos grupos acima.":"Nenhum material encontrado.")+'</div>';
   $("#admin-material-pages").innerHTML=pageButtons(p,"admin");
-  wireMaterialActions(list);
+  wireMaterialActions($("#admin-content")||list);
 }
-
 
 /* Reservas: grupos mutuamente exclusivos. */
 function reservationGroup(r){
@@ -772,7 +830,8 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
   const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
     String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
-  return {visible:available,html:available.slice(0,160).map(x=>{
+  const shown=withPhotos?[...available].sort((a,b)=>Number(selected.has(b.id))-Number(selected.has(a.id))):available;
+  return {visible:available,html:shown.slice(0,160).map(x=>{
     const status=showVisibility?bulkVisibilityState(x):null;
     const label=status?(status.categoryRestricted?
       '<span class="bulk-visibility-badge restricted category-locked">🔒 Só PETianes · categoria restrita</span>':
@@ -798,10 +857,10 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
       '</div>';
   }).join("")||'<div class="empty-state">Nenhum material encontrado.</div>'};
 }
-function adminMaterialPickerConfig(mode,currentId){
+function adminMaterialPickerConfig(mode,currentId,requestedGroup=""){
   const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
   const selected=new Set(),current=all.find(x=>x.id===currentId);
-  const group=current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
+  const group=requestedGroup||current?.grupo_variacoes||(current?materialFamilyHint(current.nome):"");
   if(mode==="variations"&&group){
     // Já vinculados devem aparecer selecionados antes de qualquer clique.
     const linked=String(group).trim().toLocaleLowerCase("pt-BR");
@@ -935,13 +994,14 @@ function openBulkVisibility(currentId){
   $("#bulk-only-members").onclick=()=>save(false);
   draw();
 }
-function openVariantLinker(currentId){
-  const model=adminMaterialPickerConfig("variations",currentId);
+function openVariantLinker(currentId,groupName=""){
+  const model=adminMaterialPickerConfig("variations",currentId,groupName);
+  const fromGroup=Boolean(groupName);
   const existing=[...new Set(model.all.map(x=>x.grupo_variacoes).filter(Boolean))];
   openModal("Organizar variações","Vincule modelos sem juntar seus estoques. Selecione os materiais que devem compartilhar um card.",
     '<div class="modal-main"><div class="field"><label for="variant-group-name">Nome da família</label>'+
-    '<input id="variant-group-name" maxlength="80" list="variant-existing-groups" value="'+attr(model.current?.grupo_variacoes||model.group||"")+'" placeholder="Ex.: Resistores"><datalist id="variant-existing-groups">'+existing.map(x=>'<option value="'+attr(x)+'"></option>').join("")+'</datalist></div>'+
-    '<div class="field"><label for="variant-search">Buscar outros modelos</label><input id="variant-search" placeholder="Buscar material..." value="'+attr(model.current?.nome.split(/\s+/)[0]||"")+'"></div>'+
+    '<input id="variant-group-name" maxlength="80" list="variant-existing-groups" '+(fromGroup?'readonly ':'')+'value="'+attr(model.group||"")+'" placeholder="Ex.: Resistores"><datalist id="variant-existing-groups">'+existing.map(x=>'<option value="'+attr(x)+'"></option>').join("")+'</datalist>'+(fromGroup?'<small class="hint">Para mudar este título, use Renomear grupo na área de famílias.</small>':'')+'</div>'+
+    '<div class="field"><label for="variant-search">Buscar outros modelos</label><input id="variant-search" placeholder="Buscar material..." value="'+attr(fromGroup?"":model.current?.nome.split(/\s+/)[0]||"")+'"></div>'+
     '<div class="admin-bulk-actions"><button class="outline-button small-button" type="button" id="variant-similar">Sugerir semelhantes ('+model.similar.length+')</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-all">Selecionar resultados</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-none">Limpar seleção</button></div>'+
