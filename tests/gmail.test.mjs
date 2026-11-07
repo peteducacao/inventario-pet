@@ -21,10 +21,11 @@ const item=sqlite.prepare("SELECT id FROM componentes WHERE quantidade-em_uso-co
 assert.ok(item);
 const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const dayAdd=d=>{const z=new Date(today+"T12:00:00Z");z.setUTCDate(z.getUTCDate()+d);return z.toISOString().slice(0,10);};
+const petUser=Number(sqlite.prepare("INSERT INTO usuarios(public_id,nome,email,papel,ativo,recovery_hash,criado_em,atualizado_em) VALUES ('PET-ABCDEF123456','PETiane de teste','pet@example.com','petiano',1,'testerecovery',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)").run().lastInsertRowid);
 const insert=(email,due,extra={})=>{
-  const obj={email,due,sem_prazo:0,tipo:"reserva",...extra};
-  const r=sqlite.prepare("INSERT INTO reservas(componente_id,nome_solicitante,email,quantidade,data_inicio,data_devolucao,status,tipo,sem_prazo) VALUES (?,?,?,1,?,?,'retirada',?,?)")
-    .run(item.id,"Visitante de Teste",obj.email,obj.due<today?obj.due:today,obj.due,obj.tipo,obj.sem_prazo);
+  const obj={email,due,sem_prazo:0,tipo:"reserva",usuario_id:null,...extra};
+  const r=sqlite.prepare("INSERT INTO reservas(componente_id,nome_solicitante,email,quantidade,data_inicio,data_devolucao,status,tipo,sem_prazo,usuario_id) VALUES (?,?,?,1,?,?,'retirada',?,?,?)")
+    .run(item.id,"Visitante de Teste",obj.email,obj.due<today?obj.due:today,obj.due,obj.tipo,obj.sem_prazo,obj.usuario_id);
   return Number(r.lastInsertRowid);
 };
 const rid=insert("visita@example.com",dayAdd(-2));
@@ -32,9 +33,9 @@ assert.equal((await queueManual(DB,rid)).ok,true);
 assert.equal((await queueManual(DB,rid)).ok,true);
 const none=insert("",dayAdd(-2));
 assert.equal((await queueManual(DB,none)).ok,false,"Não enviar sem e-mail");
-const noDate=insert("nodate@example.com",today,{sem_prazo:1,tipo:"retirada_direta"});
+const noDate=insert("nodate@example.com",today,{sem_prazo:1,usuario_id:petUser});
 assert.equal((await queueManual(DB,noDate)).ok,false,"Não cobrar sem prazo");
-const disabled=insert("pet@example.com",today,{tipo:"retirada_direta"});
+const disabled=insert("pet@example.com",today,{usuario_id:petUser});
 assert.equal((await queueManual(DB,disabled)).ok,false,"PETianes desativados por padrão");
 const call=(path,secret=token,body)=>{
   const opts={method:body?"POST":"GET",headers:{Authorization:"Bearer "+secret}};
