@@ -21,6 +21,8 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/variation-linking.test.mjs
       - name: Testar categorias e filamentos na reserva e devolução
         run: node --disable-warning=ExperimentalWarning tests/loans-permissions.test.mjs
+      - name: Testar fila Gmail e listagem somente de pendentes
+        run: node --disable-warning=ExperimentalWarning tests/gmail.test.mjs
       - name: Testar backup completo e restauração no banco isolado
         run: node --disable-warning=ExperimentalWarning tests/backup-v2.test.mjs
       - name: Aplicar tabelas ao D1
