@@ -235,36 +235,50 @@ function itemEditor(id){
   const family=window.__newVariantGroup||x?.grupo_variacoes||"";
   window.__newVariantGroup="";
   const body='<form id="item-form" class="modal-main">'+
-    '<div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
-    '<div class="field-grid">'+inputField("i-id","Modelo / referência (opcional)",x?.identificacao||"",{max:120})+inputField("i-patrimony","Número de patrimônio (opcional)",x?.patrimonio||"",{max:160})+'</div>'+
-    '<div class="field"><label for="i-variation-family">Grupo de variações (opcional)</label><input id="i-variation-family" type="text" maxlength="80" list="i-family-options" value="'+attr(family)+'" placeholder="Ex.: Resistores, Arduino, Capacitores"><datalist id="i-family-options">'+groups.map(name=>'<option value="'+attr(name)+'"></option>').join("")+'</datalist><small class="hint">Itens do mesmo grupo aparecem no mesmo card, sem misturar estoques.</small>'+(x?'<button class="outline-button small-button" id="i-link-variations" type="button">Vincular materiais semelhantes</button>':'')+'</div>'+
-    switchInput("i-public","Exibir para todos",x?flag(x.visivel_visitante):true,"Desmarque para mostrar somente aos PETianes.")+
-    '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Ilustração do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Imagem própria ou ilustração automática.</small><label class="switch-row"><span><strong>Remover fundo claro automaticamente</strong><small>Para fotos com fundo uniforme.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div>'+
-    '<div class="field"><label for="i-unit">Unidade de medida</label><select id="i-unit">'+
-    (()=>{
-      const options=["unidades","kits","pares","conjuntos","rolos","metros","gramas","litros","pacotes","caixas","frascos"];
-      const current=String(x?.unidade||"unidades").trim();
-      if(current&&!options.includes(current))options.push(current);
-      return options.map(unit=>'<option value="'+attr(unit)+'" '+(unit===current?'selected':'')+'>'+esc(unit[0].toUpperCase()+unit.slice(1))+'</option>').join("");
-    })()+
-    '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
-    '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade",x?.quantidade||0)+stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
+    '<div class="item-editor-intro"><strong>Edição rápida</strong><span>Altere nome ou estoque e salve. Outras opções ficam recolhidas abaixo.</span></div>'+
+    '<div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+
+      selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
+    '<section class="item-editor-essentials" aria-labelledby="item-editor-stock-title">'+
+      '<h3 id="item-editor-stock-title">Estoque</h3>'+
+      '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade total",x?.quantidade||0)+
+        stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
+    '</section>'+
     '<div class="field"><label for="i-loan-audience">Habilitar empréstimo para</label><select id="i-loan-audience">'+
       [["ninguem","Ninguém"],["petianos","PETianes"],["visitantes","Visitantes"],["todos","Todos"]].map(([key,label])=>{
         const pet=x?Number(x.permitir_petianos)===1:true,visitor=x?Number(x.permitir_visitantes)===1:true;
         const value=pet&&visitor?"todos":pet?"petianos":visitor?"visitantes":"ninguem";
         return '<option value="'+key+'"'+(key===value?' selected':'')+'>'+label+'</option>';
-      }).join("")+'</select><small class="hint">PETianes retiram diretamente. Visitantes solicitam aprovação, que já registra a entrega. A categoria também precisa permitir.</small></div>'+
-    '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
-    '<details class="editor-advanced"><summary>Opções avançadas de exibição dos números</summary>'+
-      switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
-      switchInput("i-show-used","Exibir em uso",x?flag(x.mostrar_em_uso):true)+
-      switchInput("i-show-broken","Exibir com defeito",x?flag(x.mostrar_defeito):false)+
-    '</details>'+
-    '<div class="field"><label for="i-description">Informações sobre defeitos (opcional)</label><textarea id="i-description" maxlength="1400">'+esc(x?.descricao_defeito||"")+'</textarea></div>'+
-    (x?.ultima_alteracao?'<div class="audit"><strong>Última alteração salva</strong><span>'+esc(x.ultimo_responsavel||"PETiane")+' · '+esc(fmt(x.ultima_alteracao))+'</span><p>'+esc(x.detalhes_alteracao||"Registro atualizado")+'</p></div>':"")+
-    '<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button><button type="submit" class="primary-button" id="i-save">Salvar material</button></div></form>';
-  openModal(x?"Editar material":"Adicionar material","",body,{size:"wide"});
+      }).join("")+'</select></div>'+
+    '<details class="item-editor-section" id="item-editor-identification"><summary>Identificação e observações <small>Modelo, patrimônio, unidade e anotações</small></summary>'+
+      '<div class="item-editor-extra">'+
+      '<div class="field-grid">'+inputField("i-id","Modelo / referência (opcional)",x?.identificacao||"",{max:120})+
+        inputField("i-patrimony","Número de patrimônio (opcional)",x?.patrimonio||"",{max:160})+'</div>'+
+      '<div class="field"><label for="i-unit">Unidade de medida</label><select id="i-unit">'+
+        (()=>{
+          const options=["unidades","kits","pares","conjuntos","rolos","metros","gramas","litros","pacotes","caixas","frascos"];
+          const current=String(x?.unidade||"unidades").trim();
+          if(current&&!options.includes(current))options.push(current);
+          return options.map(unit=>'<option value="'+attr(unit)+'" '+(unit===current?'selected':'')+'>'+esc(unit[0].toUpperCase()+unit.slice(1))+'</option>').join("");
+        })()+
+        '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
+      '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
+      '<div class="field"><label for="i-description">Informações sobre defeitos (opcional)</label><textarea id="i-description" maxlength="1400">'+esc(x?.descricao_defeito||"")+'</textarea></div>'+
+      (x?.ultima_alteracao?'<div class="audit"><strong>Última alteração salva</strong><span>'+esc(x.ultimo_responsavel||"PETiane")+' · '+esc(fmt(x.ultima_alteracao))+'</span><p>'+esc(x.detalhes_alteracao||"Registro atualizado")+'</p></div>':"")+
+      '</div></details>'+
+    '<details class="item-editor-section" id="item-editor-media"><summary>Foto, variações e exibição <small>Imagem, grupo e opções de visualização</small></summary>'+
+      '<div class="item-editor-extra">'+
+      '<div class="field"><label for="i-variation-family">Grupo de variações (opcional)</label><input id="i-variation-family" type="text" maxlength="80" list="i-family-options" value="'+attr(family)+'" placeholder="Ex.: Resistores, Arduino, Capacitores"><datalist id="i-family-options">'+groups.map(name=>'<option value="'+attr(name)+'"></option>').join("")+'</datalist><small class="hint">Materiais do mesmo grupo compartilham um card, mas não o estoque.</small>'+(x?'<button class="outline-button small-button" id="i-link-variations" type="button">Organizar vínculos da família</button>':'')+'</div>'+
+      switchInput("i-public","Exibir para todos",x?flag(x.visivel_visitante):true,"Desmarque para mostrar somente aos PETianes.")+
+      '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Ilustração do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Imagem própria ou ilustração automática.</small><label class="switch-row"><span><strong>Remover fundo claro automaticamente</strong><small>Para fotos com fundo uniforme.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div>'+
+      '<details class="editor-advanced"><summary>Exibição das quantidades no catálogo</summary>'+
+        switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
+        switchInput("i-show-used","Exibir em uso",x?flag(x.mostrar_em_uso):true)+
+        switchInput("i-show-broken","Exibir com defeito",x?flag(x.mostrar_defeito):false)+
+      '</details>'+
+      '</div></details>'+
+    '<div class="modal-footer item-editor-savebar"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button>'+
+      '<button type="submit" class="primary-button" id="i-save">'+(x?"Salvar alterações":"Cadastrar material")+'</button></div></form>';
+  openModal(x?"Editar material":"Adicionar material","",body,{size:"wide item-edit-modal"});
   let image=x?.imagem||"";
   // Ao criar um novo modelo, sugerir automaticamente um grupo já existente,
   // sem modificar grupos manuais nem relacionar equipamentos individualizados.
@@ -307,7 +321,7 @@ function itemEditor(id){
       visivel_visitante:$("#i-public").checked,permitir_petianos:["todos","petianos"].includes($("#i-loan-audience").value),permitir_visitantes:["todos","visitantes"].includes($("#i-loan-audience").value),grupo_variacoes:$("#i-variation-family").value,
       descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{await api("/api/admin/item","POST",body);$("#item-form")?.dispatchEvent(new Event("pet:item-saved"));await adminReload();adminModal();toast("Material salvo!");}
-    catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar material";}
+    catch(error){toast(error.message,true);submit.disabled=false;submit.textContent=x?"Salvar alterações":"Cadastrar material";}
   };
 }
 async function shrinkImage(file){
