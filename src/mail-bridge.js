@@ -25,7 +25,13 @@ function content(row,event){
   return {subject,body};
 }
 async function current(db,id){
-  return db.prepare("SELECT r.*,c.nome AS componente_nome,COALESCE(u.papel, CASE WHEN r.tipo='retirada_direta' THEN 'petiano' ELSE 'visitante' END) AS tag, COALESCE(u.notificar_email,1) AS permite_usuario FROM reservas r JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE r.id=?").bind(id).first();
+  const row=await db.prepare("SELECT r.*,c.nome AS componente_nome,COALESCE(u.papel, CASE WHEN r.tipo='retirada_direta' THEN 'petiano' ELSE 'visitante' END) AS tag, COALESCE(u.notificar_email,1) AS permite_usuario,u.email AS email_conta FROM reservas r JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE r.id=?").bind(id).first();
+  if(!row)return null;
+  // Sempre utilizar o endereço atualizado da conta; só o histórico desvinculado
+  // conserva o e-mail registrado no momento da solicitação.
+  if(row.usuario_id)row.email=row.email_conta||"";
+  delete row.email_conta;
+  return row;
 }
 async function allowed(db,row){
   if(!row||row.status!=="retirada"||!emailOK(row.email)||Number(row.permite_usuario)===0)return false;
@@ -36,7 +42,7 @@ async function queue(db,row,event,origin="automatica"){
   if(!await allowed(db,row))return {ok:false,reason:"Sem e-mail, devolução pendente ou notificações desativadas para essa pessoa/tag."};
   if(Number(row.sem_prazo)===1||!row.data_devolucao)return {ok:false,reason:"Empréstimo sem prazo definido."};
   const msg=content(row,event);
-  const key=origin==="manual"?"manual:"+row.id+":"+crypto.randomUUID():"auto:"+row.id+":"+event+":"+row.data_devolucao;
+  const key=origin==="manual"?"manual:"+row.id+":"+dayBR()+":"+row.data_devolucao:"auto:"+row.id+":"+event+":"+row.data_devolucao;
   const result=await db.prepare("INSERT OR IGNORE INTO mail_queue(reserva_id,evento,chave_unica,destinatario,assunto,mensagem,prazo_referencia,origem,criado_em) VALUES(?,?,?,?,?,?,?,?,?)")
     .bind(row.id,event,key,row.email,msg.subject,msg.body,row.data_devolucao,origin,iso()).run();
   return {ok:true,queued:result.meta?.changes===1};
@@ -49,7 +55,7 @@ export async function queueManual(db,id){
 export async function generateDailyEmails(env){
   if(!env.DB||await pref(env.DB,"avisos_email","nao")!=="sim")return;
   const today=dayBR();
-  const due=await rows(env.DB,"SELECT r.id FROM reservas r WHERE r.status='retirada' AND r.sem_prazo=0 AND r.data_devolucao!='' AND r.email!='' ORDER BY r.data_devolucao ASC LIMIT 1500");
+  const due=await rows(env.DB,"SELECT r.id FROM reservas r LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE r.status='retirada' AND r.sem_prazo=0 AND r.data_devolucao!='' AND (r.email!='' OR u.email!='') ORDER BY r.data_devolucao ASC LIMIT 1500");
   for(const record of due){
     try{
       const row=await current(env.DB,record.id);
@@ -72,7 +78,7 @@ export async function mailAdminAPI(req,env){
     const id=Number(payload?.id);
     if(!Number.isSafeInteger(id)||id<1)return fail("Empréstimo inválido.");
     const result=await queueManual(db,id);
-    return result.ok?reply({ok:true,mensagem:"Cobrança colocada na fila do Gmail."}):fail(result.reason,409);
+    return result.ok?reply({ok:true,queued:result.queued,mensagem:result.queued?"Cobrança colocada na fila do Gmail.":"Já existe uma cobrança manual deste empréstimo para hoje."}):fail(result.reason,409);
   }
   if(path==="/api/admin/mail/settings"&&req.method==="POST"){
     let payload;
