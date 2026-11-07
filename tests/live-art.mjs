@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 const root="https://inventario-pet.pet-educacao.workers.dev";
 async function get(path,shouldInclude=[]){
   let response,text="";
@@ -12,7 +13,13 @@ async function get(path,shouldInclude=[]){
   for(const token of shouldInclude)assert.ok(text.includes(token),path+" não publicou "+token);
   return text;
 }
-const html=await get("/",['/component-art.js?v=20261107-figuras-revisadas-v3']);
+const localHtml=readFileSync("public/index.html","utf8");
+const currentArtPath=localHtml.match(/component-art[.]js[?]v=[^"]+/)?.[0];
+const currentFinalPath=localHtml.match(/final[.]js[?]v=[^"]+/)?.[0];
+assert.ok(currentArtPath&&currentFinalPath,"Arquivos versionados devem existir no HTML local.");
+const html=await get("/",[currentArtPath,currentFinalPath]);
+await get("/final.js",["page-total","Última página","data-page"]);
+
 const code=await get("/component-art.js",["sharpener:()=>","cutter:()=>","ceramic:()=>","potentiometer:()=>","stand:()=>","function categoryFor"]);
 const window={};(new Function("window",code))(window);
 const src=window.componentArt("Apontador"),scissors=window.componentArt("Tesoura");
