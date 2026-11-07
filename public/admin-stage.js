@@ -112,6 +112,7 @@ function adminDashboard(root){
     '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div>'+
     '<div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div>'+
     '<div class="admin-stat"><strong>'+c.defective+'</strong><span>Com defeito</span></div></div>'+
+    '<div id="dashboard-last-change" class="dashboard-last-change" aria-live="polite"><span class="dashboard-last-label">Última alteração</span><p>Carregando…</p></div>'+
     '<div class="admin-shortcuts">'+
     '<button class="admin-shortcut" type="button" data-dashboard-go="materiais">'+iconSvg("box",21)+' Materiais e estoque</button>'+
     '<button class="admin-shortcut" type="button" data-dashboard-go="categorias">'+iconSvg("layers",21)+' Categorias e acesso</button>'+
@@ -119,12 +120,45 @@ function adminDashboard(root){
     '<button class="admin-shortcut" type="button" data-dashboard-go="filamentos">'+iconSvg("grid",21)+' Filamentos</button>'+
     '</div></section>'+
     '<section class="admin-panel"><div class="admin-section-head"><h2>Atividade recente</h2><button class="outline-button small-button" type="button" id="dashboard-log-all">Ver histórico</button></div><div id="dashboard-recent-log" class="admin-log-list">Carregando…</div></section>';
-  $$("[data-dashboard-go]",root).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.dashboardGo));
+  $("[data-dashboard-go]",root).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.dashboardGo));
   $("#dashboard-log-all").onclick=()=>selectAdminTab("historico");
   api("/api/admin/log?pagina=1").then(data=>{
-    const el=$("#dashboard-recent-log");if(!el)return;
-    el.innerHTML=(data.eventos||[]).slice(0,4).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração registrada ainda.</div>';
-  }).catch(error=>{const el=$("#dashboard-recent-log");if(el)el.textContent=error.message;});
+    const recent=$("#dashboard-recent-log"),latest=$("#dashboard-last-change");
+    if(!recent||!latest||UI.adminTab!=="painel")return;
+    const events=data.eventos||[];
+    recent.innerHTML=events.slice(0,4).map(adminLogRow).join("")||'<div class="empty-state">Nenhuma alteração registrada ainda.</div>';
+    if(!events.length){
+      latest.innerHTML='<span class="dashboard-last-label">Última alteração</span><p>Nenhuma alteração registrada ainda.</p>';
+      return;
+    }
+    const log=events[0];
+    const destinations={material:["materiais","Ver material"],categoria:["categorias","Ver categorias"],filamento:["filamentos","Ver filamentos"],reserva:["reservas","Ver reservas"],usuario:["usuarios","Ver usuários"],sistema:["historico","Ver histórico"]};
+    const destination=destinations[log.tipo]||["historico","Ver histórico"];
+    const target=log.tipo==="material"&&log.registro_id?
+      state.admin?.componentes?.find(x=>Number(x.id)===Number(log.registro_id)):null;
+    latest.innerHTML='<span class="dashboard-last-label">Última alteração</span>'+
+      '<strong>'+esc(log.acao)+' · '+esc(log.tipo)+'</strong>'+
+      '<p>'+esc(log.descricao||"Sem detalhes adicionais")+'</p>'+
+      '<small>'+esc(niceDate(log.criado_em))+' · '+esc(log.responsavel||"Admin")+'</small>'+
+      '<button class="outline-button small-button" type="button" id="dashboard-last-open">'+iconSvg("chevron",15)+' '+destination[1]+'</button>';
+    $("#dashboard-last-open").onclick=()=>{
+      if(destination[0]==="materiais"){
+        UI.adminSearch=target?.nome||"";
+        UI.adminCategory="all";UI.adminPage=1;
+        stored("pet_admin_search",UI.adminSearch);
+        stored("pet_admin_category","all");
+      }
+      if(destination[0]==="reservas"){
+        UI.reservationFilter="todas";
+        stored("pet_admin_reservas","todas");
+      }
+      selectAdminTab(destination[0]);
+    };
+  }).catch(error=>{
+    const recent=$("#dashboard-recent-log"),latest=$("#dashboard-last-change");
+    if(recent)recent.textContent=error.message;
+    if(latest)latest.innerHTML='<span class="dashboard-last-label">Última alteração</span><p>Não foi possível carregar a atividade recente.</p>';
+  });
 }
 function adminLogRow(log){
   return '<article class="admin-log-row"><strong>'+esc(log.acao)+' · '+esc(log.tipo)+'</strong>'+
@@ -558,29 +592,75 @@ function adminMaterialPickerConfig(mode,currentId){
 function openBulkVisibility(currentId){
   const model=adminMaterialPickerConfig("visibility",currentId);
   const initial=model.current?.nome.split(/\s+/)[0]||"";
+  const categories=state.admin.categorias.filter(c=>!c.arquivada &&
+    model.all.some(x=>String(x.categoria_id)===String(c.id)))
+    .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR"));
+  const options=categories.map(c=>{
+    const count=model.all.filter(x=>String(x.categoria_id)===String(c.id)).length;
+    return '<option value="'+attr(c.id)+'">'+esc(c.nome)+' ('+count+')</option>';
+  }).join("");
   openModal("Visibilidade dos materiais","Selecione os materiais e defina quem poderá visualizá-los.",
-    '<div class="modal-main"><div class="field"><label for="bulk-search">Buscar materiais</label><input id="bulk-search" placeholder="Ex.: Resistor, Arduino..." value="'+attr(initial)+'"></div>'+
-    '<div class="admin-bulk-actions"><button class="outline-button small-button" id="bulk-similar" type="button">Selecionar semelhantes ('+model.similar.length+')</button>'+
+    '<div class="modal-main">'+
+    '<div class="field"><label for="bulk-search">Buscar materiais</label><input id="bulk-search" placeholder="Ex.: Resistor, Arduino..." value="'+attr(initial)+'"></div>'+
+    '<div class="bulk-category-picker"><div class="field"><label for="bulk-category">Categoria</label>'+
+    '<select id="bulk-category"><option value="all">Todas as categorias</option>'+options+'</select></div>'+
+    '<button class="outline-button small-button" type="button" id="bulk-select-category" disabled>Selecionar categoria</button></div>'+
+    '<div class="admin-bulk-actions">'+
+    '<button class="outline-button small-button" id="bulk-similar" type="button" hidden title="Seleciona outros materiais da mesma família dos itens marcados.">Selecionar semelhantes</button>'+
     '<button class="outline-button small-button" type="button" id="bulk-select-all">Selecionar resultados</button>'+
     '<button class="outline-button small-button" type="button" id="bulk-clear">Desmarcar todos</button></div>'+
+    '<p class="bulk-similar-hint" id="bulk-similar-hint" hidden>Semelhantes são modelos da mesma família dos materiais marcados.</p>'+
     '<div class="admin-bulk-list" id="bulk-list"></div>'+
-    '<p class="hint" id="bulk-selected-count"></p>'+
+    '<p class="hint" id="bulk-selected-count" role="status" aria-live="polite"></p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="outline-button" id="bulk-show-all" type="button">Exibir para todos</button>'+
     '<button class="primary-button" id="bulk-only-members" type="button">Só PETianes</button></div></div>',{size:"wide bulk-visibility-modal"});
   let visible=[];
+  const similarItems=()=>{
+    const marked=model.all.filter(x=>model.selected.has(x.id));
+    if(!marked.length)return [];
+    const groups=new Set(marked.map(x=>String(x.categoria_id)+"|"+materialFamilyHint(x.nome)));
+    return model.all.filter(x=>!model.selected.has(x.id)&&
+      groups.has(String(x.categoria_id)+"|"+materialFamilyHint(x.nome)));
+  };
+  const countSelected=()=>{
+    $("#bulk-selected-count").textContent=model.selected.size+
+      (model.selected.size===1?" material selecionado.":" materiais selecionados.");
+    const suggestions=similarItems();
+    const similar=$("#bulk-similar");
+    similar.hidden=!suggestions.length;
+    similar.textContent="Selecionar semelhantes ("+suggestions.length+")";
+    $("#bulk-similar-hint").hidden=!suggestions.length;
+  };
   const draw=()=>{
-    const result=materialPickerRows(model.all,model.selected,$("#bulk-search").value);
-    visible=result.visible;$("#bulk-list").innerHTML=result.html;
-    $("#bulk-selected-count").textContent=model.selected.size+(model.selected.size===1?" material selecionado.":" materiais selecionados.");
+    const category=$("#bulk-category").value;
+    const filtered=model.all.filter(x=>category==="all"||String(x.categoria_id)===category);
+    const result=materialPickerRows(filtered,model.selected,$("#bulk-search").value);
+    visible=result.visible;
+    $("#bulk-list").innerHTML=result.html;
+    countSelected();
     $$("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);
-      if(b.checked)model.selected.add(id);else model.selected.delete(id);
-      $("#bulk-selected-count").textContent=model.selected.size+(model.selected.size===1?" material selecionado.":" materiais selecionados.");
+      if(b.checked)model.selected.add(id);
+      else model.selected.delete(id);
+      countSelected();
     });
   };
   $("#bulk-search").oninput=draw;
-  $("#bulk-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
+  $("#bulk-category").onchange=()=>{
+    $("#bulk-select-category").disabled=$("#bulk-category").value==="all";
+    draw();
+  };
+  $("#bulk-select-category").onclick=()=>{
+    const category=$("#bulk-category").value;
+    if(category==="all")return;
+    for(const x of model.all)if(String(x.categoria_id)===category)model.selected.add(x.id);
+    draw();
+  };
+  $("#bulk-similar").onclick=()=>{
+    for(const x of similarItems())model.selected.add(x.id);
+    draw();
+  };
   $("#bulk-select-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
   $("#bulk-clear").onclick=()=>{model.selected.clear();draw();};
   const save=async show=>{
@@ -807,23 +887,22 @@ function renderAdminAccess(message=""){
   };
 }
 async function openAdmin(){
-  // A página própria mostra o formulário antes da verificação de sessão:
-  // nenhuma falha de rede/autorização deixa o usuário preso no placeholder.
+  // Não exibir login até confirmar se a sessão administrativa continua válida.
   const standalone=document.body.dataset.adminRoute==="true";
-  if(standalone)renderAdminAccess();
+  if(standalone){
+    const stage=$("#admin-stage");
+    stage.hidden=false;
+    stage.classList.add("admin-loading");
+    document.body.classList.add("admin-mode");
+    stage.innerHTML='<div class="admin-entry-message" role="status"><strong>Carregando Admin…</strong><span>Verificando sua sessão.</span></div>';
+  }
   try{
     await adminReload();
     adminModal();
   }catch(error){
     state.admin=null;
-    if(standalone){
-      // Login já está disponível. Mostramos diagnóstico e a opção de retentar
-      // apenas para falhas reais de conexão, sem bloquear a entrada manual.
-      if(!/painel|401|autoriz/i.test(error.message)){
-        const note=$("#v2-admin-login .admin-access-notice");
-        if(note)note.textContent="Não foi possível verificar sua sessão: "+error.message;
-      }
-    }else renderAdminAccess();
+    const unauthorized=/painel|401|autoriz/i.test(error.message);
+    renderAdminAccess(unauthorized?"":"Não foi possível verificar sua sessão: "+error.message);
   }
 }
 setupFinalPublic();
