@@ -73,6 +73,19 @@ const link=await postAdmin("/api/admin/variations",{ids:[one.id,two.id],grupo:"R
 assert.equal(link.status,200,JSON.stringify(link.body));
 assert.equal(db.prepare("SELECT grupo_variacoes FROM componentes WHERE id=?").get(two.id).grupo_variacoes,"Resistores");
 assert.equal(db.prepare("SELECT quantidade FROM componentes WHERE id=?").get(one.id).quantidade,originalQuantity);
+// Foto individual por variação: só altera imagem, preserva grupo e estoque.
+const photo="data:image/png;base64,"+Buffer.from("imagem-de-teste").toString("base64");
+assert.equal((await post("/api/admin/item/photo",{id:one.id,imagem:photo})).status,401,"Envio de foto requer Admin.");
+assert.equal((await postAdmin("/api/admin/item/photo",{id:one.id,imagem:'<svg onload="bad()"></svg>'})).status,400,"Foto SVG não deve aceitar HTML ou scripts.");
+const previous=db.prepare("SELECT quantidade,em_uso,com_defeito,grupo_variacoes FROM componentes WHERE id=?").get(one.id);
+const savedPhoto=await postAdmin("/api/admin/item/photo",{id:one.id,imagem:photo,responsavel:"Teste de foto"});
+assert.equal(savedPhoto.status,200,JSON.stringify(savedPhoto.body));
+const afterPhoto=db.prepare("SELECT imagem,quantidade,em_uso,com_defeito,grupo_variacoes FROM componentes WHERE id=?").get(one.id);
+assert.equal(afterPhoto.imagem,photo);
+for(const key of ["quantidade","em_uso","com_defeito","grupo_variacoes"])assert.equal(afterPhoto[key],previous[key],"Foto não pode alterar "+key);
+assert.notEqual(db.prepare("SELECT imagem FROM componentes WHERE id=?").get(two.id).imagem,photo,"Outra variação não deve receber a foto.");
+assert.equal((await postAdmin("/api/admin/item/photo",{id:one.id,imagem:""})).status,200,"Restaurar ilustração deve funcionar.");
+assert.equal(db.prepare("SELECT imagem FROM componentes WHERE id=?").get(one.id).imagem,"");
 const allLogs=await call("/api/admin/log", "GET",null,admin);
 assert.equal(allLogs.status,200);
 assert.ok(allLogs.body.eventos.some(x=>x.acao.includes("Vinculou")),"Histórico das variações ausente.");
