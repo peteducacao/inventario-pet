@@ -190,11 +190,17 @@ function finalRender(){
     const category=(state.data.categorias||[]).find(c=>c.nome==="Filamentos");
     UI.category=category?String(category.id):"all";stored("pet_public_category",UI.category);
   }
-  state.filter=UI.category;
   $("#demo-notice").hidden=!state.data.demonstracao;
   const ordinary=(state.data.componentes||[]).filter(x=>!isArchived(x)&&!/^FILAMENTO-\d+$/.test(String(x.import_key||"")));
   const colorItems=(UI.filaments||[]).map(x=>({...x,_filament:true,nome:"Filamento - "+x.cor,mostrar_quantidade:1}));
   const items=[...ordinary,...colorItems];
+  // Uma categoria antiga pode ter sido arquivada após reorganização do acervo.
+  // Não deixar usuários presos num filtro salvo que ficou sem itens.
+  const validCategories=(state.data.categorias||[]).filter(c=>items.some(x=>Number(x.categoria_id)===Number(c.id)));
+  if(UI.category!=="all"&&!validCategories.some(c=>String(c.id)===String(UI.category))){
+    UI.category="all";UI.page=1;stored("pet_public_category",UI.category);
+  }
+  state.filter=UI.category;
   $("#stat-items").textContent=moneyless(items.length);
   $("#stat-stock").textContent=moneyless(ordinary.reduce((s,x)=>s+stock(x),0)+colorItems.reduce((s,x)=>s+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0)),0));
   $("#stat-used").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.em_uso||0),0)+colorItems.reduce((s,x)=>s+Number(x.em_uso||0),0));
