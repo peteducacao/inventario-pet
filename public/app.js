@@ -268,7 +268,9 @@ function itemEditor(id){
       '</div></details>'+
     '<details class="item-editor-section" id="item-editor-media"><summary>Foto, variações e exibição <small>Imagem, grupo e opções de visualização</small></summary>'+
       '<div class="item-editor-extra">'+
-      '<div class="field"><label for="i-variation-family">Grupo de variações (opcional)</label><input id="i-variation-family" type="text" maxlength="80" list="i-family-options" value="'+attr(family)+'" placeholder="Ex.: Resistores, Arduino, Capacitores"><datalist id="i-family-options">'+groups.map(name=>'<option value="'+attr(name)+'"></option>').join("")+'</datalist><small class="hint">Materiais do mesmo grupo compartilham um card, mas não o estoque.</small>'+(x?'<button class="outline-button small-button" id="i-link-variations" type="button">Organizar vínculos da família</button>':'')+'</div>'+
+      '<div class="field"><label>Grupo de variações</label><input id="i-variation-family" type="hidden" value="'+attr(family)+'">'+
+        '<div class="item-group-reference">'+(family?'<strong>'+esc(family)+'</strong>':'<span>Sem grupo</span>')+
+        '<small>Renomeie grupos e organize os vínculos na seção Grupos de variações da aba Materiais. Este formulário altera somente o material.</small></div></div>'+
       switchInput("i-public","Exibir para todos",x?flag(x.visivel_visitante):true,"Desmarque para mostrar somente aos PETianes.")+
       '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Ilustração do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Imagem própria ou ilustração automática.</small><label class="switch-row"><span><strong>Remover fundo claro automaticamente</strong><small>Para fotos com fundo uniforme.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div>'+
       '<details class="editor-advanced"><summary>Exibição das quantidades no catálogo</summary>'+
@@ -282,23 +284,6 @@ function itemEditor(id){
       '<button type="submit" class="primary-button" id="i-save">'+(x?"Salvar alterações":"Cadastrar material")+'</button></div></form>';
   openModal(x?"Editar material":"Adicionar material","",body,{size:"wide item-edit-modal"});
   let image=x?.imagem||"";
-  // Ao criar um novo modelo, sugerir automaticamente um grupo já existente,
-  // sem modificar grupos manuais nem relacionar equipamentos individualizados.
-  if(!x&&!family){
-    let automatic="";
-    let manuallyEdited=false;
-    const familyField=$("#i-variation-family"),nameField=$("#i-name");
-    familyField.addEventListener("input",()=>{manuallyEdited=true;});
-    nameField.addEventListener("input",()=>{
-      if(manuallyEdited)return;
-      const hint=typeof materialFamilyHint==="function"?materialFamilyHint(nameField.value):"";
-      const match=state.admin.componentes.find(item=>!item.arquivado&&
-        String(item.grupo_variacoes||"").toLocaleLowerCase("pt-BR")===hint.toLocaleLowerCase("pt-BR"));
-      const next=match&&hint!=="Tablets"&&hint!=="Notebooks"?match.grupo_variacoes:"";
-      if(familyField.value===automatic||!familyField.value){familyField.value=next;automatic=next;}
-    });
-  }
-  if(x && $("#i-link-variations"))$("#i-link-variations").onclick=()=>openVariantLinker(x.id);
   $("#i-unit").onchange=()=>{
     const other=$("#i-unit-other");
     other.hidden=$("#i-unit").value!=="__outro__";
