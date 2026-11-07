@@ -54,7 +54,7 @@ const click=async(selector)=>{
   node.click();
   await pause();
 };
-w.eval(sources.join("\n;\n"));
+w.eval(sources.join("\n;\n")+"\n;window.__pagination_test={state,UI,finalRender};");
 await pause(180);
 assert.ok(d.querySelector(".catalog-card"),"O novo catálogo não foi montado.");
 assert.ok(d.querySelector(".catalog-photo img"),"A ilustração do material não foi montada.");
@@ -104,7 +104,9 @@ assert.match(d.querySelector("#admin-content").textContent,/Visitante/);
 await click('[data-admin-tab="materiais"]');
 assert.match(d.querySelector("#admin-content").textContent,/ESP32 de teste/);
 // Catálogo com 216 entradas de exemplo: 18 páginas de 12, como na captura.
-w.eval('state.data.componentes=Array.from({length:215},(_,i)=>({...state.data.componentes[0],id:i+1,nome:"Material "+String(i+1).padStart(3,"0")})); UI.category="all"; UI.page=7; state.query=""; finalRender();');
+const t=w.__pagination_test;
+t.state.data.componentes=Array.from({length:215},(_,i)=>({...t.state.data.componentes[0],id:i+1,nome:"Material "+String(i+1).padStart(3,"0")}));
+t.UI.category="all";t.UI.page=7;t.state.query="";t.finalRender();
 const pagination=d.querySelector("#catalog-pagination");
 assert.match(pagination.textContent,/18 páginas/,"Mostrar total de páginas em vez de quantidade de itens.");
 assert.doesNotMatch(pagination.textContent,/216 itens/,"Não mostrar contador de itens.");
@@ -114,7 +116,7 @@ await click('#catalog-pagination button[data-page="18"]');
 assert.equal(d.querySelector('#catalog-pagination [aria-current="page"]').dataset.page,"18","Clique deve ir direto à última página.");
 assert.match(d.querySelector("#catalog-pagination").textContent,/18 páginas/);
 assert.equal(d.querySelectorAll("#category-sections .catalog-card").length,12);
-w.eval('state.data.componentes=[]; UI.page=1; UI.category="filaments"; finalRender();');
+t.state.data.componentes=[];t.UI.page=1;t.UI.category="filaments";t.finalRender();
 assert.match(d.querySelector("#catalog-pagination").textContent,/1 página/,"Uma única página deve ser identificada.");
 assert.ok(!d.querySelector("#catalog-pagination button"),"Não há navegação desnecessária em uma página.");
 assert.deepEqual(errors,[],"Erros na nova interface.");
