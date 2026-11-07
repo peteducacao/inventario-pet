@@ -47,7 +47,9 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   let adminAuthenticated=alreadyAdmin;
   const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[];
   const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
-  let noticeRequestCount=0;
+  let noticeRequestCount=0,backupReadCount=0;
+  const deletedMaterials=[];
+  
   w.fetch=async(uri,init={})=>{
     const path=new URL(uri,w.location.href).pathname;
     let status=200,body={ok:true};
@@ -99,6 +101,17 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       body={ok:true};
     }
     else if(path==="/api/admin/export")body=fullAdmin;
+    else if(path==="/api/admin/backup"){
+      backupReadCount++;
+      body={version:2,categorias:fullAdmin.categorias,componentes:fullAdmin.componentes};
+    }
+    else if(path==="/api/admin/item"&&init.method==="DELETE"){
+      const id=Number(new URL(uri,w.location.href).searchParams.get("id"));
+      deletedMaterials.push(id);
+      const index=fullAdmin.componentes.findIndex(x=>x.id===id);
+      if(index>=0)fullAdmin.componentes.splice(index,1);
+      body={ok:true};
+    }
     else if(path==="/api/admin/variations/rename"){
       const payload=JSON.parse(init.body||"{}");
       variationRenameRequests.push(payload);
@@ -129,7 +142,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,backupReadCount:()=>backupReadCount,deletedMaterials,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests};
 }
 
 const publicUI=build(false);
@@ -450,6 +463,17 @@ assert.equal(ad.querySelector("#bulk-only-members").disabled,true);
 assert.ok(ad.querySelector(".bulk-visibility-badge.public"));
 ad.querySelector('[data-bulk-id="1"]').click();await wait(20);
 assert.match(ad.querySelector("#bulk-selected-count").textContent,/1 material selecionado/);
+assert.equal(ad.querySelector("#bulk-selected-top").textContent,"1 material selecionado");
+await adminClick("#bulk-similar");
+assert.equal(ad.querySelector("#bulk-selected-top").textContent,"2 materiais selecionados");
+assert.deepEqual(Array.from(ad.querySelectorAll("#bulk-list input:checked")).map(x=>Number(x.dataset.bulkId)),[1,2],
+  "Selecionar semelhantes deve subir os dois resistores para o início da lista.");
+const bulkFilter=ad.querySelector("#bulk-search");
+bulkFilter.value="nome inexistente";
+bulkFilter.dispatchEvent(new aw.Event("input",{bubbles:true}));await wait(15);
+assert.equal(ad.querySelectorAll("#bulk-list input:checked").length,2,
+  "Itens selecionados precisam continuar visíveis mesmo com busca que não corresponde.");
+bulkFilter.value="";bulkFilter.dispatchEvent(new aw.Event("input",{bubbles:true}));await wait(15);
 await adminClick("#bulk-clear");
 assert.match(ad.querySelector("#bulk-selected-count").textContent,/0 materiais selecionados/);
 await adminClick("#modal-root [data-close]");
@@ -502,6 +526,50 @@ assert.ok(ad.querySelector("#i-photo"));
 assert.equal(ad.querySelector("#i-variation-family"),null);
 assert.equal(ad.querySelector("#i-has-link").textContent,"Sim");
 await adminClick("#modal-root [data-close]");
+// Regressão: selecionar semelhantes em Vínculos deve subir os candidatos e contar
+// todos os escolhidos, ainda que a pesquisa continue filtrada.
+fullAdmin.componentes.push(
+  {...three,id:109,nome:"Arduino Nano",grupo_variacoes:"",quantidade:2},
+  {...three,id:110,nome:"Arduino Mega",grupo_variacoes:"",quantidade:3}
+);
+await adminClick("#admin-links-hub");
+await adminClick('[data-link-open="Arduino"]');
+assert.equal(ad.querySelector("#variant-selected-count").textContent,"0 materiais selecionados");
+await adminClick("#variant-similar");
+assert.equal(ad.querySelector("#variant-selected-count").textContent,"2 materiais selecionados");
+assert.match(ad.querySelector("#variant-link-selected").textContent,/\(2\)/);
+assert.deepEqual(Array.from(ad.querySelectorAll("#variant-available-list input:checked")).map(x=>Number(x.dataset.variantSelect)),[110,109],
+  "Semelhantes selecionados devem subir e ficar ordenados por nome.");
+const linkingSearch=ad.querySelector("#variant-search");
+linkingSearch.value="Resistor";linkingSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));await wait(15);
+assert.deepEqual(Array.from(ad.querySelectorAll("#variant-available-list input:checked")).map(x=>Number(x.dataset.variantSelect)),[110,109],
+  "Busca não pode ocultar candidatos já selecionados.");
+ad.querySelector('[data-variant-select="110"]').click();await wait(15);
+assert.equal(ad.querySelector("#variant-selected-count").textContent,"1 material selecionado");
+assert.equal(ad.querySelector("#variant-available-list input:checked").dataset.variantSelect,"109");
+await adminClick("#variant-clear");
+assert.equal(ad.querySelector("#variant-selected-count").textContent,"0 materiais selecionados");
+assert.equal(ad.querySelector("#variant-link-selected").disabled,true);
+await adminClick("#variant-back");
+await adminClick("#modal-root [data-close]");
+// Nenhuma exclusão deve baixar arquivos sem o administrador escolher.
+await adminClick('[data-item-delete="110"]');
+assert.equal(ad.querySelector("#delete-item-backup").checked,false);
+assert.match(ad.querySelector("#delete-item-confirm").textContent,/Deseja baixar um backup/);
+const backupsBefore=adminUI.backupReadCount();
+ad.querySelector("#delete-item-confirm").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(120);
+assert.ok(adminUI.deletedMaterials.includes(110),"Material deve poder ser excluído sem backup.");
+assert.equal(adminUI.backupReadCount(),backupsBefore,"Não consultar o endpoint de backup se não foi escolhido.");
+// Ao abrir exclusão da categoria, a escolha também deve começar desmarcada.
+await adminClick('[data-admin-tab="categorias"]');
+await adminClick('[data-cat-delete="3"]');
+assert.equal(ad.querySelector("#cat-delete-backup").checked,false);
+await adminClick("#cat-delete-cancel");
+await adminClick('[data-admin-tab="configuracoes"]');
+await adminClick("#v2-reset-reservations");
+assert.equal(ad.querySelector("#reset-reservations-backup").checked,false);
+await adminClick("#reset-reservations-cancel");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");
 assert.equal(ad.querySelector("#admin-back").getAttribute("href"),"/");
