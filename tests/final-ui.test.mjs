@@ -212,6 +212,10 @@ assert.ok(ad.querySelector("#bulk-only-members"),"Visibilidade em lote não est�
 assert.ok(ad.querySelector("#bulk-category"),"Filtro por categoria ausente.");
 assert.equal(ad.querySelector("#bulk-select-category").disabled,true,"Seleção de categoria exige escolha de categoria.");
 assert.equal(ad.querySelector("#bulk-similar").hidden,true,"Sem material marcado não pode sugerir semelhantes.");
+assert.ok(ad.querySelector(".bulk-visibility-badge.public"),"Visibilidade pública já salva deve aparecer destacada.");
+assert.ok(ad.querySelector(".bulk-visibility-badge.category-locked"),"A restrição da categoria deve aparecer destacada.");
+assert.equal(ad.querySelector("#bulk-only-members").disabled,true,"Sem seleção não deve permitir alteração.");
+
 ad.querySelector('[data-bulk-id="1"]').click();
 await wait(20);
 assert.equal(ad.querySelector("#bulk-similar").hidden,false,"Marcar resistor deve sugerir outro modelo da mesma família.");
@@ -225,8 +229,26 @@ assert.equal(ad.querySelector("#bulk-select-category").disabled,false);
 assert.equal(ad.querySelectorAll("#bulk-list [data-bulk-id]").length,1,"Filtro deve mostrar apenas equipamentos.");
 await adminClick("#bulk-select-category");
 assert.equal(ad.querySelector("#bulk-selected-count").textContent,"3 materiais selecionados.","Selecionar categoria deve incluir todos os seus itens sem perder a seleção anterior.");
+assert.match(ad.querySelector("#bulk-category-status").textContent,/1\/1 só PETianes/,"Resumo deve mostrar o estado salvo da categoria.");
+assert.equal(ad.querySelectorAll("#bulk-list .bulk-visibility-badge.category-locked").length,1,"Item da categoria restrita deve ter sinal claro.");
+assert.match(ad.querySelector("#bulk-selection-state").textContent,/já visíveis só para PETianes/);
+assert.equal(ad.querySelector("#bulk-category-warning").hidden,false,"Avisar que liberar só o item não libera a categoria.");
+await adminClick("#bulk-show-all");
+assert.ok(ad.querySelector("#bulk-list"),"Liberação de categoria restrita deve ser bloqueada sem descartar a seleção.");
+
 await adminClick("#bulk-clear");
 assert.equal(ad.querySelector("#bulk-selected-count").textContent,"0 materiais selecionados.");
+assert.equal(ad.querySelector("#bulk-only-members").disabled,true,"Nenhuma alteração sem itens selecionados.");
+await adminClick("#bulk-select-category");
+assert.equal(ad.querySelector("#bulk-selected-count").textContent,"1 material selecionado.");
+await adminClick("#bulk-only-members");
+assert.ok(ad.querySelector("#bulk-list"),"Material que já é Só PETianes não deve ser regravado.");
+assert.match(ad.querySelector("#toast").textContent,/Nenhuma alteração foi feita/,"Informar que a configuração já estava salva.");
+await adminClick("#modal-root [data-close]");
+await adminClick("#admin-bulk-visibility");
+assert.equal(ad.querySelectorAll("#bulk-list input:checked").length,0,"A caixa indica seleção para editar, não visibilidade salva.");
+assert.equal(ad.querySelectorAll(".bulk-visibility-badge.category-locked").length,1,"A visibilidade salva deve continuar marcada ao reabrir.");
+
 await adminClick("#modal-root [data-close]");
 await adminClick('[data-item-edit="1"]');
 assert.ok(ad.querySelector("#i-public"),"Visibilidade individual não está disponível.");
