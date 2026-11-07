@@ -428,7 +428,11 @@ assert.ok(ad.querySelector("#variant-group-name"),"Variações continuam editáv
 assert.equal(ad.querySelector("#variant-group-name").value,"Resistores","O nome salvo da família deve aparecer no organizador.");
 assert.equal(ad.querySelector('[data-bulk-id="1"]')?.checked,true,"O modelo atual já vinculado deve aparecer marcado.");
 assert.equal(ad.querySelector('[data-bulk-id="2"]')?.checked,true,"O outro modelo já vinculado deve aparecer marcado também.");
-assert.equal(ad.querySelector('[data-bulk-id="3"]')?.checked,false,"Material de outra família não deve aparecer marcado.");
+const variantSearch=ad.querySelector("#variant-search");
+variantSearch.value="";
+variantSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(20);
+assert.equal(ad.querySelector('[data-bulk-id="3"]')?.checked,false,"Material de outra família não deve aparecer marcado ao limpar a busca.");
 assert.ok(ad.querySelectorAll(".variant-photo-row.is-selected").length>=2,"Itens já vinculados devem ter destaque visual.");
 assert.match(ad.querySelector("#variant-list").textContent,/Já vinculado/);
 assert.match(ad.querySelector("#variant-selected").textContent,/2 já vinculados/);
