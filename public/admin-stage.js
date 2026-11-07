@@ -1115,6 +1115,8 @@ function adminItemEditor(id){
   form.addEventListener("change",markDirty);
   const askDiscard=async()=>{
     if(edited&&!saved&&!await confirmOverEditor())return;
+    window.__newVariantGroup="";
+    window.__variantReturnGroup="";
     closeModal();
   };
   const baseCancel=$("#i-cancel");
