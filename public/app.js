@@ -230,6 +230,14 @@ function itemEditor(id){
     '<div class="field"><label for="i-variation-family">Grupo de variações (opcional)</label><input id="i-variation-family" type="text" maxlength="80" list="i-family-options" value="'+attr(family)+'" placeholder="Ex.: Resistores, Arduino, Capacitores"><datalist id="i-family-options">'+groups.map(name=>'<option value="'+attr(name)+'"></option>').join("")+'</datalist><small class="hint">Itens do mesmo grupo aparecem no mesmo card, sem misturar estoques.</small>'+(x?'<button class="outline-button small-button" id="i-link-variations" type="button">Vincular materiais semelhantes</button>':'')+'</div>'+
     switchInput("i-public","Exibir para todos",x?flag(x.visivel_visitante):true,"Desmarque para mostrar somente aos PETianes.")+
     '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Ilustração do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Imagem própria ou ilustração automática.</small><label class="switch-row"><span><strong>Remover fundo claro automaticamente</strong><small>Para fotos com fundo uniforme.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div>'+
+    '<div class="field"><label for="i-unit">Unidade de medida</label><select id="i-unit">'+
+    (()=>{
+      const options=["unidades","kits","pares","conjuntos","rolos","metros","gramas","litros","pacotes","caixas","frascos"];
+      const current=String(x?.unidade||"unidades").trim();
+      if(current&&!options.includes(current))options.push(current);
+      return options.map(unit=>'<option value="'+attr(unit)+'" '+(unit===current?'selected':'')+'>'+esc(unit[0].toUpperCase()+unit.slice(1))+'</option>').join("");
+    })()+
+    '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
     '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade",x?.quantidade||0)+stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
     '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
     '<details class="editor-advanced"><summary>Opções avançadas de exibição dos números</summary>'+
@@ -243,6 +251,12 @@ function itemEditor(id){
   openModal(x?"Editar material":"Adicionar material","",body,{size:"wide"});
   let image=x?.imagem||"";
   if(x && $("#i-link-variations"))$("#i-link-variations").onclick=()=>openVariantLinker(x.id);
+  $("#i-unit").onchange=()=>{
+    const other=$("#i-unit-other");
+    other.hidden=$("#i-unit").value!=="__outro__";
+    other.required=!other.hidden;
+    if(!other.hidden)other.focus();
+  };
   $("#i-photo-remove").onclick=()=>{image="";$("#i-photo-preview").innerHTML='<img alt="Desenho padrão" src="'+attr(defaultImage($("#i-name").value))+'">';$("#i-photo").value="";$("#i-photo").dispatchEvent(new Event("input",{bubbles:true}));};
   $("#i-photo").onchange=async e=>{
     const file=e.target.files?.[0];if(!file)return;
@@ -259,7 +273,7 @@ function itemEditor(id){
       com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,
       mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
       visivel_visitante:$("#i-public").checked,grupo_variacoes:$("#i-variation-family").value,
-      descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:x?.unidade||"unidades"};
+      descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{await api("/api/admin/item","POST",body);await adminReload();adminModal();toast("Material salvo!");}
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar material";}
   };
