@@ -22,7 +22,7 @@ const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal
   filamentos:colors,reservas:[{id:9,componente_id:1,componente_nome:"Resistor 100Ω",
     nome_solicitante:"Teste",quantidade:1,status:"pendente",data_inicio:"2026-12-01",data_devolucao:"2026-12-03"}],
   configuracoes:{modo_demo:"nao",limpeza_reservas:"nunca",limpeza_historico:"nunca"}};
-const identity={id:"PET-AABBCCDDEEFF",nome:"Pessoa teste",tag:"visitante",login:"teste01",
+const identity={id:"PET-AABBCCDDEEFF",nome:"Pessoa teste",email:"pessoa@example.com",tag:"visitante",login:"teste01",
   ativo:true,trocar_senha:false,precisa_criar_login:false};
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdmin=false){
