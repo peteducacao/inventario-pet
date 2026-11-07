@@ -127,7 +127,7 @@ function finalCard(original,siblings=[]){
       '<div class="filament-quantity"><span>Quantidade <strong>'+Number(x.quantidade)+'</strong></span><span>Em uso <strong>'+Number(x.em_uso||0)+'</strong></span></div>'+
       '<div class="filament-quantity"><span>Disponíveis</span><strong>'+free+'</strong></div>'+
       '<button type="button" class="primary-button '+(member?"withdraw-button":"reserve-card-button")+'"'+(enabled&&free?' data-reserve-item="'+Number(x.componente_id)+'"':' disabled')+'>'+
-      (enabled?(free?(member?"Retirar":"Reservar"):"Sem estoque"):"Somente consulta")+'</button></div></article>';
+      (member?"Retirar":"Reservar")+'</button></div></article>';
   }
   const showGroupTotals=grouped&&!selection;
   // Antes de escolher o modelo, mostrar a soma da família sem confundir
@@ -150,7 +150,7 @@ function finalCard(original,siblings=[]){
   const action=groupedAction?
     '<button type="button" class="primary-button variant-main-button" data-open-variants="'+attr(groupKey)+'">'+iconSvg("box",16)+' Escolher modelo</button>':
     '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0||!loanOK?"disabled":"")+'>'+
-    iconSvg(canWithdraw?"logout":"calendar",16)+' '+(!loanOK?"Somente consulta":canWithdraw?"Retirar":"Reservar")+'</button>';
+    iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>';
   return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" '+imageAction+' aria-label="'+attr(photoLabel)+'">'+
     '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
