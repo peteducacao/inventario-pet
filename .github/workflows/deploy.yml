@@ -29,6 +29,7 @@ jobs:
         run: |
           node --check public/app.js
           node --check public/identity-ui.js
+          node --check public/component-art.js
           node --check public/final.js
           node --check public/admin-stage.js
           node --check src/index.js
@@ -49,6 +50,8 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/identity.test.mjs
       - name: Testar abas e login no navegador simulado
         run: node tests/admin-navigation.test.mjs
+      - name: Testar novo catálogo, desenhos e navegação sem acessar o banco remoto
+        run: node tests/final-ui.test.mjs
       - name: Publicar site
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}

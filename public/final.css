@@ -134,3 +134,133 @@ body.admin-mode #app{display:none}
   .filament-quantity{min-height:50px}
   .filament-admin-grid{grid-template-columns:1fr}
 }
+
+
+/* Catálogo ilustrado: layout adaptado da referência aprovada para uso real.
+   Mantém o painel administrativo independente e todas as funcionalidades existentes. */
+body:not(.admin-mode){background:#f5f8fa}
+body:not(.admin-mode) #app{min-height:100dvh}
+body:not(.admin-mode) .topbar{background:#07334d;box-shadow:none}
+body:not(.admin-mode) .topbar-inner{max-width:1480px;min-height:68px;gap:15px}
+body:not(.admin-mode) .branding{flex-shrink:0;gap:9px}
+body:not(.admin-mode) .branding strong{font-size:16px;line-height:1.2;letter-spacing:-.35px}
+body:not(.admin-mode) .brand-mark{width:39px;height:39px}
+.topbar-search{display:flex;align-items:center;gap:9px;width:min(310px,30vw);min-width:210px;min-height:39px;padding:0 14px;margin-left:auto;border-radius:24px;background:#fff;color:#587082;box-shadow:0 0 0 1px #b9cbd6;cursor:text}
+.topbar-search input{background:transparent;border:0;outline:none;font-size:12px;width:100%;min-width:0;color:#20374b}
+.topbar-search input:focus-visible{outline:none}
+body:not(.admin-mode) .header-actions{margin-left:7px;gap:8px}
+body:not(.admin-mode) .quiet-button,body:not(.admin-mode) .nav-icon{background:transparent;border:0;padding:6px;color:white}
+body:not(.admin-mode) .nav-icon{width:39px}
+body:not(.admin-mode) .profile-trigger{border-radius:22px;background:#ffffff16}
+body:not(.admin-mode) .avatar{background:#d3ece4;color:#15546a}
+body:not(.admin-mode) .header-admin{display:none}
+.public-menu-toggle{display:none;border:0;background:transparent;color:#fff;align-items:center;justify-content:center;width:38px;height:38px;padding:6px}
+.public-layout{max-width:1480px;display:grid;grid-template-columns:190px minmax(0,1fr);gap:18px;align-items:start;margin:0 auto;padding-top:0;min-height:calc(100dvh - 68px)}
+.public-sidebar{align-self:stretch;min-height:calc(100dvh - 68px);padding:22px 12px 24px 0;border-right:1px solid #e5edf0;z-index:50}
+.public-nav{display:flex;flex-direction:column;gap:7px}
+.public-nav button{display:flex;align-items:center;gap:10px;min-height:42px;width:100%;background:transparent;color:#2b4253;border:0;border-radius:11px;text-align:left;font-size:12px;font-weight:750;padding:10px 12px;white-space:nowrap}
+.public-nav button svg{flex-shrink:0}
+.public-nav button.active,.public-nav button:hover{background:#dcf6eb;color:#07573e}
+.public-nav button.manage-link{background:#d8f7e9;color:#0c5942;margin-top:1px}
+.public-nav button.manage-link:hover{background:#b9efd8}
+.public-nav-divider{display:block;border-top:1px solid #e3ebef;padding:19px 12px 0;margin-top:12px;font-size:10px;color:#7d8d9a;font-weight:750}
+.public-main{min-width:0;padding:18px 0 38px}
+body:not(.admin-mode) .public-main .intro{padding:4px 0 13px;gap:20px}
+body:not(.admin-mode) .public-main .intro h1{font-size:clamp(21px,2.1vw,27px);margin:0;letter-spacing:-.8px;line-height:1.2}
+body:not(.admin-mode) .public-main .intro p{font-size:12px;color:#64798b;margin:4px 0 0}
+body:not(.admin-mode) .intro-actions{display:none}
+body:not(.admin-mode) .stats-section{display:none}
+body:not(.admin-mode) .inventory-head{justify-content:flex-end;min-height:0}
+body:not(.admin-mode) .inventory-head h2{display:none}
+body:not(.admin-mode) .catalog-toolbar{flex:none;width:auto;max-width:none}
+body:not(.admin-mode) .catalog-toolbar select{min-height:33px;max-width:174px;font-size:11px;padding:5px 8px;border-radius:10px}
+.mobile-catalog-search{display:none}
+body:not(.admin-mode) .filter-row{padding:7px 0 17px;gap:7px}
+body:not(.admin-mode) .filter-row .chip{padding:8px 14px;font-size:11px;background:#fff;color:#47576a;border:1px solid #e3eaf0;box-shadow:0 2px 4px #0a304508}
+body:not(.admin-mode) .filter-row .chip.active{background:#08ac89;color:#fff;border-color:#08ac89}
+body:not(.admin-mode) .section-list{gap:17px}
+body:not(.admin-mode) .inventory-section .card-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;align-items:stretch}
+body:not(.admin-mode) .inventory-section .catalog-card{border:1px solid #e4eaf0;border-radius:15px;box-shadow:0 4px 13px #19334a13;background:#fff}
+body:not(.admin-mode) .inventory-section .catalog-photo{height:143px;background:linear-gradient(165deg,#fff 0%,#fafdfe 100%);border:0;display:flex;align-items:center;justify-content:center}
+body:not(.admin-mode) .inventory-section .catalog-photo img{object-fit:contain;width:100%;height:100%;padding:18px 12px 8px;mix-blend-mode:normal}
+body:not(.admin-mode) .status-dot{top:10px;left:10px;display:inline-flex;align-items:center;gap:4px;border:0;background:#d9f9e6;color:#106839;padding:5px 9px;font-size:10px;line-height:1.2;font-weight:800}
+body:not(.admin-mode) .status-dot span{font-size:12px;font-weight:900}
+body:not(.admin-mode) .status-dot.busy{background:#e5f0ff;color:#2765a7}
+body:not(.admin-mode) .status-dot.empty{background:#ffe6e9;color:#b43c4b}
+body:not(.admin-mode) .inventory-section .catalog-body{padding:7px 11px 11px}
+body:not(.admin-mode) .inventory-section .catalog-body h3{font-size:14px;min-height:36px;margin:0 0 5px;line-height:1.24;letter-spacing:-.25px;font-weight:850}
+body:not(.admin-mode) .inventory-section .catalog-category{display:flex;align-items:center;gap:5px;color:#546775;font-weight:650;font-size:10px;margin-bottom:2px;white-space:nowrap}
+body:not(.admin-mode) .inventory-section .catalog-category svg{width:12px;height:12px;flex-shrink:0}
+body:not(.admin-mode) .inventory-section .catalog-asset{margin-top:2px;font-size:10px;line-height:1.3}
+body:not(.admin-mode) .inventory-section .catalog-numbers{margin:10px 0 11px;border-top:1px solid #edf1f4;background:transparent;border-radius:0;padding:9px 0 0;box-shadow:none}
+body:not(.admin-mode) .inventory-section .catalog-numbers>div{gap:2px;border-right:1px solid #edf1f4}
+body:not(.admin-mode) .inventory-section .catalog-numbers span{font-size:9px;color:#5b7180;white-space:nowrap}
+body:not(.admin-mode) .inventory-section .catalog-numbers strong{font-size:16px;color:#1b3445;line-height:1.2}
+body:not(.admin-mode) .inventory-section .catalog-numbers>div:nth-child(2) strong{color:#2264ad}
+body:not(.admin-mode) .inventory-section .catalog-numbers>div:nth-child(3) strong{color:#cb4d51}
+body:not(.admin-mode) .inventory-section .catalog-body .primary-button{min-height:39px;margin-top:auto;background:linear-gradient(140deg,#b8f1d2,#a2eecb);color:#164b3b;border-radius:9px;box-shadow:none;font-size:12px;padding:8px}
+body:not(.admin-mode) .inventory-section .catalog-body .primary-button svg{width:15px;height:15px}
+body:not(.admin-mode) .inventory-section .catalog-body .withdraw-button{background:linear-gradient(140deg,#168e92,#087379);color:#fff}
+body:not(.admin-mode) .inventory-section .catalog-body .primary-button:disabled{background:#e5eaee;color:#909daa;opacity:1}
+body:not(.admin-mode) .inventory-section .filament-art{height:143px}
+body:not(.admin-mode) .inventory-section .filament-reel{width:112px;height:112px;border-width:7px}
+body:not(.admin-mode) .inventory-section .filament-reel-core{width:31px;height:31px}
+body:not(.admin-mode) .inventory-section .filament-public-card .catalog-body h3{min-height:0}
+body:not(.admin-mode) .inventory-section .filament-quantity{margin-top:13px;min-height:48px}
+body:not(.admin-mode) .site-footer{margin-top:35px}
+#public-nav-overlay{position:fixed;inset:0;border:0;background:#092f488c;z-index:190;cursor:pointer}
+@media(max-width:1150px){
+ body:not(.admin-mode) .inventory-section .card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+ .public-layout{grid-template-columns:177px minmax(0,1fr)}
+ .public-sidebar{padding-right:9px}
+}
+@media(max-width:860px){
+ .public-layout{display:block;min-height:calc(100dvh - 64px)}
+ .public-main{padding:19px 0 30px}
+ .public-menu-toggle{display:inline-flex;flex-shrink:0}
+ .public-sidebar{position:fixed;top:0;bottom:0;left:0;z-index:205;width:260px;min-height:100dvh;overflow-y:auto;background:#fff;padding:32px 15px 25px;box-shadow:10px 0 40px #072c442b;transform:translateX(-110%);transition:transform .2s;border:0}
+ body.public-nav-open .public-sidebar{transform:translateX(0)}
+ body:not(.admin-mode) .inventory-section .card-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media(max-width:720px){
+ body:not(.admin-mode) .topbar-inner{min-height:68px;gap:5px}
+ body:not(.admin-mode) .branding{min-width:0;gap:7px}
+ body:not(.admin-mode) .branding strong{font-size:13px;max-width:190px}
+ body:not(.admin-mode) .brand-mark{width:34px;height:34px}
+ body:not(.admin-mode) .brand-mark svg{width:31px;height:31px}
+ .topbar-search{display:none}
+ body:not(.admin-mode) .header-actions{margin-left:auto;gap:4px}
+ body:not(.admin-mode) .profile-trigger{width:36px;height:36px;padding:4px}
+ body:not(.admin-mode) .nav-icon{width:35px;height:36px}
+ body:not(.admin-mode) .public-main .intro{display:none}
+ body:not(.admin-mode) .inventory-head{justify-content:stretch;margin-top:3px}
+ body:not(.admin-mode) .catalog-toolbar{display:flex;flex-direction:column;align-items:stretch;gap:10px;width:100%;max-width:none}
+ body:not(.admin-mode) .catalog-toolbar .mobile-catalog-search{display:flex;width:100%;min-height:46px;border:1px solid #d5e0e7;border-radius:14px;box-shadow:0 2px 6px #11293b0b;background:#fff}
+ body:not(.admin-mode) .mobile-catalog-search input{font-size:13px}
+ body:not(.admin-mode) .catalog-toolbar select{max-width:170px;align-self:flex-end;min-height:32px;margin-bottom:-3px}
+ body:not(.admin-mode) .filter-row{padding:11px 0 15px}
+ body:not(.admin-mode) .filter-row .chip{font-size:11px;padding:9px 13px}
+ body:not(.admin-mode) .inventory-section .card-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+ body:not(.admin-mode) .inventory-section .catalog-photo{height:125px}
+ body:not(.admin-mode) .inventory-section .catalog-photo img{padding:18px 8px 3px}
+ body:not(.admin-mode) .inventory-section .catalog-body{padding:9px}
+ body:not(.admin-mode) .inventory-section .catalog-body h3{font-size:12px;min-height:31px;margin-bottom:4px}
+ body:not(.admin-mode) .inventory-section .catalog-category{font-size:9px}
+ body:not(.admin-mode) .inventory-section .catalog-asset{font-size:9px}
+ body:not(.admin-mode) .inventory-section .catalog-numbers{margin:9px 0 8px;padding-top:8px}
+ body:not(.admin-mode) .inventory-section .catalog-numbers span{font-size:8px}
+ body:not(.admin-mode) .inventory-section .catalog-numbers strong{font-size:14px}
+ body:not(.admin-mode) .inventory-section .catalog-body .primary-button{min-height:41px;font-size:12px}
+ body:not(.admin-mode) .status-dot{font-size:9px;top:8px;left:8px;padding:5px 7px}
+ body:not(.admin-mode) .inventory-section .filament-art{height:125px}
+ body:not(.admin-mode) .inventory-section .filament-reel{width:92px;height:92px;border-width:6px}
+ body:not(.admin-mode) .inventory-section .filament-reel-core{width:25px;height:25px}
+ #notification-popover{top:68px}
+}
+@media(max-width:390px){
+ body:not(.admin-mode) .branding strong{font-size:12px;max-width:170px}
+ body:not(.admin-mode) .inventory-section .catalog-photo{height:111px}
+ body:not(.admin-mode) .inventory-section .catalog-body h3{font-size:11.5px}
+ body:not(.admin-mode) .inventory-section .catalog-numbers strong{font-size:13px}
+ body:not(.admin-mode) .inventory-section .catalog-numbers span{font-size:7.8px}
+}

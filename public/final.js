@@ -67,35 +67,9 @@ function pageButtons(info,which){
   html+='<button type="button" data-page="'+Math.min(info.pages,info.page+1)+'" '+(info.page===info.pages?"disabled":"")+' aria-label="Próxima página">›</button><span class="page-info">'+info.total+' itens</span>';
   return html;
 }
-// Fotos reais de referência (Wikimedia Commons), em resolução ajustada pelo CDN.
-// Referências ilustrativas não indicam necessariamente marca ou modelo exatos do acervo.
-const realPhoto=(name)=>{
- const file=encodeURIComponent(name).replace(/%2F/g,"/");
- return "https://commons.wikimedia.org/wiki/Special:FilePath/"+file+"?width=800";
-};
-const PET_PHOTOS={
-  generic:realPhoto("Electronic_components.jpg"),
-  esp32:realPhoto("ESP32_Dev_Board.jpg"),
-  arduino:realPhoto("Arduino_Uno_board.jpg"),
-  tablet:realPhoto("Samsung_galaxy_tab_a7_2020.jpg"),
-  notebook:realPhoto("Laptop_image.jpg"),
-  motor:realPhoto("Dc_motors.jpg"),
-  pen:realPhoto("BALL_PEN.jpg")
-};
-function defaultImage(name){
-  const n=String(name||"").toLowerCase();
-  if(/esp\s*32/.test(n))return PET_PHOTOS.esp32;
-  if(/arduino|protoboard/.test(n))return PET_PHOTOS.arduino;
-  if(/tablet/.test(n))return PET_PHOTOS.tablet;
-  if(/notebook|laptop/.test(n))return PET_PHOTOS.notebook;
-  if(/motor dc|mini motor|motor de passo|motor de posso/.test(n))return PET_PHOTOS.motor;
-  if(/caneta|esferográfica/.test(n))return PET_PHOTOS.pen;
-  return PET_PHOTOS.generic;
-}
-function itemImage(x){
-  const img=String(x.imagem||"").trim();
-  return img && !/^\/img\/reference-(?:board|electronics|motor|tablet|notebook)\.svg$/i.test(img)?img:defaultImage(x.nome);
-}
+// Ilustrações locais restauradas; sem URLs de fotos genéricas de terceiros.
+function defaultImage(name){return componentArt(name);}
+function itemImage(x){return imageForPETItem(x);}
 function thumb(x,clazz="material-thumb"){
   const img=itemImage(x);
   return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">':"")+'</div>';
@@ -107,18 +81,20 @@ function finalCard(x){
       '<div class="catalog-body"><span class="catalog-category">Filamentos</span><h3>'+esc(x.cor)+'</h3>'+
       '<div class="filament-quantity">Quantidade <strong>'+Number(x.quantidade)+'</strong></div></div></article>';
   }
-  const free=stock(x),status=free>0?"Disponível":"Sem estoque",type=free===0?"empty":Number(x.em_uso)>0?"busy":"";
+  const free=stock(x),used=Number(x.em_uso)||0,status=free===0?"Sem estoque":used>free?"Em uso":"Disponível",type=free===0?"empty":used>free?"busy":"";
   const img=itemImage(x);
   const canWithdraw=identityIsMember();
   const label=canWithdraw?"Retirar":"Reservar";
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
-  return '<article class="catalog-card"><button type="button" class="catalog-photo" '+(img?'data-photo="'+x.id+'"':'disabled')+' aria-label="Ampliar foto de '+attr(x.nome)+'">'+
-    (img?'<img src="'+attr(img)+'" alt="'+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">':'<span class="no-photo"></span>')+
-    '<span class="status-dot '+type+'">'+status+'</span></button>'+
-    '<div class="catalog-body"><h3>'+esc(x.nome)+'</h3><span class="catalog-category">'+esc(category)+'</span><span class="catalog-asset" title="'+attr(asset)+'">'+(asset||' ')+'</span>'+
-    '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+Number(x.quantidade)+'</strong></div><div><span>Em uso</span><strong>'+Number(x.em_uso)+'</strong></div><div><span>Defeito</span><strong class="'+(Number(x.com_defeito)?"stock-defect":"")+'">'+Number(x.com_defeito)+'</strong></div></div>'+
-    '<button type="button" class="primary-button" data-reserve-item="'+x.id+'" '+(free===0?"disabled":"")+'>'+label+'</button></div></article>';
+  const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
+  return '<article class="catalog-card"><button type="button" class="catalog-photo" data-photo="'+x.id+'" aria-label="Ampliar ilustração de '+attr(x.nome)+'">'+
+    '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
+    '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
+    '<div class="catalog-body"><h3>'+esc(x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
+    (asset?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':'')+
+    '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+Number(x.quantidade)+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Defeito</span><strong class="'+(Number(x.com_defeito)?"stock-defect":"")+'">'+Number(x.com_defeito)+'</strong></div></div>'+
+    '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0?"disabled":"")+'>'+iconSvg(canWithdraw?"logout":"calendar",16)+' '+label+'</button></div></article>';
 }
 function finalRender(){
   if(!$("#category-sections"))return;
@@ -136,7 +112,7 @@ function finalRender(){
   const q=(state.query||"").toLocaleLowerCase("pt-BR").trim();
   const filtered=items.filter(x=>(UI.category==="all"||String(x.categoria_id)===String(UI.category))&&
     (!q||[x.nome,x.identificacao,x.patrimonio].some(v=>String(v||"").toLocaleLowerCase("pt-BR").includes(q))));
-  const p=paginate(ordered(filtered,UI.sort),UI.page);
+  const p=paginate(ordered(filtered,UI.sort),UI.page,12);
   UI.page=p.page;stored("pet_public_page",p.page);
   $("#category-sections").innerHTML=p.total?'<div class="card-grid">'+p.items.map(finalCard).join("")+'</div>':
     '<div class="empty-state"><strong>Nenhum material encontrado.</strong><p>Experimente outro filtro.</p></div>';
@@ -240,8 +216,14 @@ function setupFinalPublic(){
   render=finalRender;
   identityProfileModal=finalAccount;
   memberHistoryModal=openMyLoans;
-  $("#search").value=state.query||"";
-  $("#search").oninput=e=>{state.query=e.target.value;UI.page=1;finalRender();};
+  for(const field of [$("#search"),$("#search-mobile")].filter(Boolean)){
+    field.value=state.query||"";
+    field.oninput=e=>{
+      state.query=e.target.value;UI.page=1;
+      for(const other of [$("#search"),$("#search-mobile")].filter(Boolean))if(other!==field)other.value=state.query;
+      finalRender();
+    };
+  }
   $("#catalog-sort").value=UI.sort;
   $("#catalog-sort").onchange=e=>{UI.sort=e.target.value;UI.page=1;stored("pet_public_sort",UI.sort);finalRender();};
   $("#category-filters").addEventListener("click",event=>{
@@ -257,6 +239,33 @@ function setupFinalPublic(){
   $("#profile-button").onclick=openUserMenu;
   $("#notification-button").onclick=()=>{if(!state.identity){identityLoginModal();return;}openMyNotificationPopover();};
   $("#admin-button").onclick=()=>enterAdmin(false);
+  const menuButton=$("#public-menu-toggle");
+  const drawer=$("#public-sidebar");
+  const veil=$("#public-nav-overlay");
+  function togglePublicMenu(open){
+    document.body.classList.toggle("public-nav-open",Boolean(open));
+    if(veil)veil.hidden=!open;
+    if(menuButton)menuButton.setAttribute("aria-expanded",String(Boolean(open)));
+  }
+  if(menuButton)menuButton.onclick=()=>togglePublicMenu(!document.body.classList.contains("public-nav-open"));
+  if(veil)veil.onclick=()=>togglePublicMenu(false);
+  if(drawer){
+    drawer.querySelectorAll("[data-public-action]").forEach(button=>button.onclick=()=>{
+      const action=button.dataset.publicAction;
+      togglePublicMenu(false);
+      if(action==="inventory"){
+        closeModal();
+        document.querySelector(".intro")?.scrollIntoView({behavior:"smooth",block:"start"});
+      }
+      if(action==="loans"||action==="return")openMyLoans();
+      if(action==="reservations"){
+        if(!state.identity)identityLoginModal();
+        else if(identityIsMember())memberWithdrawModal();
+        else reserveModal(null);
+      }
+      if(action==="admin")enterAdmin(false);
+    });
+  }
   $("#reserve-button").onclick=()=>{
     if(!state.identity){identityLoginModal();return;}
     if(identityIsMember())memberWithdrawModal();else reserveModal(null);

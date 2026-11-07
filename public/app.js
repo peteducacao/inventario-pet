@@ -388,8 +388,11 @@ function saveDownload(name,contents){
 function openPhoto(id){
   const x=byId(id);
   if(!x)return;
-  if(!x.imagem){toast("Este material ainda não possui fotografia.");return;}
-  openModal(x.nome,"Visualização ampliada da fotografia.",'<div class="modal-main" style="text-align:center"><img class="photo-lightbox" alt="'+attr(x.nome)+'" src="'+attr(x.imagem)+'"></div>',{size:"wide"});
+  const source=typeof itemImage==="function"?itemImage(x):x.imagem;
+  if(!source){toast("Imagem indisponível para este material.",true);return;}
+  const manual=/^data:image\//i.test(String(x.imagem||""));
+  openModal(x.nome,manual?"Fotografia cadastrada do material.":"Ilustração de referência do componente.",
+    '<div class="modal-main" style="text-align:center"><img class="photo-lightbox" alt="'+attr(x.nome)+'" src="'+attr(source)+'"></div>',{size:"wide"});
 }
 $("#search").oninput=e=>{state.query=e.target.value;render()};
 $("#category-filters").addEventListener("click",e=>{const b=e.target.closest("[data-category]");if(!b)return;state.filter=b.dataset.category;render();});

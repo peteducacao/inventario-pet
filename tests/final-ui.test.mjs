@@ -5,7 +5,7 @@ import {JSDOM,VirtualConsole} from "jsdom";
 // Execute the exact four scripts included by index.html. Never contact the
 // Cloudflare Worker or the production D1 database.
 const html=readFileSync("public/index.html","utf8");
-const sources=["app.js","identity-ui.js","final.js","admin-stage.js"]
+const sources=["app.js","identity-ui.js","component-art.js","final.js","admin-stage.js"]
   .map(name=>readFileSync("public/"+name,"utf8"));
 const errors=[];
 const vc=new VirtualConsole();
@@ -57,7 +57,29 @@ const click=async(selector)=>{
 w.eval(sources.join("\n;\n"));
 await pause(180);
 assert.ok(d.querySelector(".catalog-card"),"O novo catálogo não foi montado.");
-assert.ok(d.querySelector(".catalog-photo img"),"A foto do material não foi montada.");
+assert.ok(d.querySelector(".catalog-photo img"),"A ilustração do material não foi montada.");
+assert.equal(d.querySelector(".catalog-photo img").getAttribute("src"),"/img/reference-board.svg","O desenho vetorial local não foi restaurado.");
+assert.ok(d.querySelector("#public-sidebar [data-public-action='loans']"),"Menu lateral não tem minhas retiradas.");
+assert.ok(d.querySelector("#public-sidebar [data-public-action='admin']"),"Menu lateral não tem administração.");
+await click("#public-menu-toggle");
+assert.ok(w.document.body.classList.contains("public-nav-open"),"Menu móvel não abriu.");
+assert.equal(d.querySelector("#public-nav-overlay").hidden,false,"Fundo do menu não apareceu.");
+await click("#public-nav-overlay");
+assert.equal(d.querySelector("#public-nav-overlay").hidden,true,"Menu móvel não fechou.");
+const mobileSearch=d.querySelector("#search-mobile");
+mobileSearch.value="Azul";mobileSearch.dispatchEvent(new w.Event("input",{bubbles:true}));
+await pause();
+assert.equal(d.querySelector("#search").value,"Azul","Buscas do desktop e celular não sincronizadas.");
+assert.equal(d.querySelectorAll(".filament-public-card").length,1);
+mobileSearch.value="";mobileSearch.dispatchEvent(new w.Event("input",{bubbles:true}));
+await pause();
+const art=w.componentArt("Adaptador de bateria");
+assert.match(art,/^data:image\/svg\+xml/);
+assert.notEqual(art,w.componentArt("Adaptador de cartão"),"Ilustrações de componentes diferentes não podem ser idênticas.");
+assert.ok(!art.includes("commons.wikimedia"),"Fotografia externa indevida.");
+await click('[data-photo="1"]');
+assert.ok(d.querySelector(".photo-lightbox"),"Ampliar desenho não funcionou.");
+await click("#modal-root [data-close]");
 assert.ok(d.querySelector(".filament-public-card"),"O card de filamento não apareceu.");
 assert.match(d.querySelector("#category-filters").textContent,/Filamentos/);
 assert.equal(d.querySelector("#stat-items").textContent,"2");
