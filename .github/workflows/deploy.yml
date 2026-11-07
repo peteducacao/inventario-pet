@@ -162,12 +162,12 @@ jobs:
             if(avail.disponiveis!==3)throw Error("Disponibilidade inconsistente");
             // Uma sessão administrativa não pode solicitar reservas em nome de um usuário.
             const account=await get("/api/identity/register",{method:"POST",body:JSON.stringify({
-              nome:"Visitante de teste",login:"e2e_"+stamp.toString(36),senha:"TesteSeguroPET!"+stamp
+              nome:"Visitante de teste",email:"e2e@example.com",login:"e2e_"+stamp.toString(36),senha:"TesteSeguroPET!"+stamp
             })});
             userId=account.d.usuario?.id;
             const userCookie=account.r.headers.get("set-cookie")?.split(";")[0];
             if(!userId||!userCookie)throw Error("Usuário temporário de teste não recebeu sessão pessoal");
-            await get("/api/reservations",{method:"POST",headers:{cookie:userCookie},body:JSON.stringify({componente_id:id,quantidade:1,data_inicio:start,data_devolucao:end,email:"e2e@example.com"})});
+            await get("/api/reservations",{method:"POST",headers:{cookie:userCookie},body:JSON.stringify({componente_id:id,quantidade:1,data_inicio:start,data_devolucao:end})});
             const pending=(await admin("/api/admin/state")).d.reservas.find(r=>r.componente_id===id&&r.status==="pendente");
             if(!pending)throw Error("Pedido de reserva não chegou ao administrador");
             resId=pending.id;
