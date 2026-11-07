@@ -18,6 +18,7 @@ db.exec(readFileSync("migrations/0011_conciliar_experimentos.sql","utf8"));
 db.exec(readFileSync("migrations/0013_gmail_queue.sql","utf8"));
 db.exec(readFileSync("migrations/0014_email_usuarios.sql","utf8"));
 db.exec(readFileSync("migrations/0015_autorizacao_emprestimos.sql","utf8"));
+db.exec(readFileSync("migrations/0016_permissoes_por_perfil.sql","utf8"));
 const motor=row("SELECT id,quantidade,em_uso,com_defeito FROM componentes WHERE id=?",ele.id);
 assert.deepEqual([motor.quantidade,motor.em_uso,motor.com_defeito],[17,12,0]);
 assert.equal(motor.quantidade-motor.em_uso-motor.com_defeito,5);
