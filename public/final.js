@@ -2,6 +2,7 @@
 const UI = {
   page:Math.max(1,Number(localStorage.getItem("pet_public_page")||1)),
   filaments:[],
+  variantChoice:{},
   category:localStorage.getItem("pet_public_category")||"all",
   sort:localStorage.getItem("pet_public_sort")||"az",
   adminTab:localStorage.getItem("pet_admin_tab")||"painel",
@@ -46,7 +47,7 @@ const iconSvg=(name,size=19)=>{
 };
 const identityIsMember=()=>state.identity?.tag==="petiano"&&!state.identity?.trocar_senha&&!state.identity?.precisa_criar_login;
 const isArchived=x=>Number(x.arquivado)===1;
-const stock=x=>Number(x.mostrar_quantidade)===1?Math.max(0,(Number(x.quantidade)||0)-(Number(x.em_uso)||0)-(Number(x.com_defeito)||0)):0;
+const stock=x=>Math.max(0,(Number(x.quantidade)||0)-(Number(x.em_uso)||0)-(Number(x.com_defeito)||0));
 const niceDate=x=>x?fmt(x):"—";
 const ordered=(array,sort)=>{
   const arr=[...array];const cmp=(a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"});
@@ -74,7 +75,21 @@ function thumb(x,clazz="material-thumb"){
   const img=itemImage(x);
   return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">':"")+'</div>';
 }
-function finalCard(x){
+function groupPublicMaterials(items){
+  const list=[],byGroup=new Map();
+  for(const item of items){
+    const group=String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR");
+    if(item._filament||!group){list.push([item]);continue;}
+    if(byGroup.has(group))byGroup.get(group).push(item);
+    else{const arr=[item];list.push(arr);byGroup.set(group,arr);}
+  }
+  return list;
+}
+function finalCard(original,siblings=[]){
+  const groupKey=String(original.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR");
+  const x=siblings.find(a=>a.id===UI.variantChoice[groupKey])||original;
+  const grouped=siblings.length>1;
+
   if(x._filament){
     return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
       '<div class="filament-art" style="--filament-color:'+attr(x.hexadecimal)+'"><div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div></div>'+
@@ -88,10 +103,10 @@ function finalCard(x){
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
-  return '<article class="catalog-card"><button type="button" class="catalog-photo" data-photo="'+x.id+'" aria-label="Ampliar ilustração de '+attr(x.nome)+'">'+
+  return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" data-photo="'+x.id+'" aria-label="Ampliar ilustração de '+attr(x.nome)+'">'+
     '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
-    '<div class="catalog-body"><h3>'+esc(x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
+    '<div class="catalog-body"><h3>'+esc(grouped?x.grupo_variacoes:x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
     (asset?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':'')+
     '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+Number(x.quantidade)+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Defeito</span><strong class="'+(Number(x.com_defeito)?"stock-defect":"")+'">'+Number(x.com_defeito)+'</strong></div></div>'+
     '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0?"disabled":"")+'>'+iconSvg(canWithdraw?"logout":"calendar",16)+' '+label+'</button></div></article>';
