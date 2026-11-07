@@ -7,7 +7,7 @@ const db=new DatabaseSync(":memory:");
 db.exec("CREATE TABLE componentes(id INTEGER PRIMARY KEY, nome TEXT, grupo_variacoes TEXT DEFAULT '', quantidade INTEGER, em_uso INTEGER, com_defeito INTEGER)");
 db.exec("INSERT INTO componentes(nome,grupo_variacoes,quantidade,em_uso,com_defeito) VALUES ('Arduino Uno','Arduino',5,1,0),('Arduino Nano','',2,0,0)");
 db.exec(readFileSync("migrations/0020_central_vinculos.sql","utf8"));
-assert.deepEqual(db.prepare("SELECT nome FROM grupos_variacoes").all(),[{nome:"Arduino"}],
+assert.deepEqual(db.prepare("SELECT nome FROM grupos_variacoes").all().map(x=>x.nome),["Arduino"],
   "Migração deve preservar o nome de grupos já utilizados.");
 db.prepare("INSERT INTO grupos_variacoes(nome) VALUES(?)").run("Grupo Vazio");
 assert.equal(db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE grupo_variacoes='Grupo Vazio'").get().n,0,
