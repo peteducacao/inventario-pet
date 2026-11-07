@@ -657,6 +657,13 @@ async function processRequest(req, env) {
     await auditLog(db,"Configuração","sistema",null,"Configurações de reservas atualizadas");
     return j({ ok:true });
   }
+  if (path === "/api/admin/export" && method === "GET") {
+    // Exportação completa para Excel, sem senhas/sessões/segredos.
+    const data=await state(db);
+    data.reservas=await results(db,"SELECT r.id,r.componente_id,c.nome AS componente_nome,r.nome_solicitante,r.quantidade,r.tipo,r.status,r.data_inicio,r.data_devolucao,r.devolvido_em,r.solicitado_em,r.contato,r.observacao FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.id DESC");
+    return j({categorias:data.categorias,componentes:data.componentes,
+      grupos_variacoes:data.grupos_variacoes,filamentos:data.filamentos,reservas:data.reservas});
+  }
   if (path === "/api/admin/backup" && method === "GET") {
     const data=await state(db);
     const [historico,conciliacao_experimentos_vinculos,conciliacao_experimentos_backup]=await Promise.all([
