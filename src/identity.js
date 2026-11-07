@@ -270,7 +270,7 @@ async function adminDeleteUser(req,env){
   return respond({ok:true,excluido:id});
 }
 async function adminList(env){
-  const list=await rows(env.DB,"SELECT public_id AS id,nome,login,must_change_password,papel AS tag,ativo,notificar_email,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
+  const list=await rows(env.DB,"SELECT public_id AS id,nome,email,login,must_change_password,papel AS tag,ativo,notificar_email,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
   const loans=await rows(env.DB,"SELECT usuario_id,COUNT(*) AS n FROM reservas WHERE tipo='retirada_direta' AND status='retirada' AND usuario_id IS NOT NULL GROUP BY usuario_id");
   const usersIds=await rows(env.DB,"SELECT id,public_id FROM usuarios WHERE id IN (SELECT DISTINCT usuario_id FROM reservas WHERE tipo='retirada_direta' AND status='retirada')");
   const map=new Map(usersIds.map(x=>[x.id,x.public_id])),counts=new Map(loans.map(x=>[map.get(x.usuario_id),x.n]));
