@@ -6,13 +6,13 @@
 <meta name="description" content="Inventário do PET Educação.">
 <title>Admin | Inventário PET Educação</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<link rel="stylesheet" href="/styles.css?v=20261107-familias-v6">
-<link rel="stylesheet" href="/final.css?v=20261107-familias-v6">
-<script defer src="/app.js?v=20261107-familias-v6"></script>
-<script defer src="/identity-ui.js?v=20261107-familias-v6"></script>
-<script defer src="/component-art.js?v=20261107-familias-v6"></script>
-<script defer src="/final.js?v=20261107-familias-v6"></script>
-<script defer src="/admin-stage.js?v=20261107-familias-v6"></script>
+<link rel="stylesheet" href="/styles.css?v=20261107-menu-admin-leds-v7">
+<link rel="stylesheet" href="/final.css?v=20261107-menu-admin-leds-v7">
+<script defer src="/app.js?v=20261107-menu-admin-leds-v7"></script>
+<script defer src="/identity-ui.js?v=20261107-menu-admin-leds-v7"></script>
+<script defer src="/component-art.js?v=20261107-menu-admin-leds-v7"></script>
+<script defer src="/final.js?v=20261107-menu-admin-leds-v7"></script>
+<script defer src="/admin-stage.js?v=20261107-menu-admin-leds-v7"></script>
 </head>
 <body data-admin-route="true">
 <div id="app">
@@ -28,12 +28,19 @@
     <div class="header-actions">
       <button type="button" class="nav-icon notification-bell" id="notification-button" aria-label="Notificações" title="Notificações"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></svg><span id="notification-count" class="notification-count" hidden>0</span></button>
       <button class="quiet-button profile-trigger" id="profile-button" type="button"><span class="avatar" id="header-avatar">P</span><span id="profile-name">Entrar</span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg></button>
-      <button class="header-admin" id="admin-button" type="button" title="Administração" aria-label="Abrir administração"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span id="admin-button-text">Admin</span></button>
+      <a href="/admin/" class="header-admin" id="admin-button" type="button" title="Administração" aria-label="Abrir administração"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span id="admin-button-text">Admin</span></a>
     </div>
   </div>
 </header>
 <div class="shell public-layout">
   <aside class="public-sidebar" id="public-sidebar" aria-label="Menu do inventário">
+    <div class="public-sidebar-head">
+      <div class="public-sidebar-head-top"><span class="public-sidebar-symbol" aria-hidden="true">✦</span>
+        <button type="button" id="public-nav-close" aria-label="Fechar menu">×</button></div>
+      <strong>Inventário PET</strong>
+      <span>Materiais e equipamentos</span>
+    </div>
+    <div class="public-sidebar-caption">ACESSO RÁPIDO</div>
     <nav class="public-nav">
       <button type="button" data-public-action="inventory" class="active" aria-current="page">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
@@ -43,11 +50,12 @@
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m12 2 9 5-9 5-9-5 9-5ZM3 7v10l9 5 9-5V7M12 12v10"/></svg>
         Meus empréstimos
       </button>
-      <button type="button" data-public-action="admin" class="manage-link">
+      <a href="/admin/" data-public-action="admin" class="manage-link">
         <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg>
         Admin
-      </button>
+      </a>
     </nav>
+    <div class="public-sidebar-footer"><span class="public-sidebar-footer-dot"></span><span>PET Educação <small>Inventário colaborativo</small></span></div>
   </aside>
   <main class="public-main">
 <div id="offline-alert" class="alert alert-error" hidden>Não foi possível carregar os materiais. <button id="retry-button" type="button">Tentar novamente</button></div>
