@@ -543,7 +543,7 @@ function openBulkVisibility(currentId){
     const result=materialPickerRows(model.all,model.selected,$("#bulk-search").value);
     visible=result.visible;$("#bulk-list").innerHTML=result.html;
     $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
-    $("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
+    $$("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);
       if(b.checked)model.selected.add(id);else model.selected.delete(id);
       $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
@@ -586,7 +586,7 @@ function openVariantLinker(currentId){
     const r=materialPickerRows(model.all,model.selected,$("#variant-search").value);
     visible=r.visible;$("#variant-list").innerHTML=r.html;
     $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
-    $("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
+    $$("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
       $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
     });
