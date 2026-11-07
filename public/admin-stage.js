@@ -617,14 +617,14 @@ function openVariantLinker(currentId){
     const r=materialPickerRows(model.all,model.selected,$("#variant-search").value,true);
     visible=r.visible;$("#variant-list").innerHTML=r.html;
     $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
-    $("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
+    $$("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
       $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
     });
-    $("[data-variant-photo]",$("#variant-list")).forEach(button=>button.onclick=()=>{
+    $$("[data-variant-photo]",$("#variant-list")).forEach(button=>button.onclick=()=>{
       $("#variant-list [data-variant-file='"+button.dataset.variantPhoto+"']")?.click();
     });
-    $("[data-variant-file]",$("#variant-list")).forEach(input=>input.onchange=async event=>{
+    $$("[data-variant-file]",$("#variant-list")).forEach(input=>input.onchange=async event=>{
       const file=event.target.files?.[0];if(!file)return;
       const id=Number(input.dataset.variantFile);
       const original=model.all.find(x=>x.id===id);
