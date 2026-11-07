@@ -70,6 +70,22 @@ jobs:
       # última versão não está ativada e isso interrompia os testes seguintes.
       - name: Conferir ilustrações publicadas
         run: node tests/live-art.mjs
+      - name: Conferir acesso direto à página independente do Admin
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://inventario-pet.pet-educacao.workers.dev";
+          const page=await fetch(root+"/admin/",{headers:{"cache-control":"no-cache"}});
+          const html=await page.text();
+          if(!page.ok||!html.includes('data-admin-route="true"')||!html.includes('id="admin-stage"')||!html.includes('Admin | Inventário PET Educação'))
+            throw Error("A rota independente /admin/ não foi publicada corretamente (HTTP "+page.status+").");
+          const api=await fetch(root+"/api/admin/state");
+          if(api.status!==401)throw Error("A API do Admin deve bloquear acesso anônimo.");
+          const scripts=await fetch(root+"/admin-stage.js");
+          const js=await scripts.text();
+          if(!scripts.ok||!js.includes("adminHistory")||!js.includes("openVariantLinker"))
+            throw Error("Interface administrativa nova não publicada.");
+          console.log("ADMIN INDEPENDENTE OK: rota, histórico, variações e API privada.");
+          NODE
       - name: Verificar acesso publico e bloqueios de seguranca
         run: |
           node --input-type=module <<'NODE'
