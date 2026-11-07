@@ -60,6 +60,8 @@ jobs:
         run: node tests/admin-navigation.test.mjs
       - name: Testar novo catálogo, desenhos e navegação sem acessar o banco remoto
         run: node tests/final-ui.test.mjs
+      - name: Testar fotos individuais e cores dos LEDs
+        run: node tests/led-colors.test.mjs
       - name: Auditar as 213 ilustrações antes de publicar
         run: node tests/component-art.test.mjs
       - name: Publicar site
