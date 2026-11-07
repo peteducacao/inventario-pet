@@ -14,11 +14,13 @@ const send=async(path,body=null,cookie="")=>{
   let data;
   try{data=await response.json();}
   catch{throw Error(path+" retornou status HTTP "+response.status+" sem JSON. Verifique CPU/limites do Cloudflare.");}
-  return {status:response.status,data,cookie:response.headers.get("set-cookie")?.split(";")[0]||""};
+  return {status:response.status,data,cookie:response.headers.get("set-cookie")?.split(";")[0]||"",setCookie:response.headers.get("set-cookie")||""};
 };
 if(!process.env.ADMIN_PASSWORD)throw Error("Senha administrativa ausente no ambiente de teste");
 const admin=await send("/api/login",{senha:process.env.ADMIN_PASSWORD});
 assert.equal(admin.status,200,"Login admin indisponível");
+assert.match(admin.setCookie,/^__Host_pet_session=[^;]+; Path=\/; Secure; HttpOnly; SameSite=Strict$/);
+assert.doesNotMatch(admin.setCookie,/Max-Age|Expires/i,"Sessão Admin não deve ter expiração persistente.");
 let profile=null;
 try{
   const signup=await send("/api/identity/register",{nome:"TESTE AUTOMATICO - excluir",email:newLogin+"@example.com",login:newLogin,senha:password});
