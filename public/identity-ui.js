@@ -83,7 +83,7 @@ function identityRegisterModal(first=false){
     const btn=$("#identity-register-submit");btn.disabled=true;btn.textContent="Criando conta…";
     try{
       const r=await api("/api/identity/register","POST",{nome:$("#reg-name").value,email:$("#reg-email").value.trim(),login:$("#reg-login").value,senha});
-      setIdentity(r.usuario);identityProfileModal();toast("Conta criada com sucesso!");
+      setIdentity(r.usuario);closeModal();toast("Conta criada com sucesso!");
     }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Criar conta";}
   };
   if(first)$("#reg-name")?.focus();
@@ -105,7 +105,7 @@ function identityUpgradeModal(){
     const btn=$("#identity-upgrade-form button[type=submit]");btn.disabled=true;
     try{
       const r=await api("/api/identity/upgrade","POST",{login:$("#upgrade-login").value,email:$("#upgrade-email").value.trim(),senha:$("#upgrade-password").value});
-      setIdentity(r.usuario);identityProfileModal();toast("Sua conta antiga foi atualizada!");
+      setIdentity(r.usuario);closeModal();toast("Sua conta antiga foi atualizada!");
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }
@@ -130,7 +130,7 @@ function identityChangePasswordModal(force=false){
     const btn=$("#identity-change-submit");btn.disabled=true;
     try{
       const r=await api("/api/identity/password","POST",{nova_senha:password,senha_atual:must?"":$("#identity-old-password").value});
-      setIdentity(r.usuario);identityProfileModal();toast("Senha atualizada com sucesso!");
+      setIdentity(r.usuario);closeModal();toast("Senha atualizada com sucesso!");
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }
@@ -191,7 +191,7 @@ function identityEmailModal(required=false){
     e.preventDefault();const btn=$("#identity-email-submit");btn.disabled=true;btn.textContent="Salvando…";
     try{
       const r=await api("/api/identity/email","POST",{email:$("#identity-email-value").value.trim()});
-      setIdentity(r.usuario);identityProfileModal();toast("E-mail atualizado com sucesso.");
+      setIdentity(r.usuario);closeModal();toast("E-mail atualizado com sucesso.");
     }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar e-mail";}
   };
 }
