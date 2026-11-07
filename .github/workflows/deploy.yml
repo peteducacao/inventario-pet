@@ -185,7 +185,7 @@ jobs:
             if(avail.disponiveis!==3)throw Error("Disponibilidade inconsistente");
             // Uma sessão administrativa não pode solicitar reservas em nome de um usuário.
             const account=await get("/api/identity/register",{method:"POST",body:JSON.stringify({
-              nome:"Visitante de teste",email:"e2e@example.com",login:"e2e_"+stamp.toString(36),senha:"TesteSeguroPET!"+stamp
+              nome:"Visitante de teste",email:"e2e-"+stamp+"@example.com",login:"e2e_"+stamp.toString(36),senha:"TesteSeguroPET!"+stamp
             })});
             userId=account.d.usuario?.id;
             const userCookie=account.r.headers.get("set-cookie")?.split(";")[0];
