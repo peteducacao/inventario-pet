@@ -5,7 +5,7 @@ const files=[
   {path:"/ajuda/ajuda.css",markers:["@media print","@page{size:A4",".help-main"]},
   {path:"/",markers:['href="/ajuda/" data-public-action="help"']},
   {path:"/admin/",markers:['href="/ajuda/" data-public-action="help"']},
-  {path:"/admin-stage.js",markers:['["ajuda","box","Ajuda"]','function adminHelp(root)','/ajuda/?embed=1','APAGAR TODAS AS RESERVAS']}
+  {path:"/admin-stage.js",markers:['["ajuda","box","Ajuda"]','function adminHelp(root)','/ajuda/?embed=1','APAGAR TODAS AS RESERVAS','data-rename-group','function adminRenameVariationGroup(']}
 ];
 for(const {path,markers} of files){
   let response=null,body="";
