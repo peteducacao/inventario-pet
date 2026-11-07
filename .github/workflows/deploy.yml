@@ -23,6 +23,8 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/loans-permissions.test.mjs
       - name: Testar fila Gmail e listagem somente de pendentes
         run: node --disable-warning=ExperimentalWarning tests/gmail.test.mjs
+      - name: Testar reorganização Robótica e Equipamentos no banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/catalog-categories.test.mjs
       - name: Testar central de Ajuda e impressão/PDF
         run: node tests/help.test.mjs
       - name: Testar limpeza e reset seguro das reservas em banco isolado
