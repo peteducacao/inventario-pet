@@ -348,12 +348,18 @@ function renderAdminCategories(target){
 }
 function editCategory(id){
   const cat=state.admin.categorias.find(x=>x.id===id);
-  openModal(cat?"Renomear categoria":"Nova categoria","Organize seus materiais por seção.",'<form class="modal-main" id="category-form">'+inputField("cat-name","Nome da categoria *",cat?.nome||"",{required:true,max:80})+'<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="cat-cancel">Cancelar</button><button type="submit" class="primary-button">Salvar categoria</button></div></form>');
+  openModal(cat?"Editar categoria":"Nova categoria","Defina o nome e quem poderá visualizar seus materiais.",
+    '<form class="modal-main" id="category-form">'+inputField("cat-name","Nome da categoria *",cat?.nome||"",{required:true,max:80})+
+    switchInput("cat-public","Exibir para todos",cat?Number(cat.visivel_visitante)!==0:true,"Desmarcado: a categoria e seus materiais só aparecem aos PETianes.")+
+    '<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="cat-cancel">Cancelar</button><button type="submit" class="primary-button">Salvar categoria</button></div></form>');
   $("#cat-cancel").onclick=adminModal;
-  $("#category-form").onsubmit=async e=>{e.preventDefault();try{
-    await api("/api/admin/category","POST",{acao:cat?"editar":"criar",id:cat?.id,nome:$("#cat-name").value});
-    await adminReload();adminModal();toast("Categoria salva!");
-  }catch(error){toast(error.message,true)}};
+  $("#category-form").onsubmit=async e=>{
+    e.preventDefault();
+    try{
+      await api("/api/admin/category","POST",{acao:cat?"editar":"criar",id:cat?.id,nome:$("#cat-name").value,visivel_visitante:$("#cat-public").checked});
+      await adminReload();adminModal();toast("Categoria salva!");
+    }catch(error){toast(error.message,true);}
+  };
 }
 async function deleteCategory(id){
   const cat=state.admin.categorias.find(x=>x.id===id);
