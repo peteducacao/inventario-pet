@@ -637,7 +637,7 @@ function adminItemEditor(id){
   };
   const baseCancel=$("#i-cancel");
   if(baseCancel)baseCancel.onclick=askDiscard;
-  form.addEventListener("submit",()=>{saved=true},false);
+  form.addEventListener("pet:item-saved",()=>{saved=true});
   const root=$("#modal-root");
   if(root){const close=root.querySelector("[data-close]");if(close)close.onclick=askDiscard;}
   function confirmOverEditor(){
