@@ -427,6 +427,8 @@ function openPhoto(id){
 $("#search").oninput=e=>{state.query=e.target.value;render()};
 $("#category-filters").addEventListener("click",e=>{const b=e.target.closest("[data-category]");if(!b)return;state.filter=b.dataset.category;render();});
 $("#category-sections").addEventListener("click",e=>{
+  const variants=e.target.closest("[data-open-variants]");
+  if(variants){if(typeof openVariantChoices==="function")openVariantChoices(variants.dataset.openVariants);return;}
   const photo=e.target.closest("[data-photo]");if(photo){openPhoto(Number(photo.dataset.photo));return;}
   const defect=e.target.closest("[data-defect]");if(defect){const x=$("#defect-"+defect.dataset.defect);if(x)x.hidden=!x.hidden;return;}
   const book=e.target.closest("[data-reserve-item]");if(book)(state.identity?.tag==="petiano"&&!state.identity?.precisa_criar_login&&!state.identity?.trocar_senha?memberWithdrawModal:reserveModal)(Number(book.dataset.reserveItem));
