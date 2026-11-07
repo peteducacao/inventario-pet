@@ -13,11 +13,12 @@ const extra={...one,id:4,categoria_id:2,nome:"Tablet de uso interno",visivel_vis
 const alkalineNormal={...one,id:5,nome:"Alcalina 1.5V Pilha normal",grupo_variacoes:"Alcalina",quantidade:25};
 const alkalinePalito={...one,id:6,nome:"Alcalina 1.5V Pilha Palito",grupo_variacoes:"Alcalina",quantidade:4};
 const alkalineNine={...one,id:7,nome:"Alcalina 9V",grupo_variacoes:"Alcalina",quantidade:31};
-const categories=[{id:1,nome:"Eletrônica",visivel_visitante:1,arquivada:0,ordem:0},
-  {id:2,nome:"Equipamentos",visivel_visitante:0,arquivada:0,ordem:1}];
-const colors=[{id:20,cor:"Azul",hexadecimal:"#2A69D6",quantidade:3,visivel_visitante:1},
-  {id:21,cor:"Preto",hexadecimal:"#24272C",quantidade:2,visivel_visitante:0}];
-const visitorCatalog={categorias:categories.slice(0,1),componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine],demonstracao:false};
+const categories=[{id:1,nome:"Eletrônica",visivel_visitante:1,arquivada:0,ordem:0,permitir_emprestimos:1},
+  {id:2,nome:"Equipamentos",visivel_visitante:0,arquivada:0,ordem:1,permitir_emprestimos:1},
+  {id:3,nome:"Filamentos",visivel_visitante:1,arquivada:0,ordem:2,permitir_emprestimos:0}];
+const colors=[{id:20,cor:"Azul",hexadecimal:"#2A69D6",quantidade:3,visivel_visitante:1,permitir_emprestimos:0,componente_id:200,em_uso:0,com_defeito:0,categoria_id:3,categoria_permite:0},
+  {id:21,cor:"Preto",hexadecimal:"#24272C",quantidade:2,visivel_visitante:0,permitir_emprestimos:0,componente_id:201,em_uso:0,com_defeito:0,categoria_id:3,categoria_permite:0}];
+const visitorCatalog={categorias:[categories[0],categories[2]],componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine],demonstracao:false};
 const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine,extra],
   filamentos:colors,reservas:[{id:9,componente_id:1,componente_nome:"Resistor 100Ω",
     nome_solicitante:"Teste",quantidade:1,status:"pendente",data_inicio:"2026-12-01",data_devolucao:"2026-12-03"}],
@@ -109,6 +110,9 @@ assert.ok(d.querySelector("#public-sidebar").textContent.includes("Meus emprést
 assert.equal(d.querySelectorAll("[data-public-action='reservations']").length,0,"Reservas redundantes ainda aparecem no menu.");
 assert.equal(d.querySelectorAll(".grouped-card").length,2,"Resistores e Alcalinas devem ter cards de família.");
 assert.equal(d.querySelectorAll(".catalog-card").length,4,"Estoque agrupado não deveria gerar cards repetidos.");
+assert.equal(d.querySelectorAll(".filament-public-card").length,1,"Filamentos devem continuar na grade do catálogo.");
+assert.match(d.querySelector(".filament-public-card").textContent,/Somente consulta/,"Cor bloqueada deve ficar visível, sem poder reservar.");
+assert.equal(d.querySelector(".filament-public-card [data-reserve-item]"),null,"Filamento bloqueado não pode ter reserva ativa.");
 assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").textContent,/Resistores/);
 assert.equal(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector("h3").textContent,"Resistores","O card deve mostrar só a família.");
 assert.ok(d.querySelector('[data-open-variants="resistores"]'),"O grupo deve abrir a seleção.");
@@ -266,11 +270,16 @@ assert.equal(adminUI.templateSaves.length,1,"Salvar modelo deve atualizar a API 
 assert.equal(adminUI.templateSaves[0].assunto,"Novo aviso do {material}");
 await adminClick('[data-admin-tab="filamentos"]');
 assert.match(ad.querySelector("#admin-content").textContent,/Preto/,"Admin não vê filamento restrito.");
+assert.equal(ad.querySelectorAll("[data-filament-loans]").length,2,"Cada cor deve ter seu botão individual de empréstimo.");
 await adminClick('[data-filament-edit="21"]');
 assert.equal(ad.querySelector("#filament-public").checked,false,"Filamento restrito ficou público.");
 await adminClick("#filament-cancel");
 await adminClick('[data-admin-tab="categorias"]');
 assert.match(ad.querySelector("#admin-content").textContent,/Só PETianes/);
+assert.equal(ad.querySelectorAll("[data-cat-loans]").length,3,"Cada categoria, inclusive Filamentos, deve ter um controle em lote.");
+assert.equal(ad.querySelector('[data-cat-loans="3"]').textContent,"Liberar todos");
+assert.doesNotMatch(ad.querySelector("#admin-content").textContent,/Categorias excluídas/,"Lista de categorias excluídas não deve aparecer.");
+assert.ok(ad.querySelector("#v2-category-backup"),"Botão para localizar a restauração do JSON deve aparecer nas categorias.");
 await adminClick('[data-cat-edit="2"]');
 assert.equal(ad.querySelector("#cat-public").checked,false,"Categoria reservada deveria estar restrita.");
 await adminClick("#cat-cancel");
