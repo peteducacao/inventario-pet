@@ -220,16 +220,25 @@ function quantityCell(name,num,clazz=""){
 function adminMaterialRow(x){
   const available=stock(x),isHidden=isArchived(x);
   const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
+  const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
+  const enabled=Number(x.permitir_emprestimos)!==0&&Number(cat?.permitir_emprestimos)!==0;
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
-    '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small></div>'+
+    '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
+    '<small class="loan-indicator '+(enabled?"enabled":"disabled")+'">'+(enabled?"Reservas liberadas":"Somente consulta")+'</small></div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
     '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
-    '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
+    '<div class="material-actions"><button type="button" class="square-action loan-permission-action '+(Number(x.permitir_emprestimos)!==0?"enabled":"")+'" title="'+(Number(x.permitir_emprestimos)!==0?"Bloquear reservas deste material":"Liberar reservas deste material")+'" aria-label="Alternar reservas deste material" data-item-loans="'+x.id+'">'+(Number(x.permitir_emprestimos)!==0?"✓":"×")+'</button><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
     '<button class="square-action" type="button" title="Editar" aria-label="Editar" data-item-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
     '<button class="square-action '+(isHidden?"":"danger")+'" type="button" title="'+(isHidden?"Restaurar":"Arquivar")+'" data-item-archive="'+x.id+'">'+iconSvg(isHidden?"back":"trash")+'</button></div></div>';
 }
 function wireMaterialActions(root){
+  $$("[data-item-loans]",root).forEach(b=>b.onclick=async()=>{
+    const x=(state.admin.componentes||[]).find(x=>x.id===Number(b.dataset.itemLoans));if(!x)return;
+    const enabled=Number(x.permitir_emprestimos)===0;
+    try{await api("/api/admin/item/loans","POST",{id:x.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Empréstimo liberado para este material.":"Empréstimo bloqueado para este material.");}
+    catch(error){toast(error.message,true);}
+  });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
   $$("[data-item-archive]",root).forEach(b=>b.onclick=()=>adminArchiveItem(Number(b.dataset.itemArchive)));
@@ -481,6 +490,7 @@ function adminCategories(root){
   const cats=(state.admin.categorias||[]).filter(x=>!x.arquivada);
   const archived=(state.admin.categorias||[]).filter(x=>x.arquivada);
   const itemCounts=cat=>{
+    if(cat.nome==="Filamentos")return (state.admin.filamentos||[]).length+" cores cadastradas";
     const items=state.admin.componentes.filter(x=>x.categoria_id===cat.id);
     const active=items.filter(x=>!isArchived(x)).length;
     return active+' ativos'+(items.length-active?' · '+(items.length-active)+' arquivados':'');
@@ -491,6 +501,7 @@ function adminCategories(root){
     '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
     '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
     '<small class="tag '+(Number(cat.visivel_visitante)===0?'pending':'')+'">'+(Number(cat.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
+    '<button type="button" class="outline-button small-button category-loan-toggle '+(Number(cat.permitir_emprestimos)===0?"blocked":"allowed")+'" data-cat-loans="'+cat.id+'">'+(Number(cat.permitir_emprestimos)===0?"Liberar todos":"Bloquear todos")+'</button>'+
     '<div class="actions"><button type="button" class="square-action" data-cat-up="'+cat.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
     '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
     '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
@@ -499,6 +510,13 @@ function adminCategories(root){
       '<div class="category-row archived"><strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small><button class="outline-button small-button" type="button" data-cat-restore="'+cat.id+'">Restaurar categoria</button></div>').join("")+'</div></details>':'')+
     '</section>';
   $("#v2-new-category").onclick=()=>editCategory();
+  $$("[data-cat-loans]",root).forEach(b=>b.onclick=async()=>{
+    const cat=state.admin.categorias.find(c=>Number(c.id)===Number(b.dataset.catLoans));if(!cat)return;
+    const enabled=Number(cat.permitir_emprestimos)===0;
+    if(!await niceModalConfirm(enabled?"Liberar categoria inteira?":"Bloquear categoria inteira?",(enabled?"Todos os materiais":"Todos os materiais")+" de "+cat.nome+" terão reservas e retiradas "+(enabled?"liberadas":"bloqueadas")+". As reservas em andamento serão preservadas.",enabled?"Liberar todos":"Bloquear todos",!enabled))return;
+    try{await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Categoria e todos os itens liberados.":"Categoria e todos os itens bloqueados.");}
+    catch(e){toast(e.message,true);}
+  });
   $$("[data-cat-up]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
   $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
   $$("[data-cat-edit]",root).forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
