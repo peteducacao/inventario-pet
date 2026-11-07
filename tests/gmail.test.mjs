@@ -17,7 +17,7 @@ class Statement {
 const DB={prepare:sql=>new Statement(sql),async batch(arr){sqlite.exec("BEGIN");try{const r=[];for(const s of arr)r.push(await s.run());sqlite.exec("COMMIT");return r;}catch(e){sqlite.exec("ROLLBACK");throw e;}}};
 const token="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const env={DB,MAIL_BRIDGE_TOKEN:token};
-const item=sqlite.prepare("SELECT id FROM componentes LIMIT 1").get();
+const item=sqlite.prepare("SELECT id FROM componentes WHERE quantidade-em_uso-com_defeito>=1 LIMIT 1").get();
 assert.ok(item);
 const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const dayAdd=d=>{const z=new Date(today+"T12:00:00Z");z.setUTCDate(z.getUTCDate()+d);return z.toISOString().slice(0,10);};
