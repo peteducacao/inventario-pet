@@ -217,11 +217,19 @@ async function adminHistory(root){
 function quantityCell(name,num,clazz=""){
   return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
 }
-function roleLoanToggle(kind,id,profile,enabled,parentEnabled=true){
-  const isPet=profile==="petianos",name=isPet?"Retirada para PETianes":"Retirada para visitantes";
-  const status=enabled?(parentEnabled?"Ativada":"Categoria bloqueada"):"Desativada";
-  return '<button type="button" class="role-loan-toggle '+(enabled&&parentEnabled?'is-on':'is-off')+'" data-'+kind+'-role="'+profile+'" data-'+kind+'-loan-id="'+Number(id)+'" aria-pressed="'+(enabled?'true':'false')+'" title="'+attr(name+': '+status)+'">'+
-    '<span>'+name+'</span><strong>'+status+'</strong></button>';
+function audienceValue(pet,visitor){
+  return pet&&visitor?"todos":pet?"petianos":visitor?"visitantes":"ninguem";
+}
+function audiencePayload(value){
+  return {perfil:"combinado",permitir_petianos:value==="todos"||value==="petianos",permitir_visitantes:value==="todos"||value==="visitantes"};
+}
+function loanAudienceSelect(kind,id,pet,visitor){
+  const selected=audienceValue(pet,visitor);
+  const options=[["ninguem","Ninguém"],["petianos","PETianes"],["visitantes","Visitantes"],["todos","Todos"]];
+  return '<label class="loan-audience-control"><span>Habilitar empréstimo para</span>'+
+    '<select class="loan-audience-select" data-loan-audience="'+kind+'" data-loan-id="'+Number(id)+'" aria-label="Habilitar empréstimo para">'+
+    options.map(([value,label])=>'<option value="'+value+'"'+(value===selected?' selected':'')+'>'+label+'</option>').join("")+
+    '</select></label>';
 }
 function adminMaterialRow(x){
   const available=stock(x),isHidden=isArchived(x);
@@ -230,10 +238,8 @@ function adminMaterialRow(x){
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
-    '<div class="role-loan-controls">'+
-      roleLoanToggle("item",x.id,"petianos",Number(x.permitir_petianos)===1,Number(cat?.permitir_petianos)===1)+
-      roleLoanToggle("item",x.id,"visitantes",Number(x.permitir_visitantes)===1,Number(cat?.permitir_visitantes)===1)+
-    '</div></div>'+
+    loanAudienceSelect("item",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
+    (Number(cat?.permitir_petianos)!==1||Number(cat?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A liberação também depende da categoria</small>':'')+'</div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
     '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
     '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
@@ -241,16 +247,15 @@ function adminMaterialRow(x){
     '<button class="square-action '+(isHidden?"":"danger")+'" type="button" title="'+(isHidden?"Restaurar":"Arquivar")+'" data-item-archive="'+x.id+'">'+iconSvg(isHidden?"back":"trash")+'</button></div></div>';
 }
 function wireMaterialActions(root){
-  $$("[data-item-role]",root).forEach(b=>b.onclick=async()=>{
-    const x=(state.admin.componentes||[]).find(x=>x.id===Number(b.dataset.itemLoanId));
-    if(!x)return;
-    const profile=b.dataset.itemRole;
-    const enabled=Number(x[profile==="petianos"?"permitir_petianos":"permitir_visitantes"])!==1;
+  $$('[data-loan-audience="item"]',root).forEach(input=>input.onchange=async()=>{
+    const previous=(state.admin.componentes||[]).find(x=>Number(x.id)===Number(input.dataset.loanId));
+    if(!previous)return;
+    const original=audienceValue(Number(previous.permitir_petianos)===1,Number(previous.permitir_visitantes)===1);
+    input.disabled=true;
     try{
-      await api("/api/admin/item/loans","POST",{id:x.id,perfil:profile,permitir:enabled});
-      await adminReload();adminBuild();
-      toast((profile==="petianos"?"PETianes":"Visitantes")+": retirada "+(enabled?"liberada":"bloqueada")+" neste material.");
-    }catch(error){toast(error.message,true);}
+      await api("/api/admin/item/loans","POST",{id:previous.id,...audiencePayload(input.value)});
+      await adminReload();adminBuild();toast("Permissão de empréstimo do material atualizada.");
+    }catch(error){input.value=original;input.disabled=false;toast(error.message,true);}
   });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
@@ -513,10 +518,7 @@ function adminCategories(root){
     '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
     '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
     '<small class="tag '+(Number(cat.visivel_visitante)===0?'pending':'')+'">'+(Number(cat.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
-    '<div class="role-loan-controls category-role-controls">'+
-      roleLoanToggle("cat",cat.id,"petianos",Number(cat.permitir_petianos)===1)+
-      roleLoanToggle("cat",cat.id,"visitantes",Number(cat.permitir_visitantes)===1)+
-    '</div>'+
+    loanAudienceSelect("cat",cat.id,Number(cat.permitir_petianos)===1,Number(cat.permitir_visitantes)===1)+
     '<div class="actions"><button type="button" class="square-action" data-cat-up="'+cat.id+'" '+(i===0?"disabled":"")+' aria-label="Subir">'+iconSvg("up")+'</button>'+
     '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
     '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
@@ -527,17 +529,18 @@ function adminCategories(root){
     selectAdminTab("configuracoes");
     const button=$("#v2-backup-import");if(button){button.scrollIntoView({behavior:"smooth",block:"center"});button.focus();}
   };
-  $$("[data-cat-role]",root).forEach(b=>b.onclick=async()=>{
-    const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(b.dataset.catLoanId));
-    if(!cat)return;
-    const profile=b.dataset.catRole,pet=profile==="petianos",label=pet?"PETianes":"visitantes";
-    const enabled=Number(cat[pet?"permitir_petianos":"permitir_visitantes"])!==1;
-    if(!await niceModalConfirm((enabled?"Liberar":"Bloquear")+" retirada para "+label+"?",(enabled?"Liberar":"Bloquear")+" as retiradas para "+label+" em todos os materiais de "+cat.nome+"? A permissão do outro perfil continuará igual. As solicitações em andamento serão preservadas.",enabled?"Liberar todos":"Bloquear todos",!enabled))return;
+  $$('[data-loan-audience="cat"]',root).forEach(input=>input.onchange=async()=>{
+    const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(input.dataset.loanId));if(!cat)return;
+    const previous=audienceValue(Number(cat.permitir_petianos)===1,Number(cat.permitir_visitantes)===1);
+    const selected=input.value,label=input.options[input.selectedIndex].text;
+    if(!await niceModalConfirm("Aplicar à categoria inteira?","Habilitar empréstimos de "+cat.nome+" para "+label+". A escolha será aplicada a todos os materiais desta categoria, sem alterar empréstimos existentes.","Aplicar")){
+      input.value=previous;return;
+    }
+    input.disabled=true;
     try{
-      await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,perfil:profile,permitir:enabled});
-      await adminReload();adminBuild();
-      toast("Retirada para "+label+" "+(enabled?"liberada":"bloqueada")+" em toda a categoria.");
-    }catch(error){toast(error.message,true);}
+      await api("/api/admin/category","POST",{acao:"emprestimos",id:cat.id,...audiencePayload(selected)});
+      await adminReload();adminBuild();toast("Permissão aplicada a toda a categoria.");
+    }catch(error){input.value=previous;input.disabled=false;toast(error.message,true);}
   });
   $$("[data-cat-up]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catUp),-1));
   $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
@@ -601,20 +604,20 @@ function adminFilaments(root){
     '<div class="filament-admin-card">'+
       '<span class="filament-color-dot" style="background:'+attr(x.hexadecimal)+'" aria-hidden="true"></span>'+
       '<div class="filament-admin-label"><strong>'+esc(x.cor)+'</strong><small>Estoque: <b>'+Number(x.quantidade)+'</b> · Em uso: '+Number(x.em_uso||0)+' · Disponíveis: '+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0))+'</small><small>'+(Number(x.visivel_visitante)===0?'Só PETianes':'Todos')+'</small>'+
-      '<div class="role-loan-controls">'+roleLoanToggle("filament",x.id,"petianos",Number(x.permitir_petianos)===1,Number(category?.permitir_petianos)===1)+roleLoanToggle("filament",x.id,"visitantes",Number(x.permitir_visitantes)===1,Number(category?.permitir_visitantes)===1)+'</div></div>'+
+      loanAudienceSelect("filament",x.id,Number(x.permitir_petianos)===1,Number(x.permitir_visitantes)===1)+
+      (Number(category?.permitir_petianos)!==1||Number(category?.permitir_visitantes)!==1?'<small class="loan-audience-hint">A categoria Filamentos também precisa permitir</small>':'')+'</div>'+
       '<div class="filament-admin-buttons"><button type="button" class="square-action" aria-label="Editar '+attr(x.cor)+'" title="Editar" data-filament-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
       '<button type="button" class="square-action danger" aria-label="Excluir '+attr(x.cor)+'" title="Excluir" data-filament-delete="'+x.id+'">'+iconSvg("trash")+'</button></div></div>').join(""):
       '<div class="empty-state">Nenhuma cor cadastrada. Adicione a primeira cor de filamento.</div>')+'</div></section>';
   $("#filament-add").onclick=()=>filamentEditor();
-  $$("[data-filament-role]",root).forEach(b=>b.onclick=async()=>{
-    const x=list.find(x=>x.id===Number(b.dataset.filamentLoanId));if(!x)return;
-    const profile=b.dataset.filamentRole,label=profile==="petianos"?"PETianes":"visitantes";
-    const enabled=Number(x[profile==="petianos"?"permitir_petianos":"permitir_visitantes"])!==1;
+  $$('[data-loan-audience="filament"]',root).forEach(input=>input.onchange=async()=>{
+    const color=list.find(x=>Number(x.id)===Number(input.dataset.loanId));if(!color)return;
+    const previous=audienceValue(Number(color.permitir_petianos)===1,Number(color.permitir_visitantes)===1);
+    input.disabled=true;
     try{
-      await api("/api/admin/filaments","POST",{acao:"emprestimos",id:x.id,perfil:profile,permitir:enabled});
-      await adminReload();adminBuild();
-      toast("Retirada para "+label+" "+(enabled?"liberada":"bloqueada")+" nesta cor. Verifique também a permissão da categoria Filamentos.");
-    }catch(error){toast(error.message,true);}
+      await api("/api/admin/filaments","POST",{acao:"emprestimos",id:color.id,...audiencePayload(input.value)});
+      await adminReload();adminBuild();toast("Permissão desta cor atualizada.");
+    }catch(error){input.value=previous;input.disabled=false;toast(error.message,true);}
   });
   $$("[data-filament-edit]",root).forEach(b=>b.onclick=()=>filamentEditor(Number(b.dataset.filamentEdit)));
   $$("[data-filament-delete]",root).forEach(b=>b.onclick=()=>deleteFilament(Number(b.dataset.filamentDelete)));
