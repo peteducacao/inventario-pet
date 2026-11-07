@@ -536,17 +536,17 @@ await adminClick("#admin-links-hub");
 await adminClick('[data-link-open="Arduino"]');
 assert.equal(ad.querySelector("#variant-selected-count").textContent,"0 materiais selecionados");
 await adminClick("#variant-similar");
-assert.equal(ad.querySelector("#variant-selected-count").textContent,"2 materiais selecionados");
-assert.match(ad.querySelector("#variant-link-selected").textContent,/\(2\)/);
-assert.deepEqual(Array.from(ad.querySelectorAll("#variant-available-list input:checked")).map(x=>Number(x.dataset.variantSelect)),[110,109],
+assert.equal(ad.querySelector("#variant-selected-count").textContent,"3 materiais selecionados");
+assert.match(ad.querySelector("#variant-link-selected").textContent,/\(3\)/);
+assert.deepEqual(Array.from(ad.querySelectorAll("#variant-available-list input:checked")).map(x=>Number(x.dataset.variantSelect)),[110,109,3],
   "Semelhantes selecionados devem subir e ficar ordenados por nome.");
 const linkingSearch=ad.querySelector("#variant-search");
 linkingSearch.value="Resistor";linkingSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));await wait(15);
-assert.deepEqual(Array.from(ad.querySelectorAll("#variant-available-list input:checked")).map(x=>Number(x.dataset.variantSelect)),[110,109],
+assert.deepEqual(Array.from(ad.querySelectorAll("#variant-available-list input:checked")).map(x=>Number(x.dataset.variantSelect)),[110,109,3],
   "Busca não pode ocultar candidatos já selecionados.");
 ad.querySelector('[data-variant-select="110"]').click();await wait(15);
-assert.equal(ad.querySelector("#variant-selected-count").textContent,"1 material selecionado");
-assert.equal(ad.querySelector("#variant-available-list input:checked").dataset.variantSelect,"109");
+assert.equal(ad.querySelector("#variant-selected-count").textContent,"2 materiais selecionados");
+assert.deepEqual(Array.from(ad.querySelectorAll("#variant-available-list input:checked")).map(x=>Number(x.dataset.variantSelect)),[109,3]);
 await adminClick("#variant-clear");
 assert.equal(ad.querySelector("#variant-selected-count").textContent,"0 materiais selecionados");
 assert.equal(ad.querySelector("#variant-link-selected").disabled,true);
