@@ -217,27 +217,40 @@ async function adminHistory(root){
 function quantityCell(name,num,clazz=""){
   return '<div class="admin-quantity '+clazz+'"><small>'+name+'</small><strong>'+num+'</strong></div>';
 }
+function roleLoanToggle(kind,id,profile,enabled,parentEnabled=true){
+  const isPet=profile==="petianos",name=isPet?"Retirada para PETianes":"Retirada para visitantes";
+  const status=enabled?(parentEnabled?"Ativada":"Categoria bloqueada"):"Desativada";
+  return '<button type="button" class="role-loan-toggle '+(enabled&&parentEnabled?'is-on':'is-off')+'" data-'+kind+'-role="'+profile+'" data-'+kind+'-loan-id="'+Number(id)+'" aria-pressed="'+(enabled?'true':'false')+'" title="'+attr(name+': '+status)+'">'+
+    '<span>'+name+'</span><strong>'+status+'</strong></button>';
+}
 function adminMaterialRow(x){
   const available=stock(x),isHidden=isArchived(x);
   const status=isHidden?"Arquivado":available?"Disponível":"Sem estoque";
   const cat=(state.admin.categorias||[]).find(c=>Number(c.id)===Number(x.categoria_id));
-  const enabled=Number(x.permitir_emprestimos)!==0&&Number(cat?.permitir_emprestimos)!==0;
   return '<div class="material-row">'+thumb(x)+
     '<div class="material-name"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+(x.patrimonio?" · "+esc(x.patrimonio):"")+(Number(x.visivel_visitante)===0?' · Só PETianes':'')+(x.grupo_variacoes?' · Grupo: '+esc(x.grupo_variacoes):'')+'</small>'+
     '<small class="mobile-meta" style="display:none">Total: '+x.quantidade+' · Em uso: '+x.em_uso+' · Defeito: '+x.com_defeito+'</small>'+
-    '<small class="loan-indicator '+(enabled?"enabled":"disabled")+'">'+(enabled?"Reservas liberadas":"Somente consulta")+'</small></div>'+
+    '<div class="role-loan-controls">'+
+      roleLoanToggle("item",x.id,"petianos",Number(x.permitir_petianos)===1,Number(cat?.permitir_petianos)===1)+
+      roleLoanToggle("item",x.id,"visitantes",Number(x.permitir_visitantes)===1,Number(cat?.permitir_visitantes)===1)+
+    '</div></div>'+
     quantityCell("Quantidade",Number(x.quantidade))+quantityCell("Em uso",Number(x.em_uso),"used")+quantityCell("Defeito",Number(x.com_defeito),"broken")+
     '<span class="material-status '+(isHidden||!available?"empty":"")+'">'+status+'</span>'+
-    '<div class="material-actions"><button type="button" class="square-action loan-permission-action '+(Number(x.permitir_emprestimos)!==0?"enabled":"")+'" title="'+(Number(x.permitir_emprestimos)!==0?"Bloquear reservas deste material":"Liberar reservas deste material")+'" aria-label="Alternar reservas deste material" data-item-loans="'+x.id+'">'+(Number(x.permitir_emprestimos)!==0?"✓":"×")+'</button><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
+    '<div class="material-actions"><button class="square-action" type="button" title="Ver detalhes" aria-label="Ver detalhes" data-item-view="'+x.id+'">'+iconSvg("eye")+'</button>'+
     '<button class="square-action" type="button" title="Editar" aria-label="Editar" data-item-edit="'+x.id+'">'+iconSvg("edit")+'</button>'+
     '<button class="square-action '+(isHidden?"":"danger")+'" type="button" title="'+(isHidden?"Restaurar":"Arquivar")+'" data-item-archive="'+x.id+'">'+iconSvg(isHidden?"back":"trash")+'</button></div></div>';
 }
 function wireMaterialActions(root){
-  $$("[data-item-loans]",root).forEach(b=>b.onclick=async()=>{
-    const x=(state.admin.componentes||[]).find(x=>x.id===Number(b.dataset.itemLoans));if(!x)return;
-    const enabled=Number(x.permitir_emprestimos)===0;
-    try{await api("/api/admin/item/loans","POST",{id:x.id,permitir_emprestimos:enabled});await adminReload();adminBuild();toast(enabled?"Empréstimo liberado para este material.":"Empréstimo bloqueado para este material.");}
-    catch(error){toast(error.message,true);}
+  $$("[data-item-role]",root).forEach(b=>b.onclick=async()=>{
+    const x=(state.admin.componentes||[]).find(x=>x.id===Number(b.dataset.itemLoanId));
+    if(!x)return;
+    const profile=b.dataset.itemRole;
+    const enabled=Number(x[profile==="petianos"?"permitir_petianos":"permitir_visitantes"])!==1;
+    try{
+      await api("/api/admin/item/loans","POST",{id:x.id,perfil:profile,permitir:enabled});
+      await adminReload();adminBuild();
+      toast((profile==="petianos"?"PETianes":"Visitantes")+": retirada "+(enabled?"liberada":"bloqueada")+" neste material.");
+    }catch(error){toast(error.message,true);}
   });
   $$("[data-item-view]",root).forEach(b=>b.onclick=()=>adminViewMaterial(Number(b.dataset.itemView)));
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
