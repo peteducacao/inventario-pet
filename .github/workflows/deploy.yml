@@ -15,6 +15,10 @@ jobs:
         with:
           node-version: "22"
       - run: npm install --no-save wrangler@4 jsdom@26
+      - name: Testar fusão dos 26 lotes de Experimentos sem afetar banco remoto
+        run: node --disable-warning=ExperimentalWarning tests/experiments.test.mjs
+      - name: Testar backup completo e restauração no banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/backup-v2.test.mjs
       - name: Aplicar tabelas ao D1
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
@@ -48,6 +52,8 @@ jobs:
           npx wrangler d1 execute DB --remote --command "SELECT status,COUNT(*) AS total, SUM(CASE WHEN status='devolvida' AND devolvido_em IS NOT NULL AND devolvido_em < strftime('%Y-%m-%dT%H:%M:%fZ','now','-1 minute') THEN 1 ELSE 0 END) AS expiradas FROM reservas GROUP BY status"
       - name: Testar IDs, tags e retiradas no banco local
         run: node --disable-warning=ExperimentalWarning tests/identity.test.mjs
+      - name: Testar permissões, histórico, grupos e exclusão no banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/access.test.mjs
       - name: Testar abas e login no navegador simulado
         run: node tests/admin-navigation.test.mjs
       - name: Testar novo catálogo, desenhos e navegação sem acessar o banco remoto
@@ -64,6 +70,22 @@ jobs:
       # última versão não está ativada e isso interrompia os testes seguintes.
       - name: Conferir ilustrações publicadas
         run: node tests/live-art.mjs
+      - name: Conferir acesso direto à página independente do Admin
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://inventario-pet.pet-educacao.workers.dev";
+          const page=await fetch(root+"/admin/",{headers:{"cache-control":"no-cache"}});
+          const html=await page.text();
+          if(!page.ok||!html.includes('data-admin-route="true"')||!html.includes('id="admin-stage"')||!html.includes('Admin | Inventário PET Educação'))
+            throw Error("A rota independente /admin/ não foi publicada corretamente (HTTP "+page.status+").");
+          const api=await fetch(root+"/api/admin/state");
+          if(api.status!==401)throw Error("A API do Admin deve bloquear acesso anônimo.");
+          const scripts=await fetch(root+"/admin-stage.js");
+          const js=await scripts.text();
+          if(!scripts.ok||!js.includes("adminHistory")||!js.includes("openVariantLinker"))
+            throw Error("Interface administrativa nova não publicada.");
+          console.log("ADMIN INDEPENDENTE OK: rota, histórico, variações e API privada.");
+          NODE
       - name: Verificar acesso publico e bloqueios de seguranca
         run: |
           node --input-type=module <<'NODE'

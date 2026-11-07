@@ -31,6 +31,7 @@ w.fetch=async (uri,init={})=>{
   const url=new URL(uri,w.location.href), path=url.pathname;
   let status=200,value={};
   if(path==="/api/catalog")value={...data,demonstracao:true};
+   else if(path==="/api/filaments")value={ok:true,filamentos:[]};
   else if(path==="/api/admin/state")authenticated?value=adminData:(status=401,value={error:"Entre no painel administrativo."});
   else if(path==="/api/login"){authenticated=true;value={ok:true}}
   else if(path==="/api/identity/me")value={ok:true,usuario:identityAuthenticated?{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:true,trocar_senha:mustChange,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}:null};
@@ -53,7 +54,7 @@ const click=async el=>{assert.ok(el,"Controle não encontrado");el.click();await
 // compilamos ambos no mesmo contexto para reproduzir esse comportamento.
 // O teste do painel legado usa substitutos de imagens sem acessar a rede.
 // A interface real, com os helpers reais, é verificada em final-ui.test.mjs.
-w.eval(app+"\n"+identityUi+"\nfunction itemImage(x){return x.imagem||'/img/reference-board.svg';} function defaultImage(){return '/img/reference-board.svg';}\nwindow.__identity_test_state=state;");
+w.eval("const UI={filaments:[]};\n"+app+"\n"+identityUi+"\nfunction itemImage(x){return x.imagem||'/img/reference-board.svg';} function defaultImage(){return '/img/reference-board.svg';}\nwindow.__identity_test_state=state;");
 await tick();
 assert.ok(d.querySelector(".item-card"),"Catálogo não abriu");
 await click(d.querySelector("#admin-button"));

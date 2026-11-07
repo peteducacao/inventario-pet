@@ -4,6 +4,11 @@ const HEADERS = {"content-type":"application/json; charset=utf-8","cache-control
 const respond = (data,status=200,extra={}) => new Response(JSON.stringify(data),{status,headers:{...HEADERS,...extra}});
 const error = (message,status=400) => respond({error:message},status);
 const now = () => new Date().toISOString();
+async function identityAudit(db,action,type,id,description,actor="Admin"){
+ try{await db.prepare("INSERT INTO historico_admin(criado_em,responsavel,acao,tipo,registro_id,descricao) VALUES(?,?,?,?,?,?)")
+   .bind(now(),clean(actor,100),clean(action,60),clean(type,50),Number.isInteger(Number(id))?Number(id):null,clean(description,1000)).run();}
+ catch(e){console.error("Não foi possível gravar histórico",String(e).slice(0,160));}
+}
 const clean = (v,max=120)=>String(v??"").trim().slice(0,max);
 const sha256 = async value => [...new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(value)))].map(x=>x.toString(16).padStart(2,"0")).join("");
 const randomHex = size => [...crypto.getRandomValues(new Uint8Array(size))].map(x=>x.toString(16).padStart(2,"0")).join("").toUpperCase();
@@ -50,7 +55,7 @@ async function rate(db,req,tag,max,windowH=24) {
 const ITERATIONS=100000;
 const username = value => clean(value,30).toLowerCase();
 const validUsername = value => /^[a-z0-9][a-z0-9._-]{3,23}$/.test(value);
-// Senhas podem ter qualquer tamanho de 1 até 2048 caracteres. Limite técnico contra abuso.
+// Sem exigência de número mínimo de dígitos. Limite técnico amplo para prevenir abuso de memória.
 const MAX_PASSWORD_LENGTH=2048;
 const validPassword = value => typeof value==="string" && value.length>=1 && value.length<=MAX_PASSWORD_LENGTH;
 const secureEquals = (a,b) => {
@@ -76,7 +81,7 @@ const maybeDuplicate=e=>String(e?.message||e).includes("UNIQUE")||String(e?.mess
 async function register(req,env){
   const db=env.DB,existing=await loggedIn(req,db);
   if(existing)return respond({ok:true,usuario:publicUser(existing),ja_cadastrado:true});
-  const b=await bodyJson(req,4000),nome=clean(b.nome,80),login=username(b.login),password=b.senha;
+  const b=await bodyJson(req,12000),nome=clean(b.nome,80),login=username(b.login),password=b.senha;
   if(nome.length<2)return error("Informe seu nome.");
   if(!validUsername(login))return error("O login deve ter de 4 a 24 caracteres: letras sem acentos, números, ponto, traço ou _.");
   if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
@@ -102,7 +107,7 @@ async function register(req,env){
   return respond({ok:true,usuario:publicUser(user)},201,{"set-cookie":session});
 }
 async function loginUser(req,env){
-  const db=env.DB,b=await bodyJson(req,4000),login=username(b.login);
+  const db=env.DB,b=await bodyJson(req,12000),login=username(b.login);
   if(!validUsername(login)||!validPassword(b.senha))return error("Login ou senha incorretos.",401);
   if(!await rate(db,req,"login:"+login,12,1))return error("Muitas tentativas de login. Tente mais tarde.",429);
   const u=await db.prepare("SELECT * FROM usuarios WHERE login=? AND ativo=1").bind(login).first();
@@ -116,7 +121,7 @@ async function upgradeLegacy(req,env){
   const user=await loggedIn(req,env.DB);
   if(!user)return error("Entre no perfil antigo neste aparelho ou peça redefinição ao administrador.",401);
   if(user.login)return error("Esta conta já usa login e senha.",409);
-  const b=await bodyJson(req,4000),login=username(b.login),password=b.senha;
+  const b=await bodyJson(req,12000),login=username(b.login),password=b.senha;
   if(!validUsername(login))return error("Escolha um login de 4 a 24 caracteres (letras, números, ponto, _ ou traço).");
   if(!validPassword(password))return error("Informe uma senha com até 2.048 caracteres.");
   if(await env.DB.prepare("SELECT 1 AS n FROM usuarios WHERE login=?").bind(login).first())return error("Este login já está em uso.",409);
@@ -136,7 +141,7 @@ async function changePassword(req,env){
   const u=await loggedIn(req,env.DB);
   if(!u)return error("Entre no seu perfil antes de alterar a senha.",401);
   if(!u.login)return error("Primeiro configure login e senha para o perfil antigo.",409);
-  const b=await bodyJson(req,4000),newPassword=b.nova_senha;
+  const b=await bodyJson(req,12000),newPassword=b.nova_senha;
   if(!validPassword(newPassword))return error("Informe uma nova senha com até 2.048 caracteres.");
   if(!u.must_change_password&&!await verifyPassword(b.senha_atual,u))return error("Senha atual incorreta.",401);
   if(await verifyPassword(newPassword,u))return error("Escolha uma senha diferente da anterior.");
@@ -164,10 +169,10 @@ async function withdraw(req,env,user){
   const b=await bodyJson(req,5000),id=Number(b.componente_id),quantity=Number(b.quantidade),due=clean(b.data_devolucao,10),note=clean(b.observacao,500);
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)return error("Material ou quantidade inválidos.");
   if(!formatDateValid(due)||due<brazilDate())return error("Informe uma data de devolução válida.");
-  const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade,arquivado FROM componentes WHERE id=?").bind(id).first();
+  const item=await env.DB.prepare("SELECT id,nome,quantidade,em_uso,com_defeito,mostrar_quantidade,arquivado,categoria_id FROM componentes WHERE id=?").bind(id).first();
   if(!item)return error("Material não encontrado.",404);
-  if(item.arquivado===1)return error("Material arquivado. Procure o administrador.",409);
-  if(item.mostrar_quantidade!==1)return error("Material indisponível para retirada.",409);
+  const cat=await env.DB.prepare("SELECT arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first();
+  if(item.arquivado===1||cat?.arquivada===1)return error("Material arquivado. Procure o administrador.",409);
   if(item.quantidade-item.em_uso-item.com_defeito<quantity)return error("Estoque insuficiente para retirada.",409);
   const stamp=now(),actor=user.nome+" ("+user.public_id+")",today=brazilDate();
   const fields=["componente_id","nome_solicitante","contato","email","quantidade","data_inicio","data_devolucao","status","observacao","solicitado_em","retirado_em","responsavel_admin","usuario_id","tipo"];
@@ -177,6 +182,7 @@ async function withdraw(req,env,user){
     env.DB.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(quantity,stamp,actor,"Retirada direta: "+quantity+" unidade(s)",id)
   ]);
   if(batch[0].meta?.changes!==1||batch[1].meta?.changes!==1)return error("Não foi possível registrar a retirada.",409);
+  await identityAudit(env.DB,"Retirada direta","material",id,item.nome+" · "+quantity+" unidade(s)",actor);
   return respond({ok:true,retirada_id:batch[0].meta.last_row_id},201);
 }
 async function memberReturn(req,env,user){
@@ -197,6 +203,7 @@ async function memberReturn(req,env,user){
   if(done[0].meta?.changes!==1||done[1].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
   await env.DB.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
     .bind(user.id,id,"Devolução registrada","A devolução de seu material foi registrada.","devolucao").run();
+  await identityAudit(env.DB,"Devolução direta","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(broken?" · "+broken+" com defeito":""),actor);
   return respond({ok:true});
 }
 async function adminUpdate(req,env){
@@ -209,6 +216,7 @@ async function adminUpdate(req,env){
   if(!user)return error("Usuário não encontrado.",404);
   await env.DB.prepare("UPDATE usuarios SET papel=?,ativo=?,atualizado_em=? WHERE id=?").bind(tag,active,now(),user.id).run();
   if(!active)await env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id).run();
+  await identityAudit(env.DB,"Alterou acesso","usuario",user.id,id+" · "+tag+" · "+(active?"Ativo":"Bloqueado"));
   return respond({ok:true});
 }
 // A senha temporaria so aparece na resposta do reset; os valores armazenados sao hash+sal.
@@ -229,6 +237,7 @@ async function adminResetPassword(req,env){
       env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id)
     ]);
   }catch(e){if(maybeDuplicate(e))return error("Esse login já está em uso.",409);throw e;}
+  await identityAudit(env.DB,"Redefiniu senha","usuario",user.id,user.nome+" · login "+login);
   return respond({ok:true,id:user.public_id,nome:user.nome,login,senha_temporaria:temporary});
 }
 async function adminDeleteUser(req,env){
@@ -244,6 +253,7 @@ async function adminDeleteUser(req,env){
     env.DB.prepare("DELETE FROM usuarios WHERE id=? AND NOT EXISTS (SELECT 1 FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada'))").bind(user.id,user.id)
   ]);
   if(done[2].meta?.changes!==1)return error("O usuário não pôde ser excluído.",409);
+  await identityAudit(env.DB,"Excluiu usuário","usuario",user.id,user.nome+" · "+id);
   return respond({ok:true,excluido:id});
 }
 async function adminList(env){
