@@ -177,13 +177,7 @@ assert.equal(ad.querySelector("#cat-public").checked,false,"Categoria reservada 
 await adminClick("#cat-cancel");
 await adminClick('[data-admin-tab="materiais"]');
 assert.ok(ad.querySelector("#admin-bulk-visibility"));
-assert.ok(ad.querySelector("#admin-group-variations"));
-await adminClick("#admin-group-variations");
-assert.ok(ad.querySelector("#variant-group-name"),"Vincular variações não está disponível.");
-assert.ok(ad.querySelector('[data-variant-photo="1"]'),"Cada variação deve permitir enviar foto.");
-assert.ok(ad.querySelector('[data-variant-file="1"][type="file"]'),"Campo de foto independente ausente.");
-assert.ok(ad.querySelector(".variant-photo-thumb"),"Variações precisam mostrar a própria imagem.");
-await adminClick("#modal-root [data-close]");
+assert.equal(ad.querySelector("#admin-group-variations"),null,"Remover atalho redundante; variações continuam disponíveis no editor.");
 await adminClick("#admin-bulk-visibility");
 assert.ok(ad.querySelector("#bulk-only-members"),"Visibilidade em lote não está disponível.");
 await adminClick("#modal-root [data-close]");
@@ -196,6 +190,9 @@ assert.ok(ad.querySelector('#i-unit option[value="__outro__"]'),"Unidade persona
 assert.equal(ad.querySelector("#i-available"),null,"Aviso redundante de disponíveis não foi removido.");
 await adminClick("#i-link-variations");
 assert.ok(ad.querySelector("#variant-similar"));
+assert.ok(ad.querySelector("#variant-group-name"),"Variações continuam editáveis dentro do material.");
+assert.ok(ad.querySelector('[data-variant-photo="1"]'),"Foto individual deve continuar disponível.");
+assert.ok(ad.querySelector('[data-variant-file="1"][type="file"]'),"Upload por variação deve continuar disponível.");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
 await adminClick("#modal-root [data-close]");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");
