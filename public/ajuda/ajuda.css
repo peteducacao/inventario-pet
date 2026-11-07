@@ -55,6 +55,11 @@ body.help-document{margin:0;font:15px/1.75 Inter,ui-sans-serif,system-ui,-apple-
 .help-inline .help-topic h2{font-size:23px}
 .help-inline .help-cover-meta{margin-top:10px}
 .help-inline .help-print-note{display:none}
+.help-document.help-embed{background:#fff}
+.help-embed .help-header,.help-embed .help-aside,.help-embed .help-print-note{display:none!important}
+.help-embed .help-layout{display:block;max-width:none;padding:0;margin:0}
+.help-embed .help-main{border:0;box-shadow:none;border-radius:0;padding:22px}
+.help-embed .help-topic{scroll-margin-top:18px}
 @media(max-width:1020px){.help-layout{grid-template-columns:210px minmax(0,1fr);gap:15px;padding:17px}.help-aside{padding:16px 9px}.help-header-inner{padding:13px 18px}}
 @media(max-width:780px){.help-layout{display:block;padding:12px 11px 35px}.help-aside{position:static;max-height:none;margin-bottom:12px}.help-aside nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}.help-aside nav a{padding:6px 8px}.help-main{padding:21px 17px;border-radius:16px}.help-header-inner{padding:11px 15px;flex-wrap:wrap}.help-header{position:relative}.help-actions{gap:5px}.help-actions .help-link{padding:7px}.help-cover h1{letter-spacing:-.3px}.help-topic{scroll-margin-top:20px}.help-inline{padding:15px}.help-flow{gap:6px}.help-flow span{padding:6px 7px}}
 @media print{
