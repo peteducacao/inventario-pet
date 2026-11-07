@@ -492,18 +492,32 @@ async function deleteFilament(id){
 /* Editor de materiais e configurações do painel renovado. */
 /* Busca inteligente por tipo: sugere, mas nunca aplica mudanças sem confirmação. */
 function materialFamilyHint(name){
-  const n=String(name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-  if(/resistor/.test(n))return "Resistores";
-  if(/capacit/.test(n))return "Capacitores";
-  if(/arduino/.test(n))return "Arduino";
-  if(/ponte\s*h/.test(n))return "Pontes H";
-  if(/esp\s*32/.test(n))return "ESP32";
-  if(/tablet/.test(n))return "Tablets";
-  if(/notebook/.test(n))return "Notebooks";
+  const n=String(name||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
+  if(/^alcalina\b/.test(n))return "Alcalina";
+  if(/^recarreg/.test(n))return "Recarregáveis";
+  if(/^bateria\b/.test(n))return "Baterias";
+  if(/^resistor\b/.test(n))return "Resistores";
+  if(/^capacit/.test(n))return "Capacitores";
+  if(/^led\b/.test(n))return "LEDs";
+  if(/^interruptor\b/.test(n))return "Interruptores";
+  if(/^placas? protoboard/.test(n))return "Protoboards";
+  if(/^kit jumper/.test(n))return "Kit jumper";
+  if(/^suporte para bateria|^suporte para 6 pilhas/.test(n))return "Suportes para baterias";
   if(/motor/.test(n))return "Motores";
-  if(/\bled\b/.test(n))return "LEDs";
-  if(/pilha|bateria/.test(n))return "Baterias";
-  if(/sensor/.test(n))return "Sensores";
+  if(/^roda\b/.test(n))return "Rodas";
+  if(/^sensor\b|^modulo sensor/.test(n))return "Sensores";
+  if(/^fonte\b/.test(n))return "Fontes";
+  if(/^carregador/.test(n))return "Carregadores";
+  if(/^joysti/.test(n))return "Joysticks";
+  if(/^modulo de alimenta/.test(n))return "Módulos de alimentação";
+  if(/^arduino\b/.test(n))return "Arduino";
+  if(/^esp\s*32\b|^esp32\b/.test(n))return "ESP32";
+  if(/^ponte h\b/.test(n))return "Pontes H";
+  if(/^toalha\b/.test(n))return "Toalhas";
+  if(/^cola\b/.test(n))return "Colas";
+  // Dispositivos com patrimônio individual não são agrupados automaticamente.
+  if(/^tablet\b/.test(n))return "Tablets";
+  if(/^notebook\b/.test(n))return "Notebooks";
   const first=n.match(/^[a-z]{4,}/)?.[0]||"";
   return first?first[0].toUpperCase()+first.slice(1):"Outros";
 }
