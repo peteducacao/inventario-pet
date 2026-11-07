@@ -19,8 +19,35 @@ async function copyValue(value,field){
   catch{if(field){field.focus();field.select();}toast("Selecione o texto para copiar.");}
 }
 function passwordField(id,label,autocomplete="current-password"){
-  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>';
+  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>'+(autocomplete==="new-password"?'<div id="'+id+'-strength" class="hint" style="margin:5px 0 12px" aria-live="polite"></div>':"");
 }
+function passwordRating(value){
+  const pass=String(value||"");
+  if(!pass)return null;
+  const groups=[/[a-z]/.test(pass),/[A-Z]/.test(pass),/[0-9]/.test(pass),/[^a-zA-Z0-9]/.test(pass)].filter(Boolean).length;
+  const unique=new Set(pass).size;
+  if(pass.length<7||unique<4||/^(.)\\1+$/.test(pass)||/(123456|password|senha123|qwerty|abc123|admin123)/i.test(pass))return "fraca";
+  if(pass.length>=12&&groups>=2&&unique>=7)return "forte";
+  if(pass.length>=8&&unique>=5)return "média";
+  return "fraca";
+}
+function confirmWeakPassword(value){
+  if(passwordRating(value)!=="fraca")return true;
+  return confirm("Sua senha foi classificada como FRACA. Ela pode ser descoberta com maior facilidade e colocar seus empréstimos e dados da conta em risco. Deseja continuar com essa senha mesmo assim?");
+}
+function wirePasswordStrength(){
+  $('input[autocomplete="new-password"]').forEach(input=>{
+    const box=$("#"+input.id+"-strength");if(!box)return;
+    const update=()=>{
+      const rating=passwordRating(input.value);
+      box.textContent=rating?"Força da senha: "+rating.toUpperCase()+(rating==="fraca"?" · Maior risco de acesso indevido.":""):"A força da sua senha aparecerá aqui.";
+      box.style.color=rating==="forte"?"#167245":rating==="média"?"#916004":rating==="fraca"?"#b42318":"";
+    };
+    input.addEventListener("input",update);
+    update();
+  });
+}
+
 function wirePasswordVisibility(){
   $$("[data-password-show]").forEach(btn=>btn.onclick=()=>{
     const input=$("#"+btn.dataset.passwordShow);
@@ -30,6 +57,7 @@ function wirePasswordVisibility(){
     btn.textContent=show?"Ocultar":"Mostrar";
     btn.setAttribute("aria-label",show?"Ocultar senha":"Mostrar senha");
   });
+  wirePasswordStrength();
 }
 function accountFields(prefix,nome=""){
   return '<div class="field"><label for="'+prefix+'-name">Nome completo</label><input id="'+prefix+'-name" maxlength="80" required autocomplete="name" placeholder="Como podemos chamar você?" value="'+attr(nome)+'"></div>'+
@@ -80,6 +108,7 @@ function identityRegisterModal(first=false){
     e.preventDefault();
     const senha=$("#reg-password").value;
     if(senha!==$("#reg-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword(senha))return;
     const btn=$("#identity-register-submit");btn.disabled=true;btn.textContent="Criando conta…";
     try{
       const r=await api("/api/identity/register","POST",{nome:$("#reg-name").value,email:$("#reg-email").value.trim(),login:$("#reg-login").value,senha});
@@ -102,6 +131,7 @@ function identityUpgradeModal(){
   wirePasswordVisibility();
   $("#identity-upgrade-form").onsubmit=async e=>{
     e.preventDefault();if($("#upgrade-password").value!==$("#upgrade-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword($("#upgrade-password").value))return;
     const btn=$("#identity-upgrade-form button[type=submit]");btn.disabled=true;
     try{
       const r=await api("/api/identity/upgrade","POST",{login:$("#upgrade-login").value,email:$("#upgrade-email").value.trim(),senha:$("#upgrade-password").value});
@@ -127,6 +157,7 @@ function identityChangePasswordModal(force=false){
   $("#identity-change-form").onsubmit=async e=>{
     e.preventDefault();const password=$("#identity-new-password").value;
     if(password!==$("#identity-new-confirm").value){toast("As senhas não coincidem.",true);return;}
+    if(!confirmWeakPassword(password))return;
     const btn=$("#identity-change-submit");btn.disabled=true;
     try{
       const r=await api("/api/identity/password","POST",{nova_senha:password,senha_atual:must?"":$("#identity-old-password").value});
@@ -182,6 +213,8 @@ function identityEmailModal(required=false){
     "Este endereço será utilizado nas comunicações do Inventário PET.",
     '<form class="modal-main" id="identity-email-form">'+
     '<div class="field"><label for="identity-email-value">E-mail</label><input type="email" id="identity-email-value" maxlength="180" required autocomplete="email" value="'+attr(u.email||"")+'" placeholder="seuemail@exemplo.com"></div>'+
+    passwordField("identity-email-current-password","Confirme sua senha atual")+
+
     '<p class="notice">O cadastro do e-mail não ativa cobranças para PETianes; isso depende da configuração do cargo.</p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0">'+
     (required?'':'<button type="button" class="secondary-button" id="identity-email-cancel">Cancelar</button>')+
@@ -190,7 +223,7 @@ function identityEmailModal(required=false){
   $("#identity-email-form").onsubmit=async e=>{
     e.preventDefault();const btn=$("#identity-email-submit");btn.disabled=true;btn.textContent="Salvando…";
     try{
-      const r=await api("/api/identity/email","POST",{email:$("#identity-email-value").value.trim()});
+      const r=await api("/api/identity/email","POST",{email:$("#identity-email-value").value.trim(),senha_atual:$("#identity-email-current-password").value});
       setIdentity(r.usuario);closeModal();toast("E-mail atualizado com sucesso.");
     }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar e-mail";}
   };
