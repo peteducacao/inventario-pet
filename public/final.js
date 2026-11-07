@@ -185,6 +185,11 @@ function openVariantChoices(groupKey){
 }
 function finalRender(){
   if(!$("#category-sections"))return;
+  // Converter o antigo filtro local "filaments" para a categoria persistida no banco.
+  if(UI.category==="filaments"){
+    const category=(state.data.categorias||[]).find(c=>c.nome==="Filamentos");
+    UI.category=category?String(category.id):"all";stored("pet_public_category",UI.category);
+  }
   state.filter=UI.category;
   $("#demo-notice").hidden=!state.data.demonstracao;
   const ordinary=(state.data.componentes||[]).filter(x=>!isArchived(x)&&!/^FILAMENTO-\d+$/.test(String(x.import_key||"")));
