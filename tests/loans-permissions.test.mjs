@@ -104,6 +104,22 @@ assert.equal((await postAdmin("/api/admin/item/loans",{id:arduino.id,permitir_em
 assert.equal((await req("/api/availability?id="+arduino.id+"&inicio="+today+"&fim="+end)).status,409);
 assert.equal((await postAdmin("/api/admin/category",{acao:"emprestimos",id:electronic.id,permitir_emprestimos:true})).status,200);
 assert.equal((await req("/api/availability?id="+arduino.id+"&inicio="+today+"&fim="+end)).status,200,"A liberação em massa reativa todos os materiais.");
+// Opções de seletor em uma ação: Ninguém, PETianes, Visitantes, Todos.
+const catOnlyVisitor=await postAdmin("/api/admin/category",{acao:"emprestimos",id:electronic.id,perfil:"combinado",permitir_petianos:false,permitir_visitantes:true});
+assert.equal(catOnlyVisitor.status,200,JSON.stringify(catOnlyVisitor.body));
+const categoryAfter=sqlite.prepare("SELECT permitir_petianos,permitir_visitantes FROM categorias WHERE id=?").get(electronic.id);
+assert.deepEqual(categoryAfter,{permitir_petianos:0,permitir_visitantes:1},"Categoria deve permitir somente visitantes.");
+assert.equal((await req("/api/availability?id="+arduino.id+"&inicio="+today+"&fim="+end,undefined,visitor)).status,200);
+assert.equal((await req("/api/member/withdraw","POST",{componente_id:arduino.id,quantidade:1,data_devolucao:end},member)).status,409);
+const onlyPet=await postAdmin("/api/admin/item/loans",{id:arduino.id,perfil:"combinado",permitir_petianos:true,permitir_visitantes:false});
+assert.equal(onlyPet.status,200);
+assert.equal(sqlite.prepare("SELECT permitir_petianos,permitir_visitantes FROM componentes WHERE id=?").get(arduino.id).permitir_visitantes,0);
+const allAllowed=await postAdmin("/api/admin/category",{acao:"emprestimos",id:electronic.id,perfil:"combinado",permitir_petianos:true,permitir_visitantes:true});
+assert.equal(allAllowed.status,200);
+assert.equal(sqlite.prepare("SELECT permitir_petianos,permitir_visitantes FROM componentes WHERE id=?").get(arduino.id).permitir_visitantes,1);
+const nobody=await postAdmin("/api/admin/filaments",{acao:"emprestimos",id:blue.id,perfil:"combinado",permitir_petianos:false,permitir_visitantes:false});
+assert.equal(nobody.status,200);
+assert.equal(sqlite.prepare("SELECT permitir_petianos,permitir_visitantes FROM filamentos WHERE id=?").get(blue.id).permitir_petianos,0);
 const backup=await req("/api/admin/backup","GET",undefined,admin);
 assert.equal(backup.status,200);
 assert.ok(backup.body.filamentos.every(c=>c.componente_id),"Backup inclui os vínculos das cores.");
