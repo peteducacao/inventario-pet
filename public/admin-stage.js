@@ -1,5 +1,5 @@
 /* Administração Inventário PET: painel próprio e responsivo. */
-const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["filamentos","layers","Filamentos"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["historico","back","Histórico"],["configuracoes","settings","Configurações"]];
+const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["filamentos","layers","Filamentos"],["reservas","calendar","Reservas"],["usuarios","users","Usuários"],["categorias","layers","Categorias"],["historico","back","Histórico"],["configuracoes","settings","Configurações"],["ajuda","box","Ajuda"]];
 function adminCounts(){
   const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
   const reservations=state.admin?.reservas||[];
@@ -106,6 +106,7 @@ function adminContent(){
   if(UI.adminTab==="usuarios")return adminUsers(content);
   if(UI.adminTab==="categorias")return adminCategories(content);
   if(UI.adminTab==="historico")return adminHistory(content);
+  if(UI.adminTab==="ajuda")return adminHelp(content);
   return adminSettings(content);
 }
 function dashboardRecentEvent(log){
@@ -966,6 +967,14 @@ function adminItemEditor(id){
     });
   }
 }
+function adminHelp(root){
+  root.innerHTML='<section class="admin-panel help-panel"><div class="admin-section-head"><div><h2>Central de Ajuda</h2><p>Aprenda a utilizar o inventário e consulte o manual técnico de Cloudflare, D1, Gmail e manutenção.</p></div></div>'+
+    '<div class="help-panel-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 19px">'+
+    '<a class="primary-button" style="text-decoration:none" href="/ajuda/?print=1" target="_blank" rel="noopener">🖨 Imprimir / salvar PDF</a>'+
+    '<a class="outline-button" style="text-decoration:none" href="/ajuda/" target="_blank" rel="noopener">Abrir manual completo</a>'+
+    '<a class="outline-button" style="text-decoration:none" href="https://github.com/peteducacao/inventario-pet/blob/main/docs/GUIA_TECNICO.md" target="_blank" rel="noopener">Guia técnico no GitHub</a></div>'+
+    '<iframe id="admin-help-frame" title="Manual do Inventário PET Educação" src="/ajuda/?embed=1" loading="lazy" style="display:block;width:100%;height:72vh;min-height:580px;border:1px solid #dce7ec;border-radius:15px;background:white"></iframe></section>';
+}
 function adminSettings(root){
   const cfg=state.admin.configuracoes||{};
   const current=String(cfg.limpeza_reservas||"nunca");
@@ -993,10 +1002,10 @@ function adminSettings(root){
     '<div class="mail-template-actions"><button type="submit" class="primary-button" id="mail-event-save" disabled>Salvar regras por tag</button></div></form></section>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Configurações</h2></div></div>'+
     '<form id="admin-settings-form" class="settings-grid">'+
-    '<div class="settings-block"><div class="field"><label for="v2-cleanup">Excluir empréstimos devolvidos após</label>'+
+    '<div class="settings-block"><div class="field"><label for="v2-cleanup">Excluir registros concluídos após</label>'+
     '<select id="v2-cleanup"><option value="nunca">Nunca apagar</option><option value="1min">1 minuto (teste)</option><option value="7">7 dias</option><option value="15">15 dias</option><option value="30">30 dias</option><option value="60">60 dias</option><option value="90">90 dias</option><option value="personalizado">Outro prazo</option></select></div>'+
     '<div id="v2-custom-wrap" class="field" hidden><label for="v2-custom-days">Dias</label><input id="v2-custom-days" type="number" min="1" max="3650" value="'+attr(/^\d+$/.test(current)?current:"45")+'"></div>'+
-    '<p>Somente reservas devolvidas são apagadas. Reservas pendentes e materiais em uso permanecem.</p></div>'+
+    '<p>A limpeza por prazo remove devolvidas, recusadas e canceladas. Solicitações pendentes e retiradas em uso permanecem.</p></div>'+
     '<div class="settings-block"><strong>Dados do inventário</strong><p>'+esc(adminLastUpdate())+'</p>'+settingsToggle("v2-demo","Exibir modo de demonstração","Ativa os exemplos visuais do catálogo.",cfg.modo_demo==="sim")+'</div>'+
     '<div class="settings-block settings-gmail-block"><strong>Notificações por Gmail</strong><p>Controle quem recebe cobranças. Os PETianes ficam desativados por padrão.</p>'+
     '<div class="settings-toggle-grid">'+settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
@@ -1007,7 +1016,9 @@ function adminSettings(root){
     scheduleEditor+emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
     '<button type="button" class="outline-button" id="v2-backup-import">Restaurar arquivo JSON</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
-    '<button type="button" class="outline-button" id="v2-run-cleanup">Executar limpeza</button></div></section>';
+    '<button type="button" class="outline-button" id="v2-run-cleanup">Limpar concluídas vencidas</button>'+
+    '<button type="button" class="danger-button" id="v2-reset-reservations">Apagar todos os registros de reservas</button></div>'+
+    '<p class="hint">A opção de apagar todos os registros exige confirmação e gera backup. Não é permitida com retiradas ativas ou aprovações antigas não regularizadas.</p></section>';
   const select=$("#v2-cleanup");select.value=["nunca","1min","7","15","30","60","90"].includes(current)?current:"personalizado";
   const update=()=>{$("#v2-custom-wrap").hidden=select.value!=="personalizado";};select.onchange=update;update();
   $("#admin-settings-form").onsubmit=async e=>{
@@ -1100,8 +1111,34 @@ function adminSettings(root){
       await api("/api/admin/restore","POST",result);await adminReload();await refreshFilaments();adminBuild();toast("Backup restaurado.");
     }catch(error){toast(error.message,true);}
   };
+  $("#v2-reset-reservations").onclick=()=>{
+    const active=(state.admin?.reservas||[]).filter(r=>["retirada","aprovada"].includes(r.status));
+    if(active.length){
+      openModal("Há empréstimos ativos","Proteção do estoque",'<div class="modal-main"><p class="notice warning">Existem '+active.length+' retiradas ativas ou aprovações antigas. Registre a devolução/regularize cada uma antes de apagar todos os registros. Nenhum registro foi excluído.</p><button type="button" class="outline-button" id="reset-reservations-close">Entendi</button></div>');
+      $("#reset-reservations-close").onclick=closeModal;
+      return;
+    }
+    openModal("Apagar TODO o histórico de reservas","Operação irreversível após a confirmação",
+      '<form id="reset-reservations-form" class="modal-main">'+
+      '<p class="notice warning"><strong>Atenção:</strong> todos os registros de reservas, inclusive pendentes e concluídos, serão apagados. As cobranças pendentes relacionadas serão canceladas. O inventário, os usuários e o histórico administrativo serão preservados. Um backup JSON será baixado antes da exclusão.</p>'+
+      '<div class="field"><label for="reset-reservations-confirm">Digite APAGAR TODAS AS RESERVAS para confirmar</label><input id="reset-reservations-confirm" required autocomplete="off" placeholder="APAGAR TODAS AS RESERVAS"></div>'+
+      '<div class="modal-footer"><button type="button" class="outline-button" id="reset-reservations-cancel">Cancelar</button><button class="danger-button" type="submit" id="reset-reservations-submit">Fazer backup e apagar registros</button></div></form>');
+    $("#reset-reservations-cancel").onclick=closeModal;
+    $("#reset-reservations-form").onsubmit=async e=>{
+      e.preventDefault();
+      if($("#reset-reservations-confirm").value.trim()!=="APAGAR TODAS AS RESERVAS"){toast("Digite a confirmação exatamente como indicada.",true);return;}
+      const btn=$("#reset-reservations-submit");btn.disabled=true;btn.textContent="Preparando backup…";
+      try{
+        const backup=await api("/api/admin/backup");
+        saveDownload("backup-antes-de-limpar-reservas-"+localDate()+".json",JSON.stringify(backup,null,2));
+        btn.textContent="Excluindo registros…";
+        const result=await api("/api/admin/reservations/reset","POST",{confirmar:"APAGAR TODAS AS RESERVAS"});
+        await adminReload();closeModal();adminBuild();toast(result.removidos+" registro(s) de reserva apagado(s); backup gerado.");
+      }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Fazer backup e apagar registros";}
+    };
+  };
   $("#v2-run-cleanup").onclick=async()=>{
-    if(!await niceModalConfirm("Executar limpeza?","Excluir apenas os registros devolvidos cujo prazo de retenção terminou?","Executar",true))return;
+    if(!await niceModalConfirm("Limpar registros concluídos?","Excluir os registros devolvidos, recusados e cancelados que já atingiram o prazo definido? Reservas pendentes e retiradas ativas serão preservadas.","Limpar",true))return;
     try{const result=await api("/api/admin/cleanup","POST",{});await adminReload();adminBuild();toast(result.removidas+" registro(s) removido(s).");}catch(error){toast(error.message,true);}
   };
 }

@@ -31,6 +31,10 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/variation-linking.test.mjs
       - name: Testar categorias e filamentos na reserva e devolução
         run: node --disable-warning=ExperimentalWarning tests/loans-permissions.test.mjs
+      - name: Testar central de Ajuda e impressão/PDF
+        run: node tests/help.test.mjs
+      - name: Testar limpeza e reset seguro das reservas em banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/reservations-cleanup.test.mjs
       - name: Testar backup completo e restauração no banco isolado
         run: node --disable-warning=ExperimentalWarning tests/backup-v2.test.mjs
       - name: Testar segurança e fila de cobranças Gmail
