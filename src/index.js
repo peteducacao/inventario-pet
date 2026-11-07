@@ -324,18 +324,20 @@ async function processRequest(req, env) {
       const id=requireId(b.id);
       const category=await db.prepare("SELECT nome FROM categorias WHERE id=? AND arquivada=0").bind(id).first();
       if(!category)return bad("Categoria não encontrada.",404);
-      const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas r JOIN componentes c ON r.componente_id=c.id WHERE c.categoria_id=? AND r.status IN ('pendente','aprovada','retirada')").bind(id).first();
-      if(active.n)return bad("Esta categoria possui reservas ou retiradas abertas. Finalize-as antes de excluir.",409);
       if(b.confirmacao!==category.nome)return bad("Confirme digitando exatamente o nome da categoria.",400);
-      const linked=await db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=? AND arquivado=0").bind(id).first();
-      // Arquivar, sem destruir referências de empréstimos antigos. O catálogo e a lista normal
-      // deixam de mostrar os itens; recuperação futura continua possível.
+      const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas r JOIN componentes c ON r.componente_id=c.id WHERE c.categoria_id=? AND r.status IN ('pendente','aprovada','retirada')").bind(id).first();
+      if(active.n)return bad("Há reservas ou retiradas abertas. Finalize-as antes de excluir a categoria e seus materiais.",409);
+      const linked=await db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=?").bind(id).first();
+      // DELETE permanente mediante confirmação do nome. Registros de empréstimos encerrados
+      // também são removidos para cumprir a integridade referencial. O backup é baixado
+      // pelo painel antes de chamar esta rota. Nenhuma alteração é feita com pendências.
       await db.batch([
-        db.prepare("UPDATE categorias SET arquivada=1,visivel_visitante=0 WHERE id=?").bind(id),
-        db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel='Admin',detalhes_alteracao='Categoria arquivada' WHERE categoria_id=?").bind(now(),id)
+        db.prepare("DELETE FROM reservas WHERE componente_id IN (SELECT id FROM componentes WHERE categoria_id=?)").bind(id),
+        db.prepare("DELETE FROM componentes WHERE categoria_id=?").bind(id),
+        db.prepare("DELETE FROM categorias WHERE id=?").bind(id)
       ]);
-      await auditLog(db,"Excluiu (arquivou)","categoria",id,category.nome+" · "+(linked?.n||0)+" materiais também arquivados");
-      return j({ok:true,arquivados:linked?.n||0});
+      await auditLog(db,"Excluiu definitivamente","categoria",id,category.nome+" · "+(linked?.n||0)+" materiais excluídos após confirmação");
+      return j({ok:true,excluidos:linked?.n||0});
     } else if (b.acao === "restaurar") {
       const id=requireId(b.id),cat=await db.prepare("SELECT nome FROM categorias WHERE id=? AND arquivada=1").bind(id).first();
       if(!cat)return bad("Categoria arquivada não encontrada.",404);
