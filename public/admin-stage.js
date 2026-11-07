@@ -263,7 +263,7 @@ function wireMaterialActions(root){
   $$("[data-item-edit]",root).forEach(b=>b.onclick=()=>adminItemEditor(Number(b.dataset.itemEdit)));
   $$("[data-rename-group]",root).forEach(b=>b.onclick=()=>adminRenameVariationGroup(b.dataset.renameGroup));
   $$("[data-group-links]",root).forEach(b=>b.onclick=()=>openVariantLinker(null,b.dataset.groupLinks));
-  $("[data-item-delete]",root).forEach(b=>b.onclick=()=>adminDeleteItem(Number(b.dataset.itemDelete)));
+  $$("[data-item-delete]",root).forEach(b=>b.onclick=()=>adminDeleteItem(Number(b.dataset.itemDelete)));
 }
 function adminRenameVariationGroup(name){
   const current=String(name||"").trim();
