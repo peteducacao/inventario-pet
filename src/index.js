@@ -578,10 +578,10 @@ async function processRequest(req, env) {
       db.prepare("DELETE FROM configuracoes")
     ];
     for (const c of b.categorias){
-      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) VALUES(?,?,?,?,?,?)")
-        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0,c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):(c.permitir_emprestimos?1:0)));
+      ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?)")
+        .bind(c.id,str(c.nome,80),Number(c.ordem)||0,c.visivel_visitante===undefined?1:(c.visivel_visitante?1:0),c.arquivada?1:0,c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):(c.permitir_emprestimos?1:0),c.permitir_petianos===undefined?(c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):Number(!!c.permitir_emprestimos)):Number(!!c.permitir_petianos),c.permitir_visitantes===undefined?(c.permitir_emprestimos===undefined?(c.nome==="Filamentos"?0:1):Number(!!c.permitir_emprestimos)):Number(!!c.permitir_visitantes)));
     }
-    ops.push(db.prepare("INSERT OR IGNORE INTO categorias(nome,ordem,visivel_visitante,arquivada,permitir_emprestimos) SELECT 'Filamentos',COALESCE(MAX(ordem),0)+1,1,0,0 FROM categorias"));
+    ops.push(db.prepare("INSERT OR IGNORE INTO categorias(nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes) SELECT 'Filamentos',COALESCE(MAX(ordem),0)+1,1,0,0,0,0 FROM categorias"));
     const materialFields=[...fields,"arquivado","import_key"];
     for (const raw of b.componentes){
       const v=validateItem({...raw,mostrar_quantidade:raw.mostrar_quantidade??1,
@@ -614,13 +614,13 @@ async function processRequest(req, env) {
     if(v2&&Array.isArray(b.filamentos)){
       const knownMirrors=new Set(b.componentes.map(x=>Number(x.id)));
       for(const color of b.filamentos)ops.push(db.prepare(
-        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,componente_id) VALUES(?,?,?,?,?,?,?,?,?)"
+        "INSERT INTO filamentos(id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,componente_id) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
       ).bind(color.id,str(color.cor,55),str(color.hexadecimal,7),Number(color.quantidade)||0,
         Number(color.ordem)||0,color.atualizado_em||now(),color.visivel_visitante===0?0:1,
-        color.permitir_emprestimos?1:0,knownMirrors.has(Number(color.componente_id))?Number(color.componente_id):null));
+        color.permitir_emprestimos?1:0,color.permitir_petianos===undefined?Number(!!color.permitir_emprestimos):Number(!!color.permitir_petianos),color.permitir_visitantes===undefined?Number(!!color.permitir_emprestimos):Number(!!color.permitir_visitantes),knownMirrors.has(Number(color.componente_id))?Number(color.componente_id):null));
       // Backups antigos não possuíam vínculo: reconstruir os materiais espelhados
       // depois de restaurar as cores, preservando todas as quantidades e históricos.
-      ops.push(db.prepare("INSERT OR IGNORE INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.atualizado_em FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.componente_id IS NULL"));
+      ops.push(db.prepare("INSERT OR IGNORE INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,f.atualizado_em FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.componente_id IS NULL"));
       ops.push(db.prepare("UPDATE filamentos SET componente_id=(SELECT c.id FROM componentes c WHERE c.import_key='FILAMENTO-'||filamentos.id) WHERE componente_id IS NULL"));
     }
     if(v2&&Array.isArray(b.historico)){
