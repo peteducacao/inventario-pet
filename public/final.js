@@ -163,7 +163,7 @@ function openVariantChoices(groupKey){
     return '<button type="button" class="variant-picker-option" data-pick-variant="'+v.id+'" data-pick-group="'+attr(group)+'">'+
       '<span class="variant-picker-photo"><img src="'+attr(itemImage(v))+'" alt="" loading="lazy"></span>'+
       '<span class="variant-picker-details"><strong>'+esc(v.nome)+'</strong>'+
-      '<small>'+free+' disponível'+(free===1?"":"is")+' · '+quantity+' no total · '+used+' em uso</small></span>'+
+      '<small>'+free+' '+(free===1?"disponível":"disponíveis")+' · '+quantity+' no total · '+used+' em uso</small></span>'+
       '<span class="variant-picker-arrow" aria-hidden="true">›</span></button>';
   }).join("");
   openModal(title,"Escolha a variação. Cada modelo mantém seu próprio estoque e empréstimos.",
@@ -172,7 +172,7 @@ function openVariantChoices(groupKey){
     UI.variantChoice[group]=Number(button.dataset.pickVariant);
     closeModal();
     finalRender();
-    document.querySelector(".grouped-card [data-open-variants='"+CSS.escape(group)+"']")?.focus();
+    document.querySelector('.grouped-card .variant-open')?.focus();
   });
 }
 function finalRender(){
