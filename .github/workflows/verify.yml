@@ -31,6 +31,8 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/variation-linking.test.mjs
       - name: Testar categorias e filamentos na reserva e devolução
         run: node --disable-warning=ExperimentalWarning tests/loans-permissions.test.mjs
+      - name: Testar reorganização Robótica e Equipamentos no banco isolado
+        run: node --disable-warning=ExperimentalWarning tests/catalog-categories.test.mjs
       - name: Testar central de Ajuda e impressão/PDF
         run: node tests/help.test.mjs
       - name: Testar limpeza e reset seguro das reservas em banco isolado
