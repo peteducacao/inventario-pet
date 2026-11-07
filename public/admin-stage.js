@@ -488,7 +488,6 @@ async function adminToggleTag(id){
 /* Categorias: arraste no desktop, use setas no celular. */
 function adminCategories(root){
   const cats=(state.admin.categorias||[]).filter(x=>!x.arquivada);
-  const archived=(state.admin.categorias||[]).filter(x=>x.arquivada);
   const itemCounts=cat=>{
     if(cat.nome==="Filamentos")return (state.admin.filamentos||[]).length+" cores cadastradas";
     const items=state.admin.componentes.filter(x=>x.categoria_id===cat.id);
@@ -496,7 +495,7 @@ function adminCategories(root){
     return active+' ativos'+(items.length-active?' · '+(items.length-active)+' arquivados':'');
   };
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Categorias</h2><p>Organize e defina quem pode acessar cada categoria.</p></div>'+
-    '<div class="buttons"><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
+    '<div class="buttons"><button class="outline-button" type="button" id="v2-category-backup" title="Localizar a importação de backup JSON">Restaurar backup JSON</button><button class="primary-button" id="v2-new-category" type="button">'+iconSvg("plus",16)+' Nova categoria</button></div></div>'+
     '<div class="category-list" id="v2-category-list">'+cats.map((cat,i)=>
     '<div class="category-row" data-category-id="'+cat.id+'" draggable="true"><span class="drag-handle">'+iconSvg("grip")+'</span>'+
     '<strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small>'+
@@ -506,10 +505,12 @@ function adminCategories(root){
     '<button type="button" class="square-action" data-cat-down="'+cat.id+'" '+(i===cats.length-1?"disabled":"")+' aria-label="Descer">'+iconSvg("down")+'</button>'+
     '<button type="button" class="square-action" data-cat-edit="'+cat.id+'" aria-label="Editar">'+iconSvg("edit")+'</button>'+
     '<button type="button" class="square-action danger" data-cat-delete="'+cat.id+'" aria-label="Excluir categoria e seus materiais">'+iconSvg("trash")+'</button></div></div>').join("")+'</div>'+
-    (archived.length?'<details class="editor-advanced"><summary>Categorias excluídas ('+archived.length+')</summary><div class="category-list">'+archived.map(cat=>
-      '<div class="category-row archived"><strong>'+esc(cat.nome)+'</strong><small>'+itemCounts(cat)+'</small><button class="outline-button small-button" type="button" data-cat-restore="'+cat.id+'">Restaurar categoria</button></div>').join("")+'</div></details>':'')+
     '</section>';
   $("#v2-new-category").onclick=()=>editCategory();
+  $("#v2-category-backup").onclick=()=>{
+    selectAdminTab("configuracoes");
+    const button=$("#v2-backup-import");if(button){button.scrollIntoView({behavior:"smooth",block:"center"});button.focus();}
+  };
   $$("[data-cat-loans]",root).forEach(b=>b.onclick=async()=>{
     const cat=state.admin.categorias.find(c=>Number(c.id)===Number(b.dataset.catLoans));if(!cat)return;
     const enabled=Number(cat.permitir_emprestimos)===0;
@@ -521,11 +522,6 @@ function adminCategories(root){
   $$("[data-cat-down]",root).forEach(b=>b.onclick=()=>moveCategory(Number(b.dataset.catDown),1));
   $$("[data-cat-edit]",root).forEach(b=>b.onclick=()=>editCategory(Number(b.dataset.catEdit)));
   $$("[data-cat-delete]",root).forEach(b=>b.onclick=()=>adminDeleteCategory(Number(b.dataset.catDelete)));
-  $$("[data-cat-restore]",root).forEach(b=>b.onclick=async()=>{
-    if(!await niceModalConfirm("Restaurar categoria?","Os materiais anteriormente arquivados continuarão arquivados até serem restaurados individualmente.","Restaurar"))return;
-    try{await api("/api/admin/category","POST",{acao:"restaurar",id:Number(b.dataset.catRestore)});await adminReload();adminBuild();toast("Categoria restaurada.");}
-    catch(error){toast(error.message,true);}
-  });
   let dragged=null;
   $$("[data-category-id]",root).forEach(el=>{
     el.ondragstart=e=>{dragged=Number(el.dataset.categoryId);el.classList.add("dragging");e.dataTransfer.effectAllowed="move";};
@@ -972,9 +968,9 @@ function adminSettings(root){
     settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
     '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
-    emailEditor+'<section class="admin-panel"><div class="admin-section-head"><h2>Backup</h2></div>'+
+    emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
-    '<button type="button" class="outline-button" id="v2-backup-import">Importar backup</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
+    '<button type="button" class="outline-button" id="v2-backup-import">Restaurar arquivo JSON</button><input id="v2-backup-file" type="file" accept=".json,application/json" hidden>'+
     '<button type="button" class="outline-button" id="v2-run-cleanup">Executar limpeza</button></div></section>';
   const select=$("#v2-cleanup");select.value=["nunca","1min","7","15","30","60","90"].includes(current)?current:"personalizado";
   const update=()=>{$("#v2-custom-wrap").hidden=select.value!=="personalizado";};select.onchange=update;update();
