@@ -8,7 +8,7 @@ const attr = esc;
 const fmt = iso => {if(!iso)return "Sem registro";const d = new Date(iso);return Number.isNaN(d.getTime())?String(iso):new Intl.DateTimeFormat("pt-BR",{timeZone:"America/Sao_Paulo",day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}).format(d)};
 const formatDay = d => d ? d.split("-").reverse().join("/") : "—";
 const localDate = (d=new Date()) => new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(d);
-const iconFor = name => {const n=(name||"").toLowerCase();return n.includes("eletr")?"⚡":n.includes("papel")?"📎":n.includes("ferr")?"🛠️":n.includes("equip")?"💻":n.includes("mec")?"⚙️":n.includes("impress")?"🖨️":"📦"};
+const iconFor = name => {const n=(name||"").toLowerCase();return n.includes("robó")||n.includes("robot")?"🤖":n.includes("eletr")?"⚡":n.includes("papel")?"📎":n.includes("ferr")?"🛠️":n.includes("equip")?"💻":n.includes("mec")?"⚙️":n.includes("impress")?"🖨️":"📦"};
 const flag = x => Number(x)===1;
 const byId = id => state.data.componentes.find(x=>x.id===Number(id));
 const nameCategory = id => state.data.categorias.find(x=>x.id===id)?.nome||"Sem categoria";
