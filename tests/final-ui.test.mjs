@@ -184,7 +184,7 @@ for(const term of ["esp32","ESP 32","ESP-32","esp_32"]){
     "Buscar "+term+" deve localizar o mesmo ESP 32 no catálogo público.");
   assert.equal(d.querySelector(".catalog-card h3")?.textContent,"Arduino",
     "Encontrar um modelo não deve desmontar o card de sua família.");
-  assert.match(d.querySelector(".catalog-card").textContent,/ESP 32 DevKit/);
+  assert.match(d.querySelector(".catalog-card").textContent,/Ver variações/);
 }
 espPublic.nome=espPreviousName;
 w.__adminTestState.query="";
