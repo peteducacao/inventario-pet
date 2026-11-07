@@ -28,6 +28,8 @@ const iconSvg=(name,size=19)=>{
     "settings":'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/>',
     "search":'<circle cx="11" cy="11" r="7"/><path d="m16 16 5 5"/>',
     "edit":'<path d="m4 17-.7 4 4-.7L20 7.5 16.5 4 4 17ZM14 6.5l3.5 3.5"/>',
+    "tag":'<path d="M20 13 12 21 3 12V3h9l8 8a2 2 0 0 1 0 2Z"/><circle cx="7.5" cy="7.5" r="1"/>',
+    "key":'<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9 2 2-3 3 2 2-3 3-2-2-3 3"/>',
     "trash":'<path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v7M14 11v7"/>',
     "eye":'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
     "check":'<path d="m4 12 5 5L20 6"/>',
@@ -224,7 +226,7 @@ function openUserMenu(){
   closeUserMenu();
   const div=document.createElement("div");div.className="pop-menu";
   const u=state.identity;
-  div.innerHTML=u?'<button type="button" data-user-act="loans">'+iconSvg("box")+' Meus empréstimos</button><button type="button" data-user-act="account">'+iconSvg("users")+' Minha conta</button><hr><button type="button" class="danger-text" data-user-act="signout">'+iconSvg("logout")+' Sair</button>':
+  div.innerHTML=u?'<a href="/emprestimos/" data-user-act="loans">'+iconSvg("box")+' Meus empréstimos</a><button type="button" data-user-act="account">'+iconSvg("users")+' Minha conta</button><hr><button type="button" class="danger-text" data-user-act="signout">'+iconSvg("logout")+' Sair</button>':
     '<button type="button" data-user-act="login">'+iconSvg("users")+' Entrar</button><button type="button" data-user-act="register">'+iconSvg("plus")+' Criar conta</button>';
   document.body.appendChild(div);
   div.onclick=async e=>{
@@ -232,7 +234,6 @@ function openUserMenu(){
     closeUserMenu();
     if(b.dataset.userAct==="login")identityLoginModal(true);
     if(b.dataset.userAct==="register")identityRegisterModal(true);
-    if(b.dataset.userAct==="loans")openMyLoans();
     if(b.dataset.userAct==="account")identityProfileModal();
     if(b.dataset.userAct==="signout"){
       if(await niceModalConfirm("Sair da conta?","Você poderá entrar novamente com seu login e senha.","Sair",true)){
@@ -259,14 +260,21 @@ function finalAccount(){
   };
 }
 async function openMyLoans(){
-  if(!state.identity){identityLoginModal();return;}
-  openModal("Meus empréstimos","",'<div class="modal-main" id="v2-my-loans">Carregando…</div>',{size:"wide"});
-  const target=$("#v2-my-loans");
+  // Uma página independente, acessível também por nova guia.
+  if(document.body.dataset.loansRoute!=="true"){window.location.assign("/emprestimos/");return;}
+  const target=$("#loans-page-list");
+  if(!target)return;
+  if(!state.identity){
+    target.innerHTML='<div class="loans-login-needed"><p>Entre na sua conta para consultar seus empréstimos e devoluções.</p><button type="button" class="primary-button" id="loans-page-login">Entrar na minha conta</button></div>';
+    $("#loans-page-login").onclick=()=>identityLoginModal(true);
+    return;
+  }
+  target.innerHTML='<div class="loans-page-loading">Carregando seus empréstimos…</div>';
   try{
     const response=await api("/api/my/loans");
     const loans=response.emprestimos||[];
     if(!document.contains(target))return;
-    target.innerHTML=loans.length?'<div class="reservation-list">'+loans.map(r=>{
+    target.innerHTML=loans.length?'<div class="reservation-list loans-page-list">'+loans.map(r=>{
       const title=esc(r.componente_nome||"Material"),active=r.status==="retirada",pending=r.status==="pendente";
       const label={pendente:"Pendente",aprovada:"Aprovada",retirada:"Em uso",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"}[r.status]||r.status;
       return '<div class="admin-list-row"><div class="main-info"><strong>'+title+' · '+r.quantidade+' un.</strong><small>'+esc(formatDay(r.data_inicio))+' — '+esc(formatDay(r.data_devolucao))+'</small><span class="tag '+(pending?"pending":active?"picked":"")+'">'+esc(label)+'</span></div>'+
@@ -332,21 +340,9 @@ function setupFinalPublic(){
   if($("#public-nav-close"))$("#public-nav-close").onclick=()=>togglePublicMenu(false);
   if(veil)veil.onclick=()=>togglePublicMenu(false);
   if(drawer){
-    drawer.querySelectorAll("[data-public-action]").forEach(button=>button.onclick=()=>{
-      const action=button.dataset.publicAction;
-      togglePublicMenu(false);
-      if(action==="inventory"){
-        closeModal();
-        document.querySelector(".intro")?.scrollIntoView({behavior:"smooth",block:"start"});
-      }
-      if(action==="loans"||action==="return")openMyLoans();
-      if(action==="reservations"){
-        if(!state.identity)identityLoginModal();
-        else if(identityIsMember())memberWithdrawModal();
-        else reserveModal(null);
-      }
-      // Link nativo para Admin; não sobrescrever os comandos do navegador.
-    });
+    // Links reais preservam o menu de contexto e a abertura em nova guia.
+    drawer.querySelectorAll("[data-public-action]").forEach(link=>
+      link.addEventListener("click",()=>togglePublicMenu(false)));
   }
   $("#reserve-button").onclick=()=>{
     if(!state.identity){identityLoginModal();return;}
