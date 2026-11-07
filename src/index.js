@@ -52,7 +52,9 @@ function validateItem(data) {
     mostrar_defeito: data.mostrar_defeito ? 1 : 0,
     descricao_defeito: str(data.descricao_defeito, 1400),
     observacoes: str(data.observacoes, 1200),
-    unidade: str(data.unidade||"unidades", 40)
+    unidade: str(data.unidade||"unidades", 40),
+    visivel_visitante: data.visivel_visitante === undefined ? 1 : (data.visivel_visitante ? 1 : 0),
+    grupo_variacoes: str(data.grupo_variacoes,80)
   };
   if (!x.nome) throw new Error("Informe o nome do material.");
   if ([x.quantidade, x.em_uso, x.com_defeito].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
@@ -60,22 +62,40 @@ function validateItem(data) {
   if (x.imagem && !(/^\/img\/[a-zA-Z0-9_.-]+\.(svg|webp|jpg|jpeg|png)$/.test(x.imagem) || /^https:\/\//.test(x.imagem) || /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(x.imagem))) throw new Error("A imagem deve ser uma foto válida.");
   return x;
 }
-const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade"];
-const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade" };
+const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes"];
+const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações" };
 function changes(before, after) {
   if (!before) return "Material cadastrado";
   const diffs = fields.filter(key => String(before[key] ?? "") !== String(after[key] ?? "")).map(key => key === "imagem" ? "Fotografia atualizada" : names[key] + ": " + str(before[key] ?? "—", 42) + " → " + str(after[key] ?? "—", 42));
   return diffs.join(" | ") || "Cadastro confirmado";
 }
-async function catalog(db, isAdmin = false) {
-  const cats = await results(db, "SELECT id,nome,ordem FROM categorias ORDER BY ordem,nome");
-  const items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
-  if (!isAdmin) for (const item of items) { delete item.ultimo_responsavel; delete item.detalhes_alteracao; }
+const isPETiano = user => user?.papel === "petiano" && !!user.login && !user.must_change_password;
+const allowedToSee = (item, category, member) => !!category && Number(category.arquivada)!==1 && (member || (Number(item.visivel_visitante ?? 1) === 1 && Number(category.visivel_visitante ?? 1) === 1));
+async function auditLog(db, action, type, id, description, actor="Admin"){
+  try{
+    await db.prepare("INSERT INTO historico_admin(criado_em,responsavel,acao,tipo,registro_id,descricao) VALUES(?,?,?,?,?,?)")
+      .bind(now(),str(actor,100)||"Admin",str(action,50),str(type,40),id||null,str(description,1400)).run();
+  }catch(error){console.error("Erro ao registrar histórico administrativo",String(error).slice(0,200));}
+}
+async function catalog(db, isAdmin = false, member = false) {
+  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada FROM categorias ORDER BY ordem,nome");
+  let items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
+  if (!isAdmin) {
+    if (!member){
+      const publicIds=new Set(cats.filter(c=>Number(c.visivel_visitante)!==0).map(c=>c.id));
+      cats=cats.filter(c=>publicIds.has(c.id)&&Number(c.arquivada)!==1);
+      items=items.filter(item=>cats.some(c=>c.id===item.categoria_id) && Number(item.visivel_visitante ?? 1)!==0);
+    }
+    cats=cats.filter(c=>Number(c.arquivada)!==1);
+    items=items.filter(item=>cats.some(c=>c.id===item.categoria_id));
+    for (const item of items) { delete item.ultimo_responsavel; delete item.detalhes_alteracao; }
+  }
   return { categorias: cats, componentes: items };
 }
 async function state(db) {
   const data = await catalog(db, true);
   data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.solicitado_em DESC LIMIT 1500");
+  data.filamentos = await results(db,"SELECT * FROM filamentos ORDER BY ordem,cor COLLATE NOCASE");
   const config = await results(db, "SELECT chave,valor FROM configuracoes");
   data.configuracoes = Object.fromEntries(config.map(x => [x.chave, x.valor]));
   data.ultima_atualizacao = data.componentes.reduce((best,item)=>item.ultima_alteracao>best?item.ultima_alteracao:best,"");
@@ -85,7 +105,7 @@ const maxReserved = async (db, id, start, end, except = -1) => {
   const found = await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND id!=? AND status='aprovada' AND data_inicio<=? AND data_devolucao>=?").bind(id, except, end, start).first();
   return found?.n || 0;
 };
-const baseAvailable = item => item.mostrar_quantidade ? Math.max(0, item.quantidade - item.em_uso - item.com_defeito) : 0;
+const baseAvailable = item => Math.max(0, item.quantidade - item.em_uso - item.com_defeito);
 async function safeRate(db, req, prefix, max, hours = 1) {
   const ip = req.headers.get("CF-Connecting-IP") || "unknown";
   const hash = await toHash(prefix + ":" + ip + ":" + new Date().toISOString().slice(0, 10));
@@ -107,19 +127,22 @@ async function processRequest(req, env) {
     return j({ ok:true, service:"Inventário PET", database:"connected", categories:row?.n ?? 0 });
   }
   if (path === "/api/catalog" && method === "GET") {
-    const data = await catalog(db);
+    const user = await currentIdentity(req,db);
+    const data = await catalog(db,false,isPETiano(user));
     const mode = await db.prepare("SELECT valor FROM configuracoes WHERE chave='modo_demo'").first();
     return j({ ...data, demonstracao:mode?.valor === "sim" });
   }
   if(path==="/api/filaments" && method==="GET"){
-    const filamentos=await results(db,"SELECT id,cor,hexadecimal,quantidade,ordem,atualizado_em FROM filamentos ORDER BY ordem,cor COLLATE NOCASE");
+    const user=await currentIdentity(req,db);
+    const filamentos=await results(db,isPETiano(user)?"SELECT id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante FROM filamentos ORDER BY ordem,cor COLLATE NOCASE":"SELECT id,cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante FROM filamentos WHERE visivel_visitante=1 ORDER BY ordem,cor COLLATE NOCASE");
     return j({ok:true,filamentos});
   }
   if (path === "/api/availability" && method === "GET") {
     const id = requireId(url.searchParams.get("id")), a = url.searchParams.get("inicio"), b = url.searchParams.get("fim");
     if (!dateOK(a) || !dateOK(b) || a > b) return bad("Período inválido.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    if (!item || item.arquivado===1) return bad("Material não encontrado.", 404);
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(await currentIdentity(req,db)))) return bad("Material não encontrado.", 404);
     return j({ disponiveis:Math.max(0, baseAvailable(item) - await maxReserved(db,id,a,b)) });
   }
   if (path === "/api/reservations" && method === "POST") {
@@ -136,7 +159,8 @@ async function processRequest(req, env) {
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    if (!item || item.arquivado===1) return bad("Material não encontrado.",404);
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(identity))) return bad("Material não encontrado.",404);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
     await db.prepare("INSERT INTO reservas (componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id) VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)").bind(id,nome,contato,email,quantidade,inicio,fim,str(body.observacao,500),now(),identity?.id||null).run();
@@ -162,12 +186,64 @@ async function processRequest(req, env) {
   if (!path.startsWith("/api/admin/")) return bad("Endereço não encontrado.",404);
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
   if (path === "/api/admin/state" && method === "GET") return j(await state(db));
+  if(path==="/api/admin/log" && method==="GET"){
+    const page=Math.max(1,Math.min(1000,Number(url.searchParams.get("pagina"))||1));
+    const filter=str(url.searchParams.get("tipo"),40);
+    const where=["material","categoria","filamento","reserva","usuario","sistema"].includes(filter)?" WHERE tipo=?":"";
+    const args=where?[filter]:[];
+    const count=await db.prepare("SELECT COUNT(*) AS n FROM historico_admin"+where).bind(...args).first();
+    const logs=await results(db,"SELECT id,criado_em,responsavel,acao,tipo,registro_id,descricao FROM historico_admin"+where+" ORDER BY criado_em DESC,id DESC LIMIT 35 OFFSET ?",[...args,(page-1)*35]);
+    const cfg=await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_historico'").first();
+    return j({ok:true,eventos:logs,total:count?.n||0,pagina:page,limpeza_historico:cfg?.valor||"nunca"});
+  }
+  if(path==="/api/admin/log" && method==="POST"){
+    const body=await input(req,1500);
+    if(body.acao==="configurar"){
+      const prazo=String(body.prazo);
+      if(!["nunca","1","3","5","7","15","30"].includes(prazo))return bad("Prazo do histórico inválido.");
+      await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_historico',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(prazo).run();
+      await auditLog(db,"Configuração","sistema",null,"Prazo do histórico: "+(prazo==="nunca"?"Nunca":prazo+" dia(s)"),body.responsavel);
+      return j({ok:true});
+    }
+    if(body.acao==="limpar"){
+      if(body.confirmar!=="LIMPAR HISTÓRICO")return bad("Confirmação de limpeza inválida.",400);
+      const n=await db.prepare("DELETE FROM historico_admin").run();
+      return j({ok:true,removidos:n.meta?.changes||0});
+    }
+    return bad("Ação de histórico inválida.");
+  }
+  if(path==="/api/admin/visibility" && method==="POST"){
+    const body=await input(req,14000);
+    const ids=Array.isArray(body.ids)?body.ids.map(Number):[];
+    if(!ids.length||ids.length>250||ids.some(x=>!Number.isSafeInteger(x)||x<1)||new Set(ids).size!==ids.length)return bad("Selecione até 250 materiais válidos.");
+    const show=body.visivel_visitante?1:0;
+    const objects=await results(db,"SELECT id,nome FROM componentes WHERE id IN ("+ids.map(()=>"?").join(",")+")",ids);
+    if(objects.length!==ids.length)return bad("Alguns materiais não foram encontrados.",404);
+    await db.batch(ids.map(id=>db.prepare("UPDATE componentes SET visivel_visitante=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(show,now(),str(body.responsavel,100)||"Admin","Exibição para visitantes: "+(show?"todos":"só PETianes"),id)));
+    await auditLog(db,show?"Liberou exibição":"Restringiu exibição","material",null,objects.length+" materiais: "+objects.map(x=>x.nome).slice(0,16).join(", "),body.responsavel);
+    return j({ok:true,alterados:objects.length});
+  }
+  if(path==="/api/admin/variations" && method==="POST"){
+    const body=await input(req,12000),ids=Array.isArray(body.ids)?body.ids.map(Number):[];
+    if(!ids.length||ids.length>150||ids.some(x=>!Number.isSafeInteger(x)||x<1)||new Set(ids).size!==ids.length)return bad("Selecione os materiais que serão vinculados.");
+    const label=str(body.grupo,80);
+    if(label && label.length<2)return bad("Informe um nome de grupo válido.");
+    const objects=await results(db,"SELECT id,nome FROM componentes WHERE id IN ("+ids.map(()=>"?").join(",")+")",ids);
+    if(objects.length!==ids.length)return bad("Alguns materiais não foram encontrados.",404);
+    await db.batch(ids.map(id=>db.prepare("UPDATE componentes SET grupo_variacoes=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(label,now(),str(body.responsavel,100)||"Admin","Grupo de variações: "+(label||"Sem grupo"),id)));
+    await auditLog(db,label?"Vinculou variações":"Desvinculou variações","material",null,objects.map(x=>x.nome).slice(0,16).join(", ")+" → "+(label||"Sem grupo"),body.responsavel);
+    return j({ok:true,vinculados:objects.length});
+  }
   if(path==="/api/admin/filaments" && method==="POST"){
     const b=await input(req,2500),acao=str(b.acao,20);
     if(acao==="excluir"){
       const id=requireId(b.id);
+      const old=await db.prepare("SELECT cor FROM filamentos WHERE id=?").bind(id).first();
       const result=await db.prepare("DELETE FROM filamentos WHERE id=?").bind(id).run();
       if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
+      await auditLog(db,"Excluiu","filamento",id,old?.cor||"Filamento");
       return j({ok:true});
     }
     if(acao==="ordenar"){
@@ -178,15 +254,18 @@ async function processRequest(req, env) {
       return j({ok:true});
     }
     if(acao!=="criar" && acao!=="editar")return bad("Ação inválida.");
-    const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade);
+    const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
     if(acao==="criar"){
       const x=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
-      await db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em) VALUES(?,?,?,?,?)").bind(cor,hexadecimal,q,x.proximo,now()).run();
+      const saved=await db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES(?,?,?,?,?,?)").bind(cor,hexadecimal,q,x.proximo,now(),show).run();
+      await auditLog(db,"Cadastrou","filamento",saved.meta?.last_row_id,cor+" · "+q+" unidades");
     }else{
       const id=requireId(b.id);
-      const result=await db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,now(),id).run();
+      const old=await db.prepare("SELECT * FROM filamentos WHERE id=?").bind(id).first();
+      const result=await db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,now(),id).run();
       if(!result.meta?.changes)return bad("Cor de filamento não encontrada.",404);
+      await auditLog(db,"Editou","filamento",id,(old?.cor||"Filamento")+" → "+cor+" · quantidade "+(old?.quantidade??"—")+" → "+q+" · exibição "+(show?"Todos":"PETianes"));
     }
     return j({ok:true});
   }
@@ -194,7 +273,7 @@ async function processRequest(req, env) {
     const body = await input(req);
     const item = validateItem(body);
     const id = body.id ? requireId(body.id) : null;
-    const categoria = await db.prepare("SELECT id FROM categorias WHERE id=?").bind(item.categoria_id).first();
+    const categoria = await db.prepare("SELECT id FROM categorias WHERE id=? AND arquivada=0").bind(item.categoria_id).first();
     if (!categoria) return bad("Categoria não encontrada.");
     const old = id ? await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first() : null;
     if (id && !old) return bad("Material não encontrado.",404);
@@ -205,8 +284,10 @@ async function processRequest(req, env) {
     const vals = fields.map(k => item[k]);
     if (id) {
       await db.prepare("UPDATE componentes SET "+fields.map(k=>k+"=?").join(",")+",ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(...vals,...audit,id).run();
+      await auditLog(db,"Editou","material",id,item.nome+" · "+audit[2],actor);
     } else {
-      await db.prepare("INSERT INTO componentes("+fields.join(",")+",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES ("+Array(fields.length+3).fill("?").join(",")+")").bind(...vals,...audit).run();
+      const saved=await db.prepare("INSERT INTO componentes("+fields.join(",")+",ultima_alteracao,ultimo_responsavel,detalhes_alteracao) VALUES ("+Array(fields.length+3).fill("?").join(",")+")").bind(...vals,...audit).run();
+      await auditLog(db,"Cadastrou","material",saved.meta?.last_row_id,item.nome,actor);
     }
     return j({ ok:true });
   }
@@ -214,28 +295,52 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id"));
     const active = await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE componente_id=? AND status IN ('pendente','aprovada','retirada')").bind(id).first();
     if (active.n) return bad("Existem reservas ativas deste material. Finalize-as antes de excluir.",409);
+    const old=await db.prepare("SELECT nome FROM componentes WHERE id=?").bind(id).first();
     await db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
-      .bind(now(),"Administração","Material arquivado",id).run();
+      .bind(now(),"Admin","Material arquivado",id).run();
+    await auditLog(db,"Arquivou","material",id,old?.nome||"Material");
     return j({ ok:true,arquivado:true });
   }
   if(path==="/api/admin/item/unarchive" && method==="POST"){
     const b=await input(req,1500),id=requireId(b.id);
-    await db.prepare("UPDATE componentes SET arquivado=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(now(),"Administração","Material restaurado",id).run();
+    const old=await db.prepare("SELECT nome FROM componentes WHERE id=?").bind(id).first();
+    await db.prepare("UPDATE componentes SET arquivado=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?").bind(now(),"Admin","Material restaurado",id).run();
+    await auditLog(db,"Restaurou","material",id,old?.nome||"Material");
     return j({ok:true});
   }
   if (path === "/api/admin/category" && method === "POST") {
-    const b = await input(req,9000);
-    const name = str(b.nome,80);
+    const b = await input(req,9000),name=str(b.nome,80),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
     if (b.acao === "criar") {
       if (!name) return bad("Informe o nome da categoria.");
-      await db.prepare("INSERT INTO categorias(nome,ordem) VALUES(?,?)").bind(name,Number(b.ordem)||0).run();
+      const saved=await db.prepare("INSERT INTO categorias(nome,ordem,visivel_visitante,arquivada) VALUES(?,?,?,0)").bind(name,Number(b.ordem)||0,show).run();
+      await auditLog(db,"Cadastrou","categoria",saved.meta?.last_row_id,name);
     } else if (b.acao === "editar") {
       if (!name) return bad("Informe o nome da categoria.");
-      await db.prepare("UPDATE categorias SET nome=? WHERE id=?").bind(name,requireId(b.id)).run();
+      const id=requireId(b.id),old=await db.prepare("SELECT nome FROM categorias WHERE id=?").bind(id).first();
+      if(!old)return bad("Categoria inexistente.",404);
+      await db.prepare("UPDATE categorias SET nome=?,visivel_visitante=? WHERE id=?").bind(name,show,id).run();
+      await auditLog(db,"Editou","categoria",id,old.nome+" → "+name+" · exibição "+(show?"Todos":"PETianes"));
     } else if (b.acao === "excluir") {
-      const id = requireId(b.id), linked = await db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=?").bind(id).first();
-      if (linked.n) return bad("Mova os materiais desta categoria antes de excluí-la.",409);
-      await db.prepare("DELETE FROM categorias WHERE id=?").bind(id).run();
+      const id=requireId(b.id);
+      const category=await db.prepare("SELECT nome FROM categorias WHERE id=? AND arquivada=0").bind(id).first();
+      if(!category)return bad("Categoria não encontrada.",404);
+      const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas r JOIN componentes c ON r.componente_id=c.id WHERE c.categoria_id=? AND r.status IN ('pendente','aprovada','retirada')").bind(id).first();
+      if(active.n)return bad("Esta categoria possui reservas ou retiradas abertas. Finalize-as antes de excluir.",409);
+      if(b.confirmacao!==category.nome)return bad("Confirme digitando exatamente o nome da categoria.",400);
+      const linked=await db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=? AND arquivado=0").bind(id).first();
+      // Arquivar, sem destruir referências de empréstimos antigos. O catálogo e a lista normal
+      // deixam de mostrar os itens; recuperação futura continua possível.
+      await db.batch([
+        db.prepare("UPDATE categorias SET arquivada=1,visivel_visitante=0 WHERE id=?").bind(id),
+        db.prepare("UPDATE componentes SET arquivado=1,ultima_alteracao=?,ultimo_responsavel='Admin',detalhes_alteracao='Categoria arquivada' WHERE categoria_id=?").bind(now(),id)
+      ]);
+      await auditLog(db,"Excluiu (arquivou)","categoria",id,category.nome+" · "+(linked?.n||0)+" materiais também arquivados");
+      return j({ok:true,arquivados:linked?.n||0});
+    } else if (b.acao === "restaurar") {
+      const id=requireId(b.id),cat=await db.prepare("SELECT nome FROM categorias WHERE id=? AND arquivada=1").bind(id).first();
+      if(!cat)return bad("Categoria arquivada não encontrada.",404);
+      await db.prepare("UPDATE categorias SET arquivada=0 WHERE id=?").bind(id).run();
+      await auditLog(db,"Restaurou","categoria",id,cat.nome+" (materiais permanecem arquivados até restauração individual)");
     } else if (b.acao === "ordenar") {
       if (!Array.isArray(b.ordem) || b.ordem.length > 100) return bad("Ordem inválida.");
       const queries = b.ordem.map((id, i) => db.prepare("UPDATE categorias SET ordem=? WHERE id=?").bind(i,requireId(id)));
@@ -280,6 +385,7 @@ async function processRequest(req, env) {
       else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução de "+item.nome+" foi confirmada.";tipo="devolucao";}
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
+    await auditLog(db,action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actor);
     return j({ ok:true });
   }
   if (path === "/api/admin/settings" && method === "POST") {
@@ -288,6 +394,7 @@ async function processRequest(req, env) {
     await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(days).run();
     if (b.modo_demo === "sim" || b.modo_demo === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('modo_demo',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.modo_demo).run();
     if (b.avisos_email === "sim" || b.avisos_email === "nao") await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('avisos_email',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(b.avisos_email).run();
+    await auditLog(db,"Configuração","sistema",null,"Configurações de reservas atualizadas");
     return j({ ok:true });
   }
   if (path === "/api/admin/backup" && method === "GET") {
@@ -314,6 +421,7 @@ async function processRequest(req, env) {
     for (const [key, value] of Object.entries(cfg)) if (/^[a-z_]{1,50}$/.test(key)) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,100)));
     if (!cfg.limpeza_reservas) ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
     await db.batch(ops);
+    await auditLog(db,"Restaurou backup","sistema",null,"Backup restaurado com "+b.componentes.length+" materiais e "+b.categorias.length+" categorias");
     return j({ ok:true });
   }
   if (path === "/api/admin/reminder" && method === "POST") {
@@ -327,6 +435,7 @@ async function processRequest(req, env) {
   }
   if (path === "/api/admin/cleanup" && method === "POST") {
     const count = await cleanup(db);
+    await auditLog(db,"Limpeza","sistema",null,count+" reservas concluídas removidas");
     return j({ ok:true, removidas:count });
   }
   return bad("Rota não encontrada.",404);
@@ -361,6 +470,12 @@ async function cleanup(db) {
     const cutoff = new Date(Date.now() - (days === "1min" ? 60000 : Number(days) * 86400000)).toISOString();
     const done = await db.prepare("DELETE FROM reservas WHERE status='devolvida' AND devolvido_em IS NOT NULL AND devolvido_em < ?").bind(cutoff).run();
     removed = done.meta?.changes || 0;
+  }
+  const logSetting=await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_historico'").first();
+  const limit=logSetting?.valor;
+  if(limit&&limit!=="nunca"&&Number(limit)>0){
+    const deadline=new Date(Date.now()-Number(limit)*86400000).toISOString();
+    await db.prepare("DELETE FROM historico_admin WHERE criado_em<?").bind(deadline).run();
   }
   await db.prepare("DELETE FROM admin_sessions WHERE expires_at < ?").bind(now()).run();
   await db.prepare("DELETE FROM usuario_sessoes WHERE expira_em < ?").bind(now()).run();
