@@ -58,7 +58,7 @@ const isTarget=x=>x.categoria_id===categories.Tablets.id||x.categoria_id===categ
 const moved=before.filter(isTarget);
 assert.ok(moved.length>=52,"Inventário original deveria conter os tablets e notebooks reais");
 assert.equal(before.filter(x=>x.nome.startsWith("Notebook")&&isTarget(x)).length,17);
-assert.equal(before.filter(x=>x.nome.startsWith("Tablet")&&isTarget(x)).length>=35);
+assert.ok(before.filter(x=>x.nome.startsWith("Tablet")&&isTarget(x)).length>=35,"Pelo menos 35 tablets devem constar do inventário original.");
 
 // Empréstimo de notebook em andamento antes da reorganização: comprovar que a
 // mudança de categoria não atualiza os registros nem modifica a quantidade em uso.
