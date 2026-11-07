@@ -219,39 +219,49 @@ function stepInput(id,label,value){
 }
 function itemEditor(id){
   const x=state.admin.componentes.find(i=>i.id===id);
-  const categories=state.admin.categorias.map(c=>({value:c.id,label:c.nome}));
-  if(!categories.length){toast("Cadastre uma categoria primeiro.",true);state.tab="categorias";adminModal();return;}
-  const body='<form id="item-form" class="modal-main"><div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
-    '<div class="field-grid">'+inputField("i-id","Identificação / modelo",x?.identificacao||"",{max:120})+inputField("i-patrimony","Número de patrimônio",x?.patrimonio||"",{max:160})+'</div>'+
-    '<div class="field"><label>Foto do material</label><div id="i-photo-preview" class="media-preview"><img alt="Imagem ilustrativa" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Foto JPG, PNG ou WEBP. Ajuste automático para o card (quadrado, até 650 px).</small><label class="switch-row" style="margin:5px 0"><span><strong>Remover fundo claro automaticamente</strong><small>Melhor para imagens com fundo uniforme; confira o resultado antes de salvar.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar imagem padrão</button></div>'+
+  const categories=state.admin.categorias.filter(c=>!c.arquivada).map(c=>({value:c.id,label:c.nome}));
+  if(!categories.length){toast("Cadastre uma categoria primeiro.",true);selectAdminTab("categorias");return;}
+  const groups=[...new Set(state.admin.componentes.map(y=>y.grupo_variacoes).filter(Boolean))];
+  const family=window.__newVariantGroup||x?.grupo_variacoes||"";
+  window.__newVariantGroup="";
+  const body='<form id="item-form" class="modal-main">'+
+    '<div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
+    '<div class="field-grid">'+inputField("i-id","Modelo / referência (opcional)",x?.identificacao||"",{max:120})+inputField("i-patrimony","Número de patrimônio (opcional)",x?.patrimonio||"",{max:160})+'</div>'+
+    '<div class="field"><label for="i-variation-family">Grupo de variações (opcional)</label><input id="i-variation-family" type="text" maxlength="80" list="i-family-options" value="'+attr(family)+'" placeholder="Ex.: Resistores, Arduino, Capacitores"><datalist id="i-family-options">'+groups.map(name=>'<option value="'+attr(name)+'"></option>').join("")+'</datalist><small class="hint">Itens do mesmo grupo aparecem no mesmo card, sem misturar estoques.</small>'+(x?'<button class="outline-button small-button" id="i-link-variations" type="button">Vincular materiais semelhantes</button>':'')+'</div>'+
+    switchInput("i-public","Exibir para todos",x?flag(x.visivel_visitante):true,"Desmarque para mostrar somente aos PETianes.")+
+    '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Ilustração do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Imagem própria ou ilustração automática.</small><label class="switch-row"><span><strong>Remover fundo claro automaticamente</strong><small>Para fotos com fundo uniforme.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div>'+
     '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade",x?.quantidade||0)+stepInput("i-used","Em uso",x?.em_uso||0)+stepInput("i-broken","Com defeito",x?.com_defeito||0)+'</div>'+
-    '<div class="field-grid">'+inputField("i-unit","Unidade",x?.unidade||"unidades",{max:40})+'</div>'+
     '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
-    '<div class="notice" id="i-available" style="margin-bottom:14px">Disponíveis: '+available(x||{mostrar_quantidade:1,quantidade:0,em_uso:0,com_defeito:0})+'</div>'+
-    '<h3 style="font-size:15px;margin:14px 0 4px">O que mostrar no inventário</h3>'+
-    switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true,"Desativado: exibirá Sem estoque.")+
-    switchInput("i-show-used","Exibir em uso",x?flag(x.mostrar_em_uso):true)+
-    switchInput("i-show-broken","Exibir com defeito",x?flag(x.mostrar_defeito):false)+
-    '<div class="field" style="margin-top:15px"><label for="i-description">Informações gerais dos defeitos (opcional)</label><textarea id="i-description" maxlength="1400" placeholder="Descreva aqui os problemas observados nas unidades com defeito">'+esc(x?.descricao_defeito||"")+'</textarea></div>'+
+    '<details class="editor-advanced"><summary>Opções avançadas de exibição dos números</summary>'+
+      switchInput("i-show-quantity","Exibir quantidade",x?flag(x.mostrar_quantidade):true)+
+      switchInput("i-show-used","Exibir em uso",x?flag(x.mostrar_em_uso):true)+
+      switchInput("i-show-broken","Exibir com defeito",x?flag(x.mostrar_defeito):false)+
+    '</details>'+
+    '<div class="field"><label for="i-description">Informações sobre defeitos (opcional)</label><textarea id="i-description" maxlength="1400">'+esc(x?.descricao_defeito||"")+'</textarea></div>'+
     (x?.ultima_alteracao?'<div class="audit"><strong>Última alteração salva</strong><span>'+esc(x.ultimo_responsavel||"PETiane")+' · '+esc(fmt(x.ultima_alteracao))+'</span><p>'+esc(x.detalhes_alteracao||"Registro atualizado")+'</p></div>':"")+
-    '<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button><button type="submit" class="primary-button" id="i-save">Salvar alterações</button></div></form>';
-  openModal(x?"Editar material":"Adicionar material","Informe os dados do cadastro e confirme para gravar.",body,{size:"wide"});
+    '<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button><button type="submit" class="primary-button" id="i-save">Salvar material</button></div></form>';
+  openModal(x?"Editar material":"Adicionar material","",body,{size:"wide"});
   let image=x?.imagem||"";
-  $("#i-photo-remove").onclick=()=>{image="";$("#i-photo-preview").innerHTML='<img alt="Imagem padrão" src="'+attr(defaultImage($("#i-name").value))+'">';$("#i-photo").value="";$("#i-photo").dispatchEvent(new Event("input",{bubbles:true}));};
+  if(x && $("#i-link-variations"))$("#i-link-variations").onclick=()=>openVariantLinker(x.id);
+  $("#i-photo-remove").onclick=()=>{image="";$("#i-photo-preview").innerHTML='<img alt="Desenho padrão" src="'+attr(defaultImage($("#i-name").value))+'">';$("#i-photo").value="";$("#i-photo").dispatchEvent(new Event("input",{bubbles:true}));};
   $("#i-photo").onchange=async e=>{
     const file=e.target.files?.[0];if(!file)return;
-    if(!file.type.startsWith("image/")){toast("Selecione uma fotografia.",true);return;}
-    try{image=await shrinkImage(file);$("#i-photo-preview").innerHTML='<img src="'+attr(image)+'" alt="Nova foto">';toast("Fotografia pronta para salvar.");}catch(error){toast(error.message,true);}
+    if(!file.type.startsWith("image/")){toast("Selecione uma imagem.",true);return;}
+    try{image=await shrinkImage(file);$("#i-photo-preview").innerHTML='<img src="'+attr(image)+'" alt="Nova imagem">';toast("Imagem pronta para salvar.");}catch(error){toast(error.message,true);}
   };
-  function calc(){let q=Number($("#i-quantity").value)||0,u=Number($("#i-used").value)||0,b=Number($("#i-broken").value)||0;$("#i-available").textContent="Disponíveis: "+Math.max(0,q-u-b)+(u+b>q?" · Atenção: uso + defeito ultrapassa o total.":"");}
-  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta),calc));
-  for(const el of ["i-quantity","i-used","i-broken"])$("#"+el).addEventListener("change",calc);
-  $("#i-cancel").onclick=()=>{adminModal()};
+  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
+  $("#i-cancel").onclick=()=>adminModal();
   $("#item-form").onsubmit=async e=>{
     e.preventDefault();const submit=$("#i-save");submit.disabled=true;submit.textContent="Salvando…";
-    const body={id:x?.id||null,responsavel:state.actor||"PETiane",categoria_id:Number($("#i-category").value),nome:$("#i-name").value,identificacao:$("#i-id").value,patrimonio:$("#i-patrimony").value,imagem: image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value};
-    try{await api("/api/admin/item","POST",body);await adminReload();adminModal();toast("Material salvo com sucesso!");}
-    catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar alterações";}
+    const body={id:x?.id||null,responsavel:state.actor||"PETiane",categoria_id:Number($("#i-category").value),
+      nome:$("#i-name").value,identificacao:$("#i-id").value,patrimonio:$("#i-patrimony").value,
+      imagem:image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),
+      com_defeito:Number($("#i-broken").value),mostrar_quantidade:$("#i-show-quantity").checked,
+      mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
+      visivel_visitante:$("#i-public").checked,grupo_variacoes:$("#i-variation-family").value,
+      descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:x?.unidade||"unidades"};
+    try{await api("/api/admin/item","POST",body);await adminReload();adminModal();toast("Material salvo!");}
+    catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Salvar material";}
   };
 }
 async function shrinkImage(file){
@@ -338,12 +348,18 @@ function renderAdminCategories(target){
 }
 function editCategory(id){
   const cat=state.admin.categorias.find(x=>x.id===id);
-  openModal(cat?"Renomear categoria":"Nova categoria","Organize seus materiais por seção.",'<form class="modal-main" id="category-form">'+inputField("cat-name","Nome da categoria *",cat?.nome||"",{required:true,max:80})+'<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="cat-cancel">Cancelar</button><button type="submit" class="primary-button">Salvar categoria</button></div></form>');
+  openModal(cat?"Editar categoria":"Nova categoria","Defina o nome e quem poderá visualizar seus materiais.",
+    '<form class="modal-main" id="category-form">'+inputField("cat-name","Nome da categoria *",cat?.nome||"",{required:true,max:80})+
+    switchInput("cat-public","Exibir para todos",cat?Number(cat.visivel_visitante)!==0:true,"Desmarcado: a categoria e seus materiais só aparecem aos PETianes.")+
+    '<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="cat-cancel">Cancelar</button><button type="submit" class="primary-button">Salvar categoria</button></div></form>');
   $("#cat-cancel").onclick=adminModal;
-  $("#category-form").onsubmit=async e=>{e.preventDefault();try{
-    await api("/api/admin/category","POST",{acao:cat?"editar":"criar",id:cat?.id,nome:$("#cat-name").value});
-    await adminReload();adminModal();toast("Categoria salva!");
-  }catch(error){toast(error.message,true)}};
+  $("#category-form").onsubmit=async e=>{
+    e.preventDefault();
+    try{
+      await api("/api/admin/category","POST",{acao:cat?"editar":"criar",id:cat?.id,nome:$("#cat-name").value,visivel_visitante:$("#cat-public").checked});
+      await adminReload();adminModal();toast("Categoria salva!");
+    }catch(error){toast(error.message,true);}
+  };
 }
 async function deleteCategory(id){
   const cat=state.admin.categorias.find(x=>x.id===id);
@@ -406,21 +422,24 @@ $("#profile-button").onclick=()=>profileModal();
 $("#admin-button").onclick=openAdmin;
 $("#retry-button").onclick=async()=>{try{await publicReload()}catch{toast("Ainda sem conexão.",true)}};
 (async()=>{
+  if(document.body.dataset.adminRoute==="true")return;
   try{
-    await publicReload();
-    try{
-      const info=await api("/api/identity/me");
-      state.identity=info.usuario||null;
-      if(state.identity){state.actor=state.identity.nome;localStorage.setItem("pet_inventario_nome",state.actor);}
-    }catch(e){console.warn("Identidade temporariamente indisponível",e);}
+    // Esperar catálogo, filamentos e identidade antes da primeira renderização.
+    const [catalog,filamentData,identity]=await Promise.all([
+      api("/api/catalog"),api("/api/filaments"),api("/api/identity/me")
+    ]);
+    state.data=catalog;
+    UI.filaments=filamentData.filamentos||[];
+    state.identity=identity.usuario||null;
+    state.actor=state.identity?.nome||localStorage.getItem("pet_inventario_nome")||"";
+    if(state.identity)localStorage.setItem("pet_inventario_nome",state.actor);
+    $("#offline-alert").hidden=true;
     render();
-    if(!state.identity)setTimeout(()=>profileModal(true),400);
-    else if(state.identity.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
-    else if(state.identity.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
-  }
-  catch(error){
+    if(state.identity?.precisa_criar_login)setTimeout(()=>identityUpgradeModal(),400);
+    else if(state.identity?.trocar_senha)setTimeout(()=>identityChangePasswordModal(true),400);
+  }catch(error){
     console.error(error);
     $("#offline-alert").hidden=false;
-    $("#category-sections").innerHTML='<div class="empty-state">Não foi possível carregar os materiais neste momento.</div>';
-  }
+    $("#category-sections").innerHTML='<div class="empty-state">Não foi possível carregar o inventário. Tente atualizar.</div>';
+  }finally{document.body.classList.remove("catalog-loading");}
 })();
