@@ -124,6 +124,32 @@ w.__publicTestUI.category="99999";w.__finalRender();
 assert.equal(w.localStorage.getItem("pet_public_category"),"all","Filtro de categoria excluída ou arquivada deve voltar para Todos.");
 assert.ok(d.querySelector('[data-category="all"]').classList.contains("active"));
 assert.ok(d.querySelectorAll(".catalog-card").length>0,"Ao trocar o filtro antigo, o catálogo deve voltar a exibir materiais.");
+
+// Regressão real: família "Pilha Alcalina" possui materiais chamados "Alcalina...",
+// mas deve aparecer DEPOIS do card "Arduino", porque o título visível começa em P.
+const alkalineForSort=w.__adminTestState.data.componentes.filter(x=>x.grupo_variacoes==="Alcalina");
+assert.equal(alkalineForSort.length,3);
+for(const item of alkalineForSort)item.grupo_variacoes="Pilha Alcalina";
+w.__publicTestUI.category="1"; // Apenas Robótica/Eletrônica, como na tela enviada.
+w.__publicTestUI.sort="az";
+w.__finalRender();
+const catalogTitles=()=>Array.from(d.querySelectorAll("#category-sections .catalog-card h3"),x=>x.textContent.trim());
+const azTitles=catalogTitles();
+assert.deepEqual(azTitles,[...azTitles].sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base",numeric:true})),
+  "A–Z deve ordenar pelo TÍTULO dos cards exibidos, não pelos nomes dos modelos.");
+assert.ok(azTitles.indexOf("Arduino")<azTitles.indexOf("Pilha Alcalina"),
+  "Arduino precisa vir antes de Pilha Alcalina mesmo com modelo chamado Alcalina.");
+assert.match(d.querySelector(".catalog-photo[data-open-variants='pilha alcalina']")?.closest(".catalog-card")?.textContent||"",/60/,
+  "Ordenar não pode perder as três variações e seu estoque somado.");
+w.__publicTestUI.sort="za";
+w.__finalRender();
+const zaTitles=catalogTitles();
+assert.deepEqual(zaTitles,[...azTitles].reverse(),"Z–A deve inverter a ordem dos títulos mostrados.");
+for(const item of alkalineForSort)item.grupo_variacoes="Alcalina";
+w.__publicTestUI.category="all";
+w.__publicTestUI.sort="az";
+w.__finalRender();
+
 assert.ok(publicUI.noticeRequestCount()>=1,"Sino deve consultar notificações logo após restaurar login.");
 publicUI.addNotice({id:44,titulo:"Reserva recusada",mensagem:"Sua reserva #31 foi recusada por Ana Maria (PET).",criada_em:"2026-11-07T12:10:00Z",lida_em:null});
 await click("#notification-button");
