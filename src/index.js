@@ -53,7 +53,8 @@ function validateItem(data) {
     descricao_defeito: str(data.descricao_defeito, 1400),
     observacoes: str(data.observacoes, 1200),
     unidade: str(data.unidade||"unidades", 40),
-    visivel_visitante: data.visivel_visitante === undefined ? 1 : (data.visivel_visitante ? 1 : 0)
+    visivel_visitante: data.visivel_visitante === undefined ? 1 : (data.visivel_visitante ? 1 : 0),
+    grupo_variacoes: str(data.grupo_variacoes,80)
   };
   if (!x.nome) throw new Error("Informe o nome do material.");
   if ([x.quantidade, x.em_uso, x.com_defeito].some(n => !Number.isSafeInteger(n) || n < 0 || n > 1000000)) throw new Error("Confira as quantidades.");
@@ -61,15 +62,15 @@ function validateItem(data) {
   if (x.imagem && !(/^\/img\/[a-zA-Z0-9_.-]+\.(svg|webp|jpg|jpeg|png)$/.test(x.imagem) || /^https:\/\//.test(x.imagem) || /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(x.imagem))) throw new Error("A imagem deve ser uma foto válida.");
   return x;
 }
-const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante"];
-const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes" };
+const fields = ["categoria_id","nome","imagem","patrimonio","identificacao","quantidade","em_uso","com_defeito","mostrar_quantidade","mostrar_em_uso","mostrar_defeito","descricao_defeito","observacoes","unidade","visivel_visitante","grupo_variacoes"];
+const names = { categoria_id:"Categoria",nome:"Nome",imagem:"Fotografia",patrimonio:"Patrimônio",identificacao:"Identificação",quantidade:"Quantidade",em_uso:"Em uso",com_defeito:"Com defeito",mostrar_quantidade:"Exibição da quantidade",mostrar_em_uso:"Exibição de em uso",mostrar_defeito:"Exibição de defeitos",descricao_defeito:"Descrição dos defeitos",observacoes:"Observações",unidade:"Unidade",visivel_visitante:"Exibição para visitantes",grupo_variacoes:"Família de variações" };
 function changes(before, after) {
   if (!before) return "Material cadastrado";
   const diffs = fields.filter(key => String(before[key] ?? "") !== String(after[key] ?? "")).map(key => key === "imagem" ? "Fotografia atualizada" : names[key] + ": " + str(before[key] ?? "—", 42) + " → " + str(after[key] ?? "—", 42));
   return diffs.join(" | ") || "Cadastro confirmado";
 }
 const isPETiano = user => user?.papel === "petiano" && !!user.login && !user.must_change_password;
-const allowedToSee = (item, category, member) => member || (Number(item.visivel_visitante ?? 1) === 1 && Number(category?.visivel_visitante ?? 1) === 1);
+const allowedToSee = (item, category, member) => !!category && Number(category.arquivada)!==1 && (member || (Number(item.visivel_visitante ?? 1) === 1 && Number(category.visivel_visitante ?? 1) === 1));
 async function auditLog(db, action, type, id, description, actor="Admin"){
   try{
     await db.prepare("INSERT INTO historico_admin(criado_em,responsavel,acao,tipo,registro_id,descricao) VALUES(?,?,?,?,?,?)")
@@ -77,14 +78,16 @@ async function auditLog(db, action, type, id, description, actor="Admin"){
   }catch(error){console.error("Erro ao registrar histórico administrativo",String(error).slice(0,200));}
 }
 async function catalog(db, isAdmin = false, member = false) {
-  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante FROM categorias ORDER BY ordem,nome");
+  let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada FROM categorias ORDER BY ordem,nome");
   let items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
   if (!isAdmin) {
     if (!member){
       const publicIds=new Set(cats.filter(c=>Number(c.visivel_visitante)!==0).map(c=>c.id));
-      cats=cats.filter(c=>publicIds.has(c.id));
-      items=items.filter(item=>publicIds.has(item.categoria_id) && Number(item.visivel_visitante ?? 1)!==0);
+      cats=cats.filter(c=>publicIds.has(c.id)&&Number(c.arquivada)!==1);
+      items=items.filter(item=>cats.some(c=>c.id===item.categoria_id) && Number(item.visivel_visitante ?? 1)!==0);
     }
+    cats=cats.filter(c=>Number(c.arquivada)!==1);
+    items=items.filter(item=>cats.some(c=>c.id===item.categoria_id));
     for (const item of items) { delete item.ultimo_responsavel; delete item.detalhes_alteracao; }
   }
   return { categorias: cats, componentes: items };
@@ -102,7 +105,7 @@ const maxReserved = async (db, id, start, end, except = -1) => {
   const found = await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND id!=? AND status='aprovada' AND data_inicio<=? AND data_devolucao>=?").bind(id, except, end, start).first();
   return found?.n || 0;
 };
-const baseAvailable = item => item.mostrar_quantidade ? Math.max(0, item.quantidade - item.em_uso - item.com_defeito) : 0;
+const baseAvailable = item => Math.max(0, item.quantidade - item.em_uso - item.com_defeito);
 async function safeRate(db, req, prefix, max, hours = 1) {
   const ip = req.headers.get("CF-Connecting-IP") || "unknown";
   const hash = await toHash(prefix + ":" + ip + ":" + new Date().toISOString().slice(0, 10));
@@ -138,7 +141,7 @@ async function processRequest(req, env) {
     const id = requireId(url.searchParams.get("id")), a = url.searchParams.get("inicio"), b = url.searchParams.get("fim");
     if (!dateOK(a) || !dateOK(b) || a > b) return bad("Período inválido.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(await currentIdentity(req,db)))) return bad("Material não encontrado.", 404);
     return j({ disponiveis:Math.max(0, baseAvailable(item) - await maxReserved(db,id,a,b)) });
   }
@@ -156,7 +159,7 @@ async function processRequest(req, env) {
     if (nome.length < 2 || !Number.isSafeInteger(quantidade) || quantidade < 1 || quantidade > 1000 || !dateOK(inicio) || !dateOK(fim) || fim < inicio || inicio < todayBR()) return bad("Confira o nome, a quantidade e as datas da reserva.");
     if (contato.length > 140) return bad("Contato grande demais.");
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(id).first();
-    const category = item?await db.prepare("SELECT visivel_visitante FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
+    const category = item?await db.prepare("SELECT visivel_visitante,arquivada FROM categorias WHERE id=?").bind(item.categoria_id).first():null;
     if (!item || item.arquivado===1 || !allowedToSee(item,category,isPETiano(identity))) return bad("Material não encontrado.",404);
     if (baseAvailable(item) - await maxReserved(db,id,inicio,fim) < quantidade) return bad("Não há quantidade disponível para essas datas.",409);
     if (!await safeRate(db,req,"reserva",5)) return bad("Limite de solicitações por hora atingido. Tente mais tarde.",429);
@@ -183,6 +186,56 @@ async function processRequest(req, env) {
   if (!path.startsWith("/api/admin/")) return bad("Endereço não encontrado.",404);
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
   if (path === "/api/admin/state" && method === "GET") return j(await state(db));
+  if(path==="/api/admin/log" && method==="GET"){
+    const page=Math.max(1,Math.min(1000,Number(url.searchParams.get("pagina"))||1));
+    const filter=str(url.searchParams.get("tipo"),40);
+    const where=["material","categoria","filamento","reserva","usuario","sistema"].includes(filter)?" WHERE tipo=?":"";
+    const args=where?[filter]:[];
+    const count=await db.prepare("SELECT COUNT(*) AS n FROM historico_admin"+where).bind(...args).first();
+    const logs=await results(db,"SELECT id,criado_em,responsavel,acao,tipo,registro_id,descricao FROM historico_admin"+where+" ORDER BY criado_em DESC,id DESC LIMIT 35 OFFSET ?",[...args,(page-1)*35]);
+    const cfg=await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_historico'").first();
+    return j({ok:true,eventos:logs,total:count?.n||0,pagina:page,limpeza_historico:cfg?.valor||"nunca"});
+  }
+  if(path==="/api/admin/log" && method==="POST"){
+    const body=await input(req,1500);
+    if(body.acao==="configurar"){
+      const prazo=String(body.prazo);
+      if(!["nunca","1","3","5","7","15","30"].includes(prazo))return bad("Prazo do histórico inválido.");
+      await db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_historico',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").bind(prazo).run();
+      await auditLog(db,"Configuração","sistema",null,"Prazo do histórico: "+(prazo==="nunca"?"Nunca":prazo+" dia(s)"),body.responsavel);
+      return j({ok:true});
+    }
+    if(body.acao==="limpar"){
+      if(body.confirmar!=="LIMPAR HISTÓRICO")return bad("Confirmação de limpeza inválida.",400);
+      const n=await db.prepare("DELETE FROM historico_admin").run();
+      return j({ok:true,removidos:n.meta?.changes||0});
+    }
+    return bad("Ação de histórico inválida.");
+  }
+  if(path==="/api/admin/visibility" && method==="POST"){
+    const body=await input(req,14000);
+    const ids=Array.isArray(body.ids)?body.ids.map(Number):[];
+    if(!ids.length||ids.length>250||ids.some(x=>!Number.isSafeInteger(x)||x<1)||new Set(ids).size!==ids.length)return bad("Selecione até 250 materiais válidos.");
+    const show=body.visivel_visitante?1:0;
+    const objects=await results(db,"SELECT id,nome FROM componentes WHERE id IN ("+ids.map(()=>"?").join(",")+")",ids);
+    if(objects.length!==ids.length)return bad("Alguns materiais não foram encontrados.",404);
+    await db.batch(ids.map(id=>db.prepare("UPDATE componentes SET visivel_visitante=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(show,now(),str(body.responsavel,100)||"Admin","Exibição para visitantes: "+(show?"todos":"só PETianes"),id)));
+    await auditLog(db,show?"Liberou exibição":"Restringiu exibição","material",null,objects.length+" materiais: "+objects.map(x=>x.nome).slice(0,16).join(", "),body.responsavel);
+    return j({ok:true,alterados:objects.length});
+  }
+  if(path==="/api/admin/variations" && method==="POST"){
+    const body=await input(req,12000),ids=Array.isArray(body.ids)?body.ids.map(Number):[];
+    if(!ids.length||ids.length>150||ids.some(x=>!Number.isSafeInteger(x)||x<1)||new Set(ids).size!==ids.length)return bad("Selecione os materiais que serão vinculados.");
+    const label=str(body.grupo,80);
+    if(label && label.length<2)return bad("Informe um nome de grupo válido.");
+    const objects=await results(db,"SELECT id,nome FROM componentes WHERE id IN ("+ids.map(()=>"?").join(",")+")",ids);
+    if(objects.length!==ids.length)return bad("Alguns materiais não foram encontrados.",404);
+    await db.batch(ids.map(id=>db.prepare("UPDATE componentes SET grupo_variacoes=?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=?")
+      .bind(label,now(),str(body.responsavel,100)||"Admin","Grupo de variações: "+(label||"Sem grupo"),id)));
+    await auditLog(db,label?"Vinculou variações":"Desvinculou variações","material",null,objects.map(x=>x.nome).slice(0,16).join(", ")+" → "+(label||"Sem grupo"),body.responsavel);
+    return j({ok:true,vinculados:objects.length});
+  }
   if(path==="/api/admin/filaments" && method==="POST"){
     const b=await input(req,2500),acao=str(b.acao,20);
     if(acao==="excluir"){
