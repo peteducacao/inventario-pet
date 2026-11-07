@@ -136,6 +136,8 @@ O catálogo público (`public/final.js`) agrupa os materiais por `grupo_variacoe
 
 **Entradas**: `/admin/` (página independente), `/api/login` (sessão Admin), `/api/logout`. Todas as rotas `/api/admin/*` exigem sessão válida; a sessão pessoal é outra.
 
+**Sessão Admin ao fechar o navegador:** a API emite `__Host_pet_session` com `Secure`, `HttpOnly` e `SameSite=Strict`, sem `Max-Age` ou `Expires`, para que ele seja eliminado quando a sessão do navegador terminar. Ao consultar `/api/admin/state`, cookies antigos também são convertidos para esse formato, sem ampliar seu limite de 12 horas no D1. Fechar apenas uma aba não encerra a sessão, e navegadores com restauração de abas podem também restaurar cookies de sessão; o botão Sair da administração revoga o token no servidor imediatamente. A conta pessoal mantém sua autenticação independente.
+
 **Catálogo e estoque**: `GET /api/catalog`, `GET /api/availability`, `GET /api/filaments`; Admin: `/api/admin/state`, `/api/admin/item`, `/api/admin/category`, `/api/admin/filaments`, `/api/admin/visibility`, `/api/admin/item/loans`, `/api/admin/variations`.
 
 **Aba Usuários:** a API `/api/admin/users` devolve `usuarios` e os totais `totais.todos`, `totais.petiano`, `totais.visitante`, calculados no D1. O painel possui três cartões contadores clicáveis; PETianes e Visitantes são separados por títulos numa única lista vertical, preservando busca e ações individuais. Alterações de tag e exclusões devem atualizar esses totais na próxima consulta.

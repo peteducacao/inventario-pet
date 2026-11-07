@@ -14,6 +14,8 @@ const dateOK = value => {
 };
 const todayBR = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 const toHash = async s => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map(x => x.toString(16).padStart(2, "0")).join("");
+// Cookie de sessão (sem Expires/Max-Age): perde validade ao encerrar a sessão do navegador.
+const adminSessionCookie = token => "__Host_pet_session="+token+"; Path=/; Secure; HttpOnly; SameSite=Strict";
 const cookie = (req, key) => {
   const value = (req.headers.get("cookie") || "").split(";").map(v => v.trim()).find(v => v.startsWith(key + "="));
   return value ? value.slice(key.length + 1) : "";
@@ -228,7 +230,7 @@ async function processRequest(req, env) {
     if (got !== expected) return bad("Senha incorreta.",401);
     const token = crypto.randomUUID() + crypto.randomUUID();
     await db.prepare("INSERT INTO admin_sessions(hash,expires_at) VALUES (?,?)").bind(await toHash(token),new Date(Date.now()+12*3600000).toISOString()).run();
-    return j({ ok:true },200,{ "set-cookie":"__Host_pet_session="+token+"; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=43200" });
+    return j({ ok:true },200,{ "set-cookie":adminSessionCookie(token) });
   }
   if (path === "/api/logout" && method === "POST") {
     const token = cookie(req, "__Host_pet_session");
@@ -241,7 +243,11 @@ async function processRequest(req, env) {
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
   const mailAdmin = await mailAdminAPI(req,env);
   if (mailAdmin) return mailAdmin;
-  if (path === "/api/admin/state" && method === "GET") return j(await state(db));
+  if (path === "/api/admin/state" && method === "GET") {
+    // Ao abrir o Admin, converter também cookies antigos de 12h para o formato de sessão.
+    // O cookie é reemitido sem prazo persistente; o servidor conserva o limite de 12h.
+    return j(await state(db),200,{"set-cookie":adminSessionCookie(cookie(req,"__Host_pet_session"))});
+  }
   if(path==="/api/admin/log" && method==="GET"){
     const page=Math.max(1,Math.min(1000,Number(url.searchParams.get("pagina"))||1));
     const filter=str(url.searchParams.get("tipo"),40);
