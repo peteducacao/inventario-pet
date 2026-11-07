@@ -40,7 +40,7 @@ const adminLogin=await call("/api/login","POST",{senha:env.ADMIN_PASSWORD});
 assert.equal(adminLogin.status,200);
 const cookie=adminLogin.cookie;
 const adminPost=(path,body)=>call(path,"POST",body,cookie);
-const item=sqlite.prepare("SELECT id FROM componentes WHERE quantidade-em_uso-com_defeito>=3 LIMIT 1").get();
+const item=sqlite.prepare("SELECT id,em_uso FROM componentes WHERE quantidade-em_uso-com_defeito>=3 LIMIT 1").get();
 assert.ok(item,"Sem material disponível no teste");
 const isoOld=new Date(Date.now()-20*86400000).toISOString();
 const isoNow=new Date().toISOString();
@@ -81,7 +81,7 @@ const resetBlocked=await adminPost("/api/admin/reservations/reset",{confirmar:"A
 assert.equal(resetBlocked.status,409,"Nunca apagar retiradas em uso");
 assert.match(resetBlocked.body.error,/devolu/i);
 assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM reservas").get().n,3);
-assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(item.id).em_uso,1,"Estoque ativo deve permanecer");
+assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(item.id).em_uso,item.em_uso+1,"Estoque ativo deve permanecer");
 const withoutSession=await call("/api/admin/reservations/reset","POST",{confirmar:"APAGAR TODAS AS RESERVAS"});
 assert.equal(withoutSession.status,401,"Reset deve exigir sessão Admin");
 const invalid=await adminPost("/api/admin/reservations/reset",{confirmar:"qualquer coisa"});
@@ -92,7 +92,7 @@ const done=await adminPost("/api/admin/reservations/reset",{confirmar:"APAGAR TO
 assert.equal(done.status,200,JSON.stringify(done.body));
 assert.equal(done.body.removidos,3);
 assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM reservas").get().n,0,"Reset completo deve esvaziar Concluídas e Todas");
-assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(item.id).em_uso,0,"Reset não deve alterar estoque já devolvido");
+assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(item.id).em_uso,item.em_uso,"Reset não deve alterar estoque já devolvido");
 assert.equal(sqlite.prepare("SELECT situacao FROM mail_queue WHERE chave_unica='cleanup_pending_unique'").get().situacao,"cancelado","Fila pendente deve ser cancelada");
 assert.equal(sqlite.prepare("SELECT situacao FROM mail_queue WHERE chave_unica='cleanup_sent_unique'").get().situacao,"enviado","Histórico do Gmail enviado não pode ser apagado");
 assert.equal(sqlite.prepare("SELECT reserva_id FROM mail_queue WHERE chave_unica='cleanup_sent_unique'").get().reserva_id,null,"Vínculo de reserva excluída deve ser limpo");
