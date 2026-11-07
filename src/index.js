@@ -685,6 +685,23 @@ async function processRequest(req, env) {
     const scheduled=await queueManual(db,id);
     return scheduled.ok?j({ok:true,mensagem:"Cobrança incluída na fila do Gmail."}):bad(scheduled.reason,409);
   }
+  if (path === "/api/admin/reservations/reset" && method === "POST") {
+    const b=await input(req,2000);
+    if(b.confirmar!=="APAGAR TODAS AS RESERVAS")return bad("Confirmação incorreta. Nenhum registro foi excluído.",400);
+    const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE status IN ('retirada','aprovada')").first();
+    if(Number(active?.n)>0)return bad("Existem "+active.n+" retirada(s) ativas ou aprovações antigas. Registre todas as devoluções antes de apagar os registros para proteger o estoque.",409);
+    const existing=await db.prepare("SELECT COUNT(*) AS n FROM reservas").first();
+    const count=Number(existing?.n)||0;
+    // Operação única no D1. Preservar o histórico de mensagens efetivamente enviadas,
+    // mas cancelar as que ainda não saíram e remover notificações vinculadas às reservas.
+    await db.batch([
+      db.prepare("UPDATE mail_queue SET situacao='cancelado',ultimo_erro='Histórico de reservas limpo pelo administrador',token_reserva=NULL WHERE reserva_id IS NOT NULL AND situacao IN ('pendente','processando')"),
+      db.prepare("DELETE FROM notificacoes WHERE reserva_id IS NOT NULL"),
+      db.prepare("DELETE FROM reservas")
+    ]);
+    await auditLog(db,"Limpou reservas","sistema",null,"Excluiu todos os "+count+" registros de reservas após confirmação e backup. Estoque ativo preservado.");
+    return j({ok:true,removidos:count});
+  }
   if (path === "/api/admin/cleanup" && method === "POST") {
     const count = await cleanup(db);
     await auditLog(db,"Limpeza","sistema",null,count+" reservas concluídas removidas");
@@ -698,7 +715,9 @@ async function cleanup(db) {
   let removed = 0;
   if (days === "1min" || (days && days !== "nunca" && Number(days)>0)) {
     const cutoff = new Date(Date.now() - (days === "1min" ? 60000 : Number(days) * 86400000)).toISOString();
-    const done = await db.prepare("DELETE FROM reservas WHERE status='devolvida' AND devolvido_em IS NOT NULL AND devolvido_em < ?").bind(cutoff).run();
+    // Concluídas = devolvidas, recusadas e canceladas. Pendentes e retiradas ficam intocadas.
+    // Recusadas/canceladas não possuem timestamp próprio; usar a data de solicitação.
+    const done = await db.prepare("DELETE FROM reservas WHERE (status='devolvida' AND COALESCE(devolvido_em,solicitado_em) < ?) OR (status IN ('recusada','cancelada') AND solicitado_em < ?)").bind(cutoff,cutoff).run();
     removed = done.meta?.changes || 0;
   }
   const logSetting=await db.prepare("SELECT valor FROM configuracoes WHERE chave='limpeza_historico'").first();
