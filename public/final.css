@@ -864,3 +864,27 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .variant-manager-description strong{font-size:12px}
  .variant-manager-actions button{min-width:0;flex-basis:100%}
 }
+
+/* Editor fotográfico 4:3 — imagens sem cortes involuntários. */
+.item-link-indicator{display:flex;align-items:center;justify-content:space-between;gap:12px;
+padding:12px 14px;margin:8px 0 14px;border:1px solid #e0e9ee;border-radius:12px;background:#f6fafc;font-size:13px}
+.item-link-indicator span{font-weight:800;color:#197e69;background:#dff5eb;padding:5px 13px;border-radius:9px}
+.media-preview{width:100%;height:auto;aspect-ratio:4/3;max-height:300px;overflow:hidden;display:flex;justify-content:center;align-items:center;
+background:#fff;border:1px dashed #d3e3e6;border-radius:14px}
+.media-preview img{width:100%;height:100%;object-fit:contain;object-position:center}
+.item-photo-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.item-photo-actions button{flex:1;min-width:125px}
+.pet-crop-overlay{z-index:300!important;padding:10px}
+.pet-photo-modal{width:min(96vw,620px);max-height:94dvh;overflow:auto}
+.pet-photo-content{padding:10px 20px;display:flex;flex-direction:column;gap:12px}
+.pet-photo-content canvas{display:block;max-width:100%;height:auto;aspect-ratio:4/3;touch-action:none;cursor:grab;
+background:#fff;border:1px dashed #acc5c9;border-radius:12px}
+.pet-photo-content canvas:active{cursor:grabbing}
+.pet-photo-help{font-size:12px;color:#657d8c;text-align:center;margin:0}
+.pet-photo-toolbar{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.pet-photo-toolbar button{min-width:0;font-size:12px;padding:9px 5px}
+.pet-photo-content .field{margin:0}
+.pet-photo-content input[type=range]{width:100%;accent-color:#079c7c}
+.pet-photo-footer{display:flex;gap:8px}
+.pet-photo-footer button{flex:1}
+@media(max-width:600px){.pet-photo-content{padding:10px 14px}.pet-photo-modal .modal-header{padding:14px}}
