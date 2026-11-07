@@ -320,10 +320,7 @@ function itemEditor(id){
       await api("/api/admin/item","POST",body);
       $("#item-form")?.dispatchEvent(new Event("pet:item-saved"));
       await adminReload();
-      const returnGroup=window.__variantReturnGroup;
-      window.__variantReturnGroup="";
-      if(returnGroup){adminBuild();openVariantLinker(null,returnGroup);}
-      else adminModal();
+      adminModal();
       toast("Material salvo!");
     }
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent=x?"Salvar alterações":"Cadastrar material";}
