@@ -57,7 +57,7 @@ const loginUser=await post("/api/identity/login",{login:"pessoa123",senha:"Senha
 assert.equal(loginUser.status,200);
 const memberCatalog=(await call("/api/catalog","GET",null,loginUser.cookie)).body;
 assert.ok(memberCatalog.componentes.some(x=>x.id===one.id),"PETiano não vê item restrito.");
-assert.equal((await call("/api/availability?id="+one.id+"&inicio="+start+"&fim="+end,"GET"===null?"":loginUser.cookie)).status,200);
+assert.equal((await call("/api/availability?id="+one.id+"&inicio="+start+"&fim="+end,"GET",null,loginUser.cookie)).status,200);
 const category=memberCatalog.categorias.find(c=>c.id===one.categoria_id);
 assert.ok(category);
 const hiddenCategory=await postAdmin("/api/admin/category",{acao:"editar",id:category.id,nome:category.nome,visivel_visitante:false});
