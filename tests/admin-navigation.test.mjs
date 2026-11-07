@@ -34,12 +34,12 @@ w.fetch=async (uri,init={})=>{
    else if(path==="/api/filaments")value={ok:true,filamentos:[]};
   else if(path==="/api/admin/state")authenticated?value=adminData:(status=401,value={error:"Entre no painel administrativo."});
   else if(path==="/api/login"){authenticated=true;value={ok:true}}
-  else if(path==="/api/identity/me")value={ok:true,usuario:identityAuthenticated?{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:true,trocar_senha:mustChange,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}:null};
+  else if(path==="/api/identity/me")value={ok:true,usuario:identityAuthenticated?{id:"PET-123456789ABC",nome:"Tester",login:"tester01",email:"tester@example.com",tag:userTag,ativo:true,trocar_senha:mustChange,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}:null};
   else if(path==="/api/identity/logout"){identityAuthenticated=false;value={ok:true};}
-  else if(path==="/api/identity/login"){identityAuthenticated=true;value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:true,trocar_senha:mustChange,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
-  else if(path==="/api/identity/register"){identityAuthenticated=true;value={ok:true,usuario:{id:"PET-23456789ABCD",nome:"Nova conta",login:"novaconta",tag:"visitante",ativo:true,trocar_senha:false,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
-  else if(path==="/api/identity/password"){mustChange=false;value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:true,trocar_senha:false,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
-  else if(path==="/api/admin/users"){if(init.method==="POST"){userTag=JSON.parse(init.body).tag;value={ok:true}}else value={ok:true,usuarios:userDeleted?[]:[{id:"PET-123456789ABC",nome:"Tester",login:"tester01",tag:userTag,ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};}
+  else if(path==="/api/identity/login"){identityAuthenticated=true;value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",login:"tester01",email:"tester@example.com",tag:userTag,ativo:true,trocar_senha:mustChange,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
+  else if(path==="/api/identity/register"){identityAuthenticated=true;value={ok:true,usuario:{id:"PET-23456789ABCD",nome:"Nova conta",login:"novaconta",email:"nova@example.com",tag:"visitante",ativo:true,trocar_senha:false,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
+  else if(path==="/api/identity/password"){mustChange=false;value={ok:true,usuario:{id:"PET-123456789ABC",nome:"Tester",login:"tester01",email:"tester@example.com",tag:userTag,ativo:true,trocar_senha:false,precisa_criar_login:false,criado_em:"2026-11-06T10:00:00Z"}};}
+  else if(path==="/api/admin/users"){if(init.method==="POST"){userTag=JSON.parse(init.body).tag;value={ok:true}}else value={ok:true,usuarios:userDeleted?[]:[{id:"PET-123456789ABC",nome:"Tester",login:"tester01",email:"tester@example.com",tag:userTag,ativo:1,retiradas_ativas:0,criado_em:"2026-11-06T10:00:00Z"}]};}
   else if(path==="/api/admin/users/password"){identityAuthenticated=false;mustChange=true;value={ok:true,id:"PET-123456789ABC",nome:"Tester",login:"tester01",senha_temporaria:"PET-"+"A".repeat(24)};}
   else if(path==="/api/admin/users/delete"){userDeleted=true;value={ok:true};}
   else if(path==="/api/availability")value={disponiveis:5};
