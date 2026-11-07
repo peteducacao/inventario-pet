@@ -903,10 +903,15 @@ function bulkVisibilityState(item){
 }
 function materialPickerRows(items,selected,term="",withPhotos=false,showVisibility=false,targetGroup=""){
   const search=term.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
-  const available=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
+  // Seleções continuam no topo, inclusive quando a busca deixa de corresponder ao nome.
+  const available=items.filter(x=>selected.has(x.id)||!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
     String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
-  const shown=withPhotos?[...available].sort((a,b)=>Number(selected.has(b.id))-Number(selected.has(a.id))):available;
-  return {visible:available,html:shown.slice(0,160).map(x=>{
+  const matched=items.filter(x=>!search||[x.nome,x.grupo_variacoes,x.identificacao].some(s=>
+    String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().includes(search)));
+  const shown=[...available].sort((a,b)=>Number(selected.has(b.id))-Number(selected.has(a.id))||
+    a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+  const selectedCount=shown.filter(x=>selected.has(x.id)).length;
+  return {visible:matched,html:shown.slice(0,Math.max(160,selectedCount)).map(x=>{
     const status=showVisibility?bulkVisibilityState(x):null;
     const label=status?(status.categoryRestricted?
       '<span class="bulk-visibility-badge restricted category-locked">🔒 Só PETianes · categoria restrita</span>':
@@ -966,6 +971,7 @@ function openBulkVisibility(currentId){
     '<button class="outline-button small-button" id="bulk-similar" type="button" hidden title="Seleciona outros materiais da mesma família dos itens marcados.">Selecionar semelhantes</button>'+
     '<button class="outline-button small-button" type="button" id="bulk-select-all">Selecionar resultados</button>'+
     '<button class="outline-button small-button" type="button" id="bulk-clear">Desmarcar todos</button></div>'+
+    '<p class="selection-count-above" id="bulk-selected-top" role="status" aria-live="polite">0 materiais selecionados</p>'+
     '<div class="admin-bulk-list" id="bulk-list"></div>'+
     '<div class="bulk-selection-footer"><p class="hint" id="bulk-selected-count" role="status" aria-live="polite"></p>'+
     '<small id="bulk-selection-state"></small></div>'+
@@ -985,8 +991,9 @@ function openBulkVisibility(currentId){
   const countSelected=()=>{
     const selectedItems=chosen();
     const restricted=selectedItems.filter(x=>bulkVisibilityState(x).restricted).length;
-    $("#bulk-selected-count").textContent=model.selected.size+
-      (model.selected.size===1?" material selecionado.":" materiais selecionados.");
+    const countLabel=model.selected.size+(model.selected.size===1?" material selecionado":" materiais selecionados");
+    $("#bulk-selected-count").textContent=countLabel+".";
+    $("#bulk-selected-top").textContent=countLabel;
     $("#bulk-selection-state").textContent=selectedItems.length?
       restricted+" já visíveis só para PETianes · "+(selectedItems.length-restricted)+" visíveis para todos.":
       "✓ no quadrado = selecionar para alterar; a etiqueta mostra a visibilidade já salva.";
@@ -1013,7 +1020,8 @@ function openBulkVisibility(currentId){
       '<small>'+((byCategory.length-restricted)===0?'Todos os itens já estão restritos.':(byCategory.length-restricted)+' visíveis para todos.')+
       (categoryLocked?' A categoria inteira está restrita.':'')+'</small>';
     summary.classList.toggle("fully-restricted",byCategory.length>0&&restricted===byCategory.length);
-    const result=materialPickerRows(byCategory,model.selected,$("#bulk-search").value,false,true);
+    const selectable=model.all.filter(x=>category==="all"||String(x.categoria_id)===category||model.selected.has(x.id));
+    const result=materialPickerRows(selectable,model.selected,$("#bulk-search").value,false,true);
     visible=result.visible;
     $("#bulk-list").innerHTML=result.html;
     $$("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
@@ -1074,6 +1082,7 @@ function openVariantLinker(currentId,groupName=""){
       '<div class="variant-select-tools"><button class="outline-button small-button" id="variant-similar" type="button">Sugerir semelhantes</button>'+
       '<button class="outline-button small-button" id="variant-select-results" type="button">Selecionar resultados</button>'+
       '<button class="outline-button small-button" id="variant-clear" type="button">Desmarcar todos</button></div>'+
+      '<p class="selection-count-above" id="variant-selected-count" role="status" aria-live="polite">0 materiais selecionados</p>'+
       '<div id="variant-available-list" class="variant-manager-list"></div></section>'+
     '<div class="modal-footer variant-manager-actions">'+
       '<button class="outline-button" type="button" id="variant-back">Voltar aos vínculos</button>'+
@@ -1085,6 +1094,12 @@ function openVariantLinker(currentId,groupName=""){
       !state.admin.categorias.some(c=>Number(c.id)===Number(x.categoria_id)&&c.arquivada));
   };
   const current=()=>items.filter(x=>normalized(x.grupo_variacoes)===normalized(name));
+  const suggestions=()=>{
+    const seed=current()[0]?.nome||name,type=materialFamilyHint(seed);
+    return items.filter(x=>normalized(x.grupo_variacoes)!==normalized(name)&&
+      ((type!=="Outros"&&materialFamilyHint(x.nome)===type)||
+        normalized(x.nome).includes(normalized(name))));
+  };
   const draw=()=>{
     const linked=current().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
     $("#variant-linked-count").textContent=String(linked.length);
@@ -1095,22 +1110,28 @@ function openVariantLinker(currentId,groupName=""){
       '<button class="outline-button small-button" type="button" data-variant-remove="'+x.id+'">Retirar</button></div>'
     ).join(""):'<div class="variant-manager-empty">Grupo vazio. Busque um material para vincular.</div>';
     const term=$("#variant-search").value.trim();
-    visible=items.filter(x=>!linked.some(l=>l.id===x.id)&&(!term||
-      [x.nome,x.identificacao].some(v=>matchesCatalogSearch(v,term))))
+    const unlinked=items.filter(x=>!linked.some(l=>l.id===x.id));
+    visible=unlinked.filter(x=>!term||[x.nome,x.identificacao].some(v=>matchesCatalogSearch(v,term)))
       .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
-    $("#variant-available-list").innerHTML=visible.length?visible.slice(0,60).map(x=>
+    // Mostra sempre os marcados primeiro, mesmo que não correspondam à pesquisa atual.
+    // Limita somente os não marcados; nenhum item selecionado fica escondido.
+    const selectedItems=unlinked.filter(x=>selected.has(x.id))
+      .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+    const unselected=visible.filter(x=>!selected.has(x.id)).slice(0,60);
+    const shown=[...selectedItems,...unselected];
+    $("#variant-available-list").innerHTML=shown.length?shown.map(x=>
       '<label class="variant-manager-row variant-candidate '+(selected.has(x.id)?'is-selected':'')+'">'+
       '<input type="checkbox" data-variant-select="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
       '<div class="variant-manager-photo">'+thumb(x)+'</div>'+
       '<div class="variant-manager-description"><strong>'+esc(x.nome)+'</strong>'+
       '<small>'+esc(nameCategory(x.categoria_id))+' · '+x.quantidade+' un.'+
-        (x.grupo_variacoes?' · Vínculo atual: '+esc(x.grupo_variacoes):' · Sem vínculo')+'</small></div></label>'
+        (x.grupo_variacoes?' · Vínculo atual: '+esc(x.grupo_variacoes):' · Sem vínculo')+'</small>'+
+      (selected.has(x.id)?'<span class="variant-selected-label">✓ Selecionado</span>':'')+'</div></label>'
     ).join(""):'<div class="variant-manager-empty">Nenhum componente encontrado.</div>';
     $$("[data-variant-select]",$("#variant-available-list")).forEach(box=>box.onchange=()=>{
       const id=Number(box.dataset.variantSelect);
       if(box.checked)selected.add(id);else selected.delete(id);
-      box.closest(".variant-candidate")?.classList.toggle("is-selected",box.checked);
-      updateCount();
+      draw();
     });
     $$("[data-variant-remove]",$("#variant-linked-list")).forEach(btn=>btn.onclick=async()=>{
       if(saving)return;
@@ -1128,14 +1149,18 @@ function openVariantLinker(currentId,groupName=""){
   };
   const updateCount=()=>{
     const btn=$("#variant-link-selected");if(!btn)return;
-    btn.disabled=saving||!selected.size;
-    btn.textContent="Vincular selecionados ("+selected.size+")";
+    const quantity=selected.size;
+    const label=quantity+(quantity===1?" material selecionado":" materiais selecionados");
+    $("#variant-selected-count").textContent=label;
+    btn.disabled=saving||!quantity;
+    btn.textContent="Vincular selecionados ("+quantity+")";
+    const pending=suggestions().filter(x=>!selected.has(x.id)).length;
+    const similar=$("#variant-similar");
+    similar.disabled=!pending;
+    similar.textContent="Selecionar semelhantes ("+pending+")";
   };
   $("#variant-similar").onclick=()=>{
-    const members=current(),seed=members[0]?.nome||name;
-    const type=materialFamilyHint(seed);
-    const candidates=items.filter(x=>normalized(x.grupo_variacoes)!==normalized(name)&&
-      (materialFamilyHint(x.nome)===type||normalized(x.nome).includes(normalized(name))));
+    const candidates=suggestions().filter(x=>!selected.has(x.id));
     for(const x of candidates)selected.add(x.id);
     if(!candidates.length)toast("Nenhum material semelhante encontrado.");
     draw();
@@ -1159,7 +1184,7 @@ function openVariantLinker(currentId,groupName=""){
     saving=true;updateCount();
     try{
       await api("/api/admin/variations","POST",{ids:chosen.map(x=>x.id),grupo:name,responsavel:state.actor||"Admin"});
-      await adminReload();refresh();selected.clear();draw();
+      await adminReload();adminBuild();refresh();selected.clear();draw();
       toast(chosen.length+" componente(s) vinculado(s) a "+name+".");
     }catch(error){toast(error.message,true);}
     finally{saving=false;updateCount();}
