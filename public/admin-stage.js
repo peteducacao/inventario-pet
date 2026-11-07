@@ -455,14 +455,14 @@ function paintUsers(){
   list.innerHTML=found.length?p.items.map(userRow).join(""):'<div class="empty-state">Nenhum usuário encontrado.</div>';
   $("#admin-users-pages").innerHTML=pageButtons(p,"users");
   $$("[data-user-role]",list).forEach(b=>b.onclick=()=>adminToggleTag(b.dataset.userRole));
-  $("[data-user-mail]",list).forEach(b=>b.onclick=async()=>{
+  $$("[data-user-mail]",list).forEach(b=>b.onclick=async()=>{
     const u=users.find(x=>x.id===b.dataset.userMail);if(!u)return;
     const enabled=Number(u.notificar_email)===0;
     if(!await niceModalConfirm("Avisos deste usuário?",u.nome+": "+(enabled?"permitir":"desativar")+" notificações por e-mail. A configuração geral da tag também será respeitada.","Confirmar"))return;
     try{await api("/api/admin/users","POST",{id:u.id,tag:u.tag,ativo:Number(u.ativo)===1,notificar_email:enabled});await adminUsers($("#admin-content"));toast("Preferência individual atualizada.");}
     catch(e){toast(e.message,true);}
   });
-  $("[data-user-password]",list).forEach(b=>b.onclick=()=>{
+  $$("[data-user-password]",list).forEach(b=>b.onclick=()=>{
     const u=users.find(x=>x.id===b.dataset.userPassword);if(u)adminResetPasswordModal(u);
   });
   $$("[data-user-delete]",list).forEach(b=>b.onclick=()=>{
@@ -939,9 +939,9 @@ function adminSettings(root){
     '<p>Somente reservas devolvidas são apagadas. Reservas pendentes e materiais em uso permanecem.</p></div>'+
     '<div class="settings-block"><strong>Dados do inventário</strong><p>'+esc(adminLastUpdate())+'</p>'+settingsToggle("v2-demo","Exibir modo de demonstração","Ativa os exemplos visuais do catálogo.",cfg.modo_demo==="sim")+'</div>'+
     '<div class="settings-block settings-gmail-block"><strong>Notificações por Gmail</strong><p>Controle quem recebe cobranças. Os PETianes ficam desativados por padrão.</p>'+
-    settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
+    '<div class="settings-toggle-grid">'+settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
     settingsToggle("v2-mail-pet","Notificar PETianes","Somente com prazo e permissão habilitada.",cfg.notificacoes_petianos==="sim")+
-    settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+
+    settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
     '<button class="outline-button" type="button" id="v2-mail-history">Histórico de e-mails</button></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
     emailEditor+'<section class="admin-panel"><div class="admin-section-head"><h2>Backup</h2></div>'+
