@@ -514,3 +514,29 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .bulk-visibility-modal .admin-bulk-actions button:last-child{grid-column:auto}
  .dashboard-last-change{padding:13px 14px}
 }
+
+/* Quatro alterações recentes no lugar dos atalhos fixos da visão geral. */
+.dashboard-changes-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:25px 0 13px}
+.dashboard-changes-head h3{font-size:17px;margin:0;color:#183f53;letter-spacing:-.3px}
+.dashboard-changes-head .outline-button{flex-shrink:0}
+.dashboard-changes-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.dashboard-change{display:grid;grid-template-columns:42px minmax(0,1fr) 19px;align-items:center;gap:12px;width:100%;border:1px solid #dce9ec;border-radius:15px;background:#f8fcfc;text-align:left;color:#193e52;padding:15px 13px;min-width:0;min-height:112px;box-shadow:0 2px 8px #143c5205;transition:border-color .15s,background .15s}
+.dashboard-change:hover,.dashboard-change:focus-visible{border-color:#77cbb5;background:#f0fbf7}
+.dashboard-change-emoji{display:grid;place-items:center;align-self:start;background:#e6f6f1;border-radius:12px;width:42px;height:42px;font-size:24px;line-height:1}
+.dashboard-change-content{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dashboard-change-title{font-size:13px;font-weight:850;color:#183c50;line-height:1.3}
+.dashboard-change-description{font-size:12px;font-weight:550;color:#516d7d;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.dashboard-change-date{font-size:10.5px;color:#7c919f;line-height:1.35}
+.dashboard-change-chevron{color:#2a907d;display:grid;place-items:center}
+.dashboard-changes-list>.empty-state{grid-column:1/-1}
+.dashboard-changes-loading{grid-column:1/-1;margin:0;padding:20px;color:#748a98;text-align:center}
+@media(max-width:900px){
+ .dashboard-changes-list{grid-template-columns:1fr}
+ .dashboard-change{min-height:90px;padding:13px 12px;gap:10px}
+}
+@media(max-width:380px){
+ .dashboard-change{grid-template-columns:38px minmax(0,1fr) 17px;gap:8px}
+ .dashboard-change-emoji{width:38px;height:38px;font-size:22px}
+ .dashboard-change-title{font-size:12px}
+ .dashboard-change-date{font-size:10px}
+}
