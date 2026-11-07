@@ -210,9 +210,9 @@ function identityRenameModal(){
 async function memberWithdrawModal(initialId){
   if(state.identity?.tag!=="petiano"){toast("Aguarde a liberação da tag PETiano pelo administrador.",true);return identityProfileModal();}
   if(!state.identity.email)return identityEmailModal(true);
-  const all=state.data.componentes;
-  if(!all.length){toast("Não há materiais cadastrados.",true);return;}
-  const initial=byId(initialId)||all[0];
+  const all=borrowableItems();
+  if(!all.length){toast("Não há materiais liberados para retirada.",true);return;}
+  const initial=all.find(x=>x.id===initialId)||all[0];
   const today=localDate();
   const body='<form class="modal-main" id="member-withdraw-form">'+
     '<p class="notice"><strong>'+esc(state.identity.nome)+'</strong> · '+esc(state.identity.id)+'<br>Esta retirada será registrada diretamente, sem aprovação prévia.</p>'+
