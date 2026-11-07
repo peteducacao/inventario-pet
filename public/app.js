@@ -300,7 +300,7 @@ function itemEditor(id){
   const updateAvailable=()=>{
     $("#i-available").value=Math.max(0,Number($("#i-quantity").value||0)-Number($("#i-used").value||0));
   };
-  $(".step").forEach(b=>b.onclick=()=>{stepNumber(b.dataset.target,Number(b.dataset.delta));updateAvailable();});
+  $$(".step").forEach(b=>b.onclick=()=>{stepNumber(b.dataset.target,Number(b.dataset.delta));updateAvailable();});
   $("#i-quantity").oninput=updateAvailable;
   $("#i-used").oninput=updateAvailable;
   $("#i-cancel").onclick=()=>adminModal();
