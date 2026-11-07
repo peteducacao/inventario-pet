@@ -429,10 +429,8 @@ function adminMaterials(root){
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
-    '<section class="admin-groups-area" id="admin-groups-area" aria-label="Materiais vinculados">'+
-      '<div class="admin-groups-grid" id="admin-group-list"></div></section>'+
-    '<section class="admin-individual-area" aria-label="Materiais individuais">'+
-      '<div class="admin-section-head admin-individual-heading"><div><h3 id="admin-individual-title">Materiais individuais</h3><p id="admin-individual-count"></p></div></div>'+
+    '<section class="admin-individual-area admin-materials-all" aria-label="Todos os componentes cadastrados">'+
+      '<div class="admin-section-head admin-individual-heading"><div><p id="admin-individual-count" role="status" aria-live="polite"></p></div></div>'+
       '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>'+
     '<div class="admin-excel-bar"><button type="button" class="outline-button" id="admin-download-excel">⬇ Baixar inventário em Excel (.xlsx)</button></div></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
@@ -460,62 +458,22 @@ function sortOptions(value){
   return [["az","A–Z"],["za","Z–A"],["recent","Última alteração"],["old","Mais antigo"],["available","Mais disponíveis"],["less","Menos disponíveis"]].map(([key,label])=>
     '<option value="'+key+'" '+(value===key?"selected":"")+'>'+label+'</option>').join("");
 }
-function adminGroupKey(value){
-  return String(value||"").trim().toLocaleLowerCase("pt-BR");
-}
-function adminGroupedFamilies(items){
-  const groups=new Map();
-  for(const item of items){
-    const key=adminGroupKey(item.grupo_variacoes);
-    if(!key)continue;
-    if(!groups.has(key))groups.set(key,{name:String(item.grupo_variacoes).trim(),members:[]});
-    groups.get(key).members.push(item);
-  }
-  return [...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,"pt-BR",{sensitivity:"base"}));
-}
-function adminFamilyModelRow(x){
-  return '<div class="admin-family-model-row" data-group-model="'+Number(x.id)+'">'+thumb(x)+
-    '<div class="admin-family-model-text"><strong>'+esc(x.nome)+'</strong>'+
-      '<small>Total: '+Number(x.quantidade||0)+' · Em uso: '+Number(x.em_uso||0)+' · Defeito: '+Number(x.com_defeito||0)+'</small></div>'+
-    '<button class="outline-button small-button" type="button" data-item-edit="'+Number(x.id)+'" aria-label="Editar '+attr(x.nome)+'">Editar</button></div>';
-}
-function adminFamilyCard(group){
-  const items=group.members,quantity=items.reduce((v,x)=>v+Number(x.quantidade||0),0),
-    inUse=items.reduce((v,x)=>v+Number(x.em_uso||0),0),broken=items.reduce((v,x)=>v+Number(x.com_defeito||0),0);
-  const sample=items[0],names=[...new Set(items.map(x=>nameCategory(x.categoria_id)))];
-  return '<article class="admin-family-card" data-admin-group="'+attr(group.name)+'">'+
-    '<div class="admin-family-head"><div class="admin-family-thumb">'+thumb(sample)+'</div>'+
-      '<div class="admin-family-title"><h4>'+esc(group.name)+'</h4>'+
-        '<small>'+items.length+' '+(items.length===1?'variação':'variações')+' · '+esc(names.join(", "))+'</small></div></div>'+
-    '<div class="admin-family-stat">Total: <strong>'+quantity+'</strong> · Em uso: <strong>'+inUse+'</strong> · Defeito: <strong>'+broken+'</strong></div>'+
-    '<details class="admin-family-models"><summary>Ver variações</summary>'+
-      '<div class="admin-family-model-list">'+items.map(adminFamilyModelRow).join("")+'</div></details></article>';
-}
 function paintAdminMaterials(){
   const list=$("#admin-material-list");if(!list)return;
-  const search=String(UI.adminSearch||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
-  const matches=x=>!search||[x.nome,x.patrimonio,x.identificacao,x.grupo_variacoes]
+  const search=String(UI.adminSearch||"").trim();
+  const matches=item=>!search||[item.nome,item.patrimonio,item.identificacao]
     .some(value=>matchesCatalogSearch(value,search));
-  const active=state.admin.componentes.filter(x=>!isArchived(x));
-  const families=adminGroupedFamilies(active);
-  const groupKeys=new Set(families.map(g=>adminGroupKey(g.name)));
-  const groups=families.filter(g=>
-    (UI.adminCategory==="all"||g.members.some(x=>String(x.categoria_id)===UI.adminCategory))&&
-    (!search||matchesCatalogSearch(g.name,search)||g.members.some(matches)));
-  const individuals=active.filter(x=>
-    !groupKeys.has(adminGroupKey(x.grupo_variacoes))&&
-    (UI.adminCategory==="all"||String(x.categoria_id)===UI.adminCategory)&&matches(x));
-  const groupsArea=$("#admin-groups-area"),groupsList=$("#admin-group-list");
-  groupsArea.hidden=groups.length===0;
-  groupsList.innerHTML=groups.map(adminFamilyCard).join("");
-
-  const p=paginate(ordered(individuals,UI.adminSort),UI.adminPage);
-  UI.adminPage=p.page;stored("pet_admin_page",p.page);
-  $("#admin-individual-title").textContent="Materiais individuais";
-  $("#admin-individual-count").textContent=p.total+" "+(p.total===1?"material":"materiais")+" nesta seleção";
-  list.innerHTML=p.total?'<div class="material-list">'+p.items.map(adminMaterialRow).join("")+'</div>':
-    '<div class="empty-state">'+(groups.length?"Os modelos vinculados estão dentro dos grupos acima.":"Nenhum material encontrado.")+'</div>';
-  $("#admin-material-pages").innerHTML=pageButtons(p,"admin");
+  // O painel Admin é uma lista de componentes, nunca uma apresentação por grupos.
+  // Cada item aparece exatamente uma vez, independentemente de ter vínculo.
+  const filtered=state.admin.componentes.filter(item=>!isArchived(item)&&
+    (UI.adminCategory==="all"||String(item.categoria_id)===UI.adminCategory)&&matches(item));
+  const page=paginate(ordered(filtered,UI.adminSort),UI.adminPage);
+  UI.adminPage=page.page;stored("pet_admin_page",page.page);
+  $("#admin-individual-count").textContent=page.total+
+    (page.total===1?" material encontrado":" materiais encontrados");
+  list.innerHTML=page.total?'<div class="material-list">'+page.items.map(adminMaterialRow).join("")+'</div>':
+    '<div class="empty-state">Nenhum material encontrado.</div>';
+  $("#admin-material-pages").innerHTML=pageButtons(page,"admin");
   wireMaterialActions($("#admin-content")||list);
 }
 
