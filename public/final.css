@@ -602,3 +602,26 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
 .mail-template-actions{margin-top:15px;}
 @media(max-width:1000px){.settings-toggle-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:700px){.settings-toggle-grid{grid-template-columns:1fr;gap:8px;}.settings-toggle{padding:12px;}.settings-block{min-width:0;}.mail-template-panel .field textarea{min-height:230px;}.mail-template-preview{padding:12px;}}
+
+
+/* Permissões de empréstimo por categoria, material e filamento */
+.category-row{flex-wrap:wrap;row-gap:8px}
+.category-row .category-loan-toggle{white-space:nowrap;flex-shrink:0;padding:8px 12px;font-size:11px;border-radius:10px}
+.category-row .category-loan-toggle.allowed{border-color:#c1e6d8;color:#076a53;background:#effaf5}
+.category-row .category-loan-toggle.blocked{border-color:#cfdde5;color:#265970;background:#eff5f8}
+.category-row .actions{margin-left:auto;flex-shrink:0}
+.loan-indicator{display:inline-block!important;max-width:max-content!important;padding:3px 7px!important;border-radius:7px!important;margin-top:5px!important;font-size:10px!important;font-weight:700!important}
+.loan-indicator.enabled{background:#e7f9ee;color:#117453}
+.loan-indicator.disabled{background:#edf2f5;color:#607888}
+.loan-permission-action{font-size:17px;font-weight:800}
+.loan-permission-action.enabled{color:#0b875e;background:#e6f7ee;border-color:#b9e7cf}
+.filament-admin-card{gap:10px;flex-wrap:wrap}
+.filament-admin-label{flex:1 1 120px}
+.filament-admin-label small{line-height:1.55;overflow-wrap:anywhere}
+.filament-admin-buttons{margin-left:auto;align-items:center}
+.filament-loan-button{padding:8px 10px;font-size:11px;border-radius:9px}
+.filament-public-card .catalog-body>.primary-button{margin-top:auto;width:100%;min-height:39px}
+.filament-public-card .filament-quantity{min-height:44px;gap:10px}
+.filament-public-card .filament-quantity span{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.filament-public-card .filament-quantity span strong{font-size:17px}
+@media(max-width:700px){.category-row .category-loan-toggle{order:2}.filament-admin-buttons{flex-wrap:wrap}.filament-admin-label{flex-basis:150px}.filament-public-card .filament-quantity{min-height:auto}}
