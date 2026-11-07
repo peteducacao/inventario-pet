@@ -30,3 +30,28 @@ jobs:
         run: node tests/admin-navigation.test.mjs
       - name: Testar catálogo e painel novos, sem tocar na produção
         run: node tests/final-ui.test.mjs
+
+      - name: Conferir que o catálogo ilustrado está realmente disponível no site
+        run: |
+          node --input-type=module <<'NODE'
+          const root="https://inventario-pet.pet-educacao.workers.dev";
+          const files=[
+            {url:"/",checks:['id="public-sidebar"','id="search-mobile"','/component-art.js']},
+            {url:"/component-art.js",checks:["imageForPETItem","componentArt"]},
+            {url:"/final.js",checks:["function itemImage(x){return imageForPETItem(x);}","public-menu-toggle"],forbidden:["commons.wikimedia.org"]},
+            {url:"/final.css",checks:[".public-sidebar",".catalog-card","grid-template-columns:repeat(4,minmax(0,1fr))"]}
+          ];
+          for(const file of files){
+            let result,body="";
+            for(let retry=0;retry<5;retry++){
+              result=await fetch(root+file.url,{headers:{"cache-control":"no-cache"}});
+              body=await result.text();
+              if(result.ok&&file.checks.every(marker=>body.includes(marker))&&!(file.forbidden||[]).some(marker=>body.includes(marker)))break;
+              if(retry<4)await new Promise(resolve=>setTimeout(resolve,1200));
+            }
+            if(!result.ok||file.checks.some(marker=>!body.includes(marker))||(file.forbidden||[]).some(marker=>body.includes(marker))){
+              throw Error(file.url+" não corresponde ao layout ilustrado publicado (HTTP "+result.status+").");
+            }
+            console.log("PUBLICADO OK: "+file.url);
+          }
+          NODE
