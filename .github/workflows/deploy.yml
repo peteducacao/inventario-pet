@@ -40,6 +40,7 @@ jobs:
           node --check public/admin-stage.js
           node --check src/index.js
           node --check src/identity.js
+          node --check src/mail-bridge.js
       - name: Contar reservas do banco sem mostrar dados pessoais
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUD_PET || secrets.CLOUDFLARE_API_TOKEN }}
