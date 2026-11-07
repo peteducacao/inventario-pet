@@ -110,7 +110,7 @@ const renamed=await postAdmin("/api/admin/variations/rename",renameBody);
 assert.equal(renamed.status,200,JSON.stringify(renamed.body));
 assert.equal(renamed.body.alterados,2,"Renomear deve atualizar toda a família, não um único material.");
 const afterRename=db.prepare("SELECT id,nome,patrimonio,identificacao,quantidade,em_uso,com_defeito,grupo_variacoes FROM componentes WHERE id IN (?,?) ORDER BY id").all(one.id,two.id);
-assert.deepEqual(afterRename.map(x=>({...x,grupo_variacoes:"Resistores"})),beforeRename,"Somente o título do grupo pode ser modificado.");
+assert.deepEqual(afterRename.map(x=>({...x,grupo_variacoes:"Resistores"})),beforeRename.map(x=>({...x})),"Somente o título do grupo pode ser modificado.");
 assert.ok(afterRename.every(x=>x.grupo_variacoes==="Resistências"),"Todos os materiais devem receber o novo nome de família.");
 assert.equal((await postAdmin("/api/admin/variations/rename",renameBody)).status,404,"Um grupo antigo já renomeado não deve voltar a ser usado.");
 const repeat=await postAdmin("/api/admin/variations/rename",{grupo_atual:"Resistências",novo_nome:"Resistências"});
