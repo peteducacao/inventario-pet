@@ -112,30 +112,68 @@ function groupPublicMaterials(items){
 }
 function finalCard(original,siblings=[]){
   const groupKey=String(original.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR");
-  const x=siblings.find(a=>a.id===UI.variantChoice[groupKey])||original;
+  const selection=siblings.find(a=>a.id===UI.variantChoice[groupKey]);
   const grouped=siblings.length>1;
-
+  const x=selection||original;
   if(x._filament){
     return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
       '<div class="filament-art" style="--filament-color:'+attr(x.hexadecimal)+'"><div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div></div>'+
       '<div class="catalog-body"><span class="catalog-category">Filamentos</span><h3>'+esc(x.cor)+'</h3>'+
       '<div class="filament-quantity">Quantidade <strong>'+Number(x.quantidade)+'</strong></div></div></article>';
   }
-  const free=stock(x),used=Number(x.em_uso)||0,status=free===0?"Sem estoque":used>free?"Em uso":"Disponível",type=free===0?"empty":used>free?"busy":"";
-  const img=itemImage(x);
-  const canWithdraw=identityIsMember();
-  const label=canWithdraw?"Retirar":"Reservar";
+  const showGroupTotals=grouped&&!selection;
+  // Antes de escolher o modelo, mostrar a soma da família sem confundir
+  // com o estoque de uma variação específica.
+  const total=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.quantidade)||0),0):Number(x.quantidade)||0;
+  const used=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.em_uso)||0),0):Number(x.em_uso)||0;
+  const broken=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.com_defeito)||0),0):Number(x.com_defeito)||0;
+  const free=showGroupTotals?siblings.reduce((n,v)=>n+stock(v),0):stock(x);
+  const status=free===0?"Sem estoque":used>free?"Em uso":"Disponível";
+  const type=free===0?"empty":used>free?"busy":"";
+  const img=itemImage(x),canWithdraw=identityIsMember();
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
-  const choiceMarkup=grouped?'<span class="variant-selected">Modelo: '+esc(x.nome)+'</span><div class="variant-choices" aria-label="Escolher variação">'+siblings.map(v=>'<button type="button" class="variant-chip '+(v.id===x.id?'active':'')+'" data-variant-id="'+v.id+'" data-variant-group="'+attr(groupKey)+'" aria-pressed="'+(v.id===x.id)+'">'+esc(v.nome)+'</button>').join("")+'</div>':"";
-  return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" data-photo="'+x.id+'" aria-label="Ampliar ilustração de '+attr(x.nome)+'">'+
+  const groupedAction=grouped&&!selection;
+  const openModel=grouped?'<button type="button" class="variant-open" data-open-variants="'+attr(groupKey)+'">'+
+    (selection?'Trocar modelo':'Ver '+siblings.length+' variações')+' <span aria-hidden="true">›</span></button>':"";
+  const imageAction=grouped?'data-open-variants="'+attr(groupKey)+'"':'data-photo="'+x.id+'"';
+  const photoLabel=grouped?'Escolher variação de '+original.grupo_variacoes:'Ampliar ilustração de '+x.nome;
+  const action=groupedAction?
+    '<button type="button" class="primary-button variant-main-button" data-open-variants="'+attr(groupKey)+'">'+iconSvg("box",16)+' Escolher modelo</button>':
+    '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0?"disabled":"")+'>'+
+    iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>';
+  return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" '+imageAction+' aria-label="'+attr(photoLabel)+'">'+
     '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
-    '<div class="catalog-body"><h3>'+esc(grouped?x.grupo_variacoes:x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+choiceMarkup+
-    (asset?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':'')+
-    '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+Number(x.quantidade)+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Defeito</span><strong class="'+(Number(x.com_defeito)?"stock-defect":"")+'">'+Number(x.com_defeito)+'</strong></div></div>'+
-    '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0?"disabled":"")+'>'+iconSvg(canWithdraw?"logout":"calendar",16)+' '+label+'</button></div></article>';
+    '<div class="catalog-body"><h3>'+esc(grouped?original.grupo_variacoes:x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
+    (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':"")+openModel:"")+
+    (asset&&!showGroupTotals?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':"")+
+    '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+total+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Defeito</span><strong class="'+(broken?"stock-defect":"")+'">'+broken+'</strong></div></div>'+
+    action+'</div></article>';
+}
+function openVariantChoices(groupKey){
+  const group=String(groupKey||"").trim().toLocaleLowerCase("pt-BR");
+  const variants=(state.data.componentes||[]).filter(item=>!isArchived(item)&&
+    String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===group);
+  if(variants.length<2)return;
+  const title=variants[0].grupo_variacoes;
+  const rows=variants.map(v=>{
+    const quantity=Number(v.quantidade)||0,free=stock(v),used=Number(v.em_uso)||0;
+    return '<button type="button" class="variant-picker-option" data-pick-variant="'+v.id+'" data-pick-group="'+attr(group)+'">'+
+      '<span class="variant-picker-photo"><img src="'+attr(itemImage(v))+'" alt="" loading="lazy"></span>'+
+      '<span class="variant-picker-details"><strong>'+esc(v.nome)+'</strong>'+
+      '<small>'+free+' disponível'+(free===1?"":"is")+' · '+quantity+' no total · '+used+' em uso</small></span>'+
+      '<span class="variant-picker-arrow" aria-hidden="true">›</span></button>';
+  }).join("");
+  openModal(title,"Escolha a variação. Cada modelo mantém seu próprio estoque e empréstimos.",
+    '<div class="modal-main"><div class="variant-picker">'+rows+'</div></div>',{size:"wide"});
+  $$("[data-pick-variant]",$("#modal-root")).forEach(button=>button.onclick=()=>{
+    UI.variantChoice[group]=Number(button.dataset.pickVariant);
+    closeModal();
+    finalRender();
+    document.querySelector(".grouped-card [data-open-variants='"+CSS.escape(group)+"']")?.focus();
+  });
 }
 function finalRender(){
   if(!$("#category-sections"))return;
