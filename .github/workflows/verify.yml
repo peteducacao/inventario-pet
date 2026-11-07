@@ -46,7 +46,7 @@ jobs:
           node --input-type=module <<'NODE'
           const root="https://inventario-pet.pet-educacao.workers.dev";
           const files=[
-            {url:"/",checks:['id="public-sidebar"','id="search-mobile"','/component-art.js']},
+            {url:"/",checks:['id="public-sidebar"','id="search"','/component-art.js']},
             {url:"/component-art.js",checks:["imageForPETItem","componentArt"]},
             {url:"/final.js",checks:["function itemImage(x){return imageForPETItem(x);}","public-menu-toggle"],forbidden:["commons.wikimedia.org"]},
             {url:"/final.css",checks:[".public-sidebar",".catalog-card","grid-template-columns:repeat(4,minmax(0,1fr))"]}
