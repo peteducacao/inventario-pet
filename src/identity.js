@@ -339,7 +339,9 @@ async function adminDeleteUser(req,env){
     env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id),
     env.DB.prepare("DELETE FROM usuarios WHERE id=? AND NOT EXISTS (SELECT 1 FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada'))").bind(user.id,user.id)
   ]);
-  if(done[2].meta?.changes!==1)return error("O usuário não pôde ser excluído.",409);
+  // D1 pode contabilizar também efeitos ON DELETE de filas de segurança; verifique a existência real.
+  const remains=await env.DB.prepare("SELECT id FROM usuarios WHERE id=?").bind(user.id).first();
+  if(remains)return error("O usuário não pôde ser excluído.",409);
   await identityAudit(env.DB,"Excluiu usuário","usuario",user.id,user.nome+" · "+id);
   return respond({ok:true,excluido:id});
 }
