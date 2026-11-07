@@ -86,11 +86,12 @@ export async function mailAdminAPI(req,env){
 }
 export async function mailBridgeAPI(req,env){
   const path=new URL(req.url).pathname;
-  if(!["/api/mail/next","/api/mail/ack"].includes(path))return null;
+  if(!["/api/mail/next","/api/mail/ack","/api/mail/status"].includes(path))return null;
   if(!env.MAIL_BRIDGE_TOKEN||String(env.MAIL_BRIDGE_TOKEN).length<32)return fail("Integração Gmail não configurada.",503);
   const expected=await digest("Bearer "+env.MAIL_BRIDGE_TOKEN),received=await digest(req.headers.get("authorization")||"");
   if(expected!==received)return fail("Credencial inválida.",403);
   const db=env.DB;
+  if(path==="/api/mail/status" && req.method==="GET")return reply({ok:true,servico:"Gmail bridge",autenticado:true});
   if(path==="/api/mail/next"&&req.method==="GET"){
     const deadline=new Date(Date.now()-15*60000).toISOString();
     const candidates=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,mensagem,prazo_referencia FROM mail_queue WHERE situacao='pendente' OR (situacao='processando' AND processado_em<?) ORDER BY id ASC LIMIT 20",[deadline]);
