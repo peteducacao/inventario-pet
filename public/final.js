@@ -299,11 +299,11 @@ async function openMyLoans(){
     if(!document.contains(target))return;
     target.innerHTML=loans.length?'<div class="reservation-list loans-page-list">'+loans.map(r=>{
       const title=esc(r.componente_nome||"Material"),active=r.status==="retirada",pending=r.status==="pendente";
-      const label={pendente:"Pendente",aprovada:"Aprovada",retirada:"Em uso",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"}[r.status]||r.status;
-      const owner=(r.status==="recusada"?"Recusada":r.status==="aprovada"?"Aprovada":null);
+      const label={pendente:"Aguardando aprovação",aprovada:"Aprovada (registro antigo)",retirada:"Em uso",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"}[r.status]||r.status;
+      const owner=(r.status==="recusada"?"Recusada":r.status==="aprovada"?"Aprovada anteriormente":null);
       const by=owner&&r.responsavel_admin?'<small class="loan-decision-by">'+owner+' por '+esc(r.responsavel_admin)+'</small>':"";
       return '<div class="admin-list-row"><div class="main-info"><strong>'+title+' · '+r.quantidade+' un.</strong><small>'+esc(formatDay(r.data_inicio))+' — '+esc(formatDay(r.data_devolucao))+'</small><span class="tag '+(pending?"pending":active?"picked":"")+'">'+esc(label)+'</span>'+by+'</div>'+
-        (active&&r.tipo==="retirada_direta"&&identityIsMember()?'<button type="button" class="primary-button small-button" data-my-return="'+r.id+'">Devolver</button>':'')+'</div>';
+        (active?'<button type="button" class="primary-button small-button" data-my-return="'+r.id+'">Registrar devolução</button>':'')+'</div>';
     }).join("")+'</div>':'<div class="empty-state">Você ainda não possui empréstimos.</div>';
     $$("[data-my-return]",target).forEach(button=>button.onclick=()=>memberReturnModal(loans.find(r=>r.id===Number(button.dataset.myReturn))));
   }catch(error){if(document.contains(target))target.textContent=error.message;}
