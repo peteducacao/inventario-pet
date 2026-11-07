@@ -10,12 +10,15 @@ const one={id:1,categoria_id:1,nome:"Resistor 100Ω",imagem:"",grupo_variacoes:"
 const two={...one,id:2,nome:"Resistor 220Ω",quantidade:9};
 const three={...one,id:3,nome:"Arduino Uno",grupo_variacoes:"",quantidade:6};
 const extra={...one,id:4,categoria_id:2,nome:"Tablet de uso interno",visivel_visitante:0};
+const alkalineNormal={...one,id:5,nome:"Alcalina 1.5V Pilha normal",grupo_variacoes:"Alcalina",quantidade:25};
+const alkalinePalito={...one,id:6,nome:"Alcalina 1.5V Pilha Palito",grupo_variacoes:"Alcalina",quantidade:4};
+const alkalineNine={...one,id:7,nome:"Alcalina 9V",grupo_variacoes:"Alcalina",quantidade:31};
 const categories=[{id:1,nome:"Eletrônica",visivel_visitante:1,arquivada:0,ordem:0},
   {id:2,nome:"Equipamentos",visivel_visitante:0,arquivada:0,ordem:1}];
 const colors=[{id:20,cor:"Azul",hexadecimal:"#2A69D6",quantidade:3,visivel_visitante:1},
   {id:21,cor:"Preto",hexadecimal:"#24272C",quantidade:2,visivel_visitante:0}];
-const visitorCatalog={categorias:categories.slice(0,1),componentes:[one,two,three],demonstracao:false};
-const fullAdmin={categorias:categories,componentes:[one,two,three,extra],
+const visitorCatalog={categorias:categories.slice(0,1),componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine],demonstracao:false};
+const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal,alkalinePalito,alkalineNine,extra],
   filamentos:colors,reservas:[{id:9,componente_id:1,componente_nome:"Resistor 100Ω",
     nome_solicitante:"Teste",quantidade:1,status:"pendente",data_inicio:"2026-12-01",data_devolucao:"2026-12-03"}],
   configuracoes:{modo_demo:"nao",limpeza_reservas:"nunca",limpeza_historico:"nunca"}};
@@ -79,15 +82,39 @@ assert.equal(d.querySelector("#search").closest(".catalog-toolbar")!==null,true,
 assert.equal(d.querySelector("#search-mobile"),null,"Busca duplicada não deveria existir.");
 assert.ok(d.querySelector("#public-sidebar").textContent.includes("Meus empréstimos"));
 assert.equal(d.querySelectorAll("[data-public-action='reservations']").length,0,"Reservas redundantes ainda aparecem no menu.");
-assert.equal(d.querySelectorAll(".grouped-card").length,1,"Os resistores não foram agrupados.");
-assert.equal(d.querySelectorAll(".catalog-card").length,3,"Estoque agrupado não deveria gerar cards repetidos.");
-assert.equal(d.querySelectorAll(".variant-chip").length,2);
-assert.match(d.querySelector(".grouped-card").textContent,/Resistores/);
-await click('[data-variant-id="2"]');
-assert.ok(d.querySelector('[data-variant-id="2"]').classList.contains("active"),"Variação não foi selecionada.");
-assert.match(d.querySelector(".grouped-card .variant-selected").textContent,/220/);
-assert.match(d.querySelector(".grouped-card .catalog-numbers").textContent,/9/);
-assert.equal(d.querySelector(".grouped-card [data-reserve-item]").dataset.reserveItem,"2","A ação usa o item selecionado.");
+assert.equal(d.querySelectorAll(".grouped-card").length,2,"Resistores e Alcalinas devem ter cards de família.");
+assert.equal(d.querySelectorAll(".catalog-card").length,4,"Estoque agrupado não deveria gerar cards repetidos.");
+assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").textContent,/Resistores/);
+assert.equal(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector("h3").textContent,"Resistores","O card deve mostrar só a família.");
+assert.ok(d.querySelector('[data-open-variants="resistores"]'),"O grupo deve abrir a seleção.");
+assert.equal(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector("[data-reserve-item]"),null,"Não retirar sem escolher o modelo.");
+assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector(".catalog-numbers").textContent,/24/,"O resumo precisa somar os modelos.");
+await click('.catalog-photo[data-open-variants="resistores"]');
+assert.equal(d.querySelectorAll(".variant-picker-option").length,2,"O toque no card deve mostrar os dois modelos.");
+assert.match(d.querySelector("#modal-root").textContent,/Resistor 220Ω/);
+await click('[data-pick-variant="2"]');
+assert.equal(d.querySelector(".variant-picker-option"),null,"A seleção deve fechar a janela.");
+assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector(".variant-selected").textContent,/220/);
+assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector(".catalog-numbers").textContent,/9/);
+assert.equal(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector("[data-reserve-item]").dataset.reserveItem,"2","A retirada deve usar o modelo escolhido.");
+assert.ok(d.querySelector('[data-open-variants="alcalina"]'),"Alcalina deve ser uma única família.");
+assert.equal(d.querySelectorAll(".catalog-card").length,4);
+assert.equal(d.querySelectorAll('[data-open-variants="alcalina"].catalog-photo').length,1,"Não repetir cards das três pilhas.");
+assert.equal(d.querySelector('[data-open-variants="alcalina"].catalog-photo').closest(".catalog-card").querySelector("h3").textContent,"Alcalina");
+assert.match(d.querySelector('[data-open-variants="alcalina"].catalog-photo').closest(".catalog-card").querySelector(".catalog-numbers").textContent,/60/,"Resumo soma 25 + 4 + 31.");
+await click('.catalog-photo[data-open-variants="alcalina"]');
+assert.equal(d.querySelectorAll(".variant-picker-option").length,3,"Mostrar os três modelos de Alcalina.");
+assert.match(d.querySelector("#modal-root").textContent,/Alcalina 1.5V Pilha normal/);
+assert.match(d.querySelector("#modal-root").textContent,/Alcalina 1.5V Pilha Palito/);
+assert.match(d.querySelector("#modal-root").textContent,/Alcalina 9V/);
+await click('[data-pick-variant="6"]');
+const alkalineCard=d.querySelector('.catalog-photo[data-open-variants="alcalina"]').closest(".catalog-card");
+assert.match(alkalineCard.querySelector(".variant-selected").textContent,/Pilha Palito/);
+assert.equal(alkalineCard.querySelector("[data-reserve-item]").dataset.reserveItem,"6");
+assert.match(alkalineCard.querySelector(".catalog-numbers").textContent,/4/);
+await click('.variant-open[data-open-variants="alcalina"]');
+assert.equal(d.querySelectorAll(".variant-picker-option").length,3,"Trocar modelo deve reabrir a seleção.");
+await click("#modal-root [data-close]");
 assert.equal(d.querySelector(".catalog-photo img").getAttribute("src").includes("commons.wikimedia"),false);
 assert.ok(d.querySelector("#public-sidebar [data-public-action='admin']"),"Entrada Admin não apareceu.");
 await click("#public-menu-toggle");

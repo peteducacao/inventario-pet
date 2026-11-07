@@ -26,6 +26,8 @@ jobs:
           node --check src/identity.js
       - name: Testar fusão dos 26 lotes de Experimentos sem afetar banco remoto
         run: node --disable-warning=ExperimentalWarning tests/experiments.test.mjs
+      - name: Testar vínculo inicial das famílias sem misturar estoque
+        run: node --disable-warning=ExperimentalWarning tests/variation-linking.test.mjs
       - name: Testar backup completo e restauração no banco isolado
         run: node --disable-warning=ExperimentalWarning tests/backup-v2.test.mjs
       - name: Testar banco local, identidade e reservas
@@ -44,7 +46,7 @@ jobs:
           node --input-type=module <<'NODE'
           const root="https://inventario-pet.pet-educacao.workers.dev";
           const files=[
-            {url:"/",checks:['id="public-sidebar"','id="search-mobile"','/component-art.js']},
+            {url:"/",checks:['id="public-sidebar"','id="search"','/component-art.js']},
             {url:"/component-art.js",checks:["imageForPETItem","componentArt"]},
             {url:"/final.js",checks:["function itemImage(x){return imageForPETItem(x);}","public-menu-toggle"],forbidden:["commons.wikimedia.org"]},
             {url:"/final.css",checks:[".public-sidebar",".catalog-card","grid-template-columns:repeat(4,minmax(0,1fr))"]}

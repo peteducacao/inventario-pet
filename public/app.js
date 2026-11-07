@@ -250,6 +250,22 @@ function itemEditor(id){
     '<div class="modal-footer" style="padding:18px 0 0;border:0"><button type="button" class="secondary-button" id="i-cancel">Cancelar</button><button type="submit" class="primary-button" id="i-save">Salvar material</button></div></form>';
   openModal(x?"Editar material":"Adicionar material","",body,{size:"wide"});
   let image=x?.imagem||"";
+  // Ao criar um novo modelo, sugerir automaticamente um grupo já existente,
+  // sem modificar grupos manuais nem relacionar equipamentos individualizados.
+  if(!x&&!family){
+    let automatic="";
+    let manuallyEdited=false;
+    const familyField=$("#i-variation-family"),nameField=$("#i-name");
+    familyField.addEventListener("input",()=>{manuallyEdited=true;});
+    nameField.addEventListener("input",()=>{
+      if(manuallyEdited)return;
+      const hint=typeof materialFamilyHint==="function"?materialFamilyHint(nameField.value):"";
+      const match=state.admin.componentes.find(item=>!item.arquivado&&
+        String(item.grupo_variacoes||"").toLocaleLowerCase("pt-BR")===hint.toLocaleLowerCase("pt-BR"));
+      const next=match&&hint!=="Tablets"&&hint!=="Notebooks"?match.grupo_variacoes:"";
+      if(familyField.value===automatic||!familyField.value){familyField.value=next;automatic=next;}
+    });
+  }
   if(x && $("#i-link-variations"))$("#i-link-variations").onclick=()=>openVariantLinker(x.id);
   $("#i-unit").onchange=()=>{
     const other=$("#i-unit-other");
@@ -427,6 +443,8 @@ function openPhoto(id){
 $("#search").oninput=e=>{state.query=e.target.value;render()};
 $("#category-filters").addEventListener("click",e=>{const b=e.target.closest("[data-category]");if(!b)return;state.filter=b.dataset.category;render();});
 $("#category-sections").addEventListener("click",e=>{
+  const variants=e.target.closest("[data-open-variants]");
+  if(variants){if(typeof openVariantChoices==="function")openVariantChoices(variants.dataset.openVariants);return;}
   const photo=e.target.closest("[data-photo]");if(photo){openPhoto(Number(photo.dataset.photo));return;}
   const defect=e.target.closest("[data-defect]");if(defect){const x=$("#defect-"+defect.dataset.defect);if(x)x.hidden=!x.hidden;return;}
   const book=e.target.closest("[data-reserve-item]");if(book)(state.identity?.tag==="petiano"&&!state.identity?.precisa_criar_login&&!state.identity?.trocar_senha?memberWithdrawModal:reserveModal)(Number(book.dataset.reserveItem));
