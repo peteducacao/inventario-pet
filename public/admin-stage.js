@@ -268,35 +268,104 @@ function wireMaterialActions(root){
 function adminRenameVariationGroup(name){
   const current=String(name||"").trim();
   if(!current)return;
-  const normalize=x=>String(x||"").trim().toLocaleLowerCase("pt-BR");
-  const members=(state.admin.componentes||[]).filter(x=>normalize(x.grupo_variacoes)===normalize(current));
-  if(!members.length){toast("Grupo não encontrado. Atualize o painel.",true);return;}
-  const existing=new Set((state.admin.componentes||[]).map(x=>normalize(x.grupo_variacoes)).filter(Boolean));
-  openModal("Renomear grupo de variações","Altere o título do card no catálogo sem mudar os nomes individuais dos materiais.",
+  const members=(state.admin.componentes||[]).filter(x=>
+    String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===current.toLocaleLowerCase("pt-BR"));
+  openModal("Renomear vínculo","O nome muda no grupo, não nos materiais.",
     '<form id="rename-group-form" class="modal-main">'+
-    '<div class="field"><label for="rename-group-name">Nome do grupo</label>'+
-    '<input id="rename-group-name" required minlength="2" maxlength="80" value="'+attr(current)+'" autocomplete="off"></div>'+
-    '<p class="notice"><strong>'+members.length+' material(is)</strong> fazem parte do grupo <strong>'+esc(current)+'</strong>. Todos receberão o novo nome de grupo; nomes, fotos, patrimônios, estoques e empréstimos permanecem iguais.</p>'+
-    '<div class="modal-footer" style="border:0;padding:14px 0 0"><button class="outline-button" id="rename-group-cancel" type="button">Cancelar</button>'+
-    '<button class="primary-button" id="rename-group-submit" type="submit">Salvar nome do grupo</button></div></form>');
-  $("#rename-group-cancel").onclick=closeModal;
+    '<div class="field"><label for="rename-group-name">Nome do vínculo</label>'+
+    '<input id="rename-group-name" required minlength="2" maxlength="80" value="'+attr(current)+'"></div>'+
+    '<p class="notice">'+members.length+' componente(s) vinculado(s). Estoques, fotos e empréstimos serão preservados.</p>'+
+    '<div class="modal-footer" style="border:0"><button class="outline-button" id="rename-group-cancel" type="button">Cancelar</button>'+
+    '<button class="primary-button" id="rename-group-submit" type="submit">Salvar nome</button></div></form>');
+  $("#rename-group-cancel").onclick=openLinksHub;
   $("#rename-group-form").onsubmit=async e=>{
     e.preventDefault();
     const next=$("#rename-group-name").value.trim();
-    if(next.length<2){toast("O nome do grupo precisa ter pelo menos 2 caracteres.",true);return;}
-    if(next===current){closeModal();return;}
-    if(normalize(next)!==normalize(current)&&existing.has(normalize(next))){
-      toast("Já existe outro grupo com esse nome. Escolha um nome diferente.",true);return;
-    }
-    const btn=$("#rename-group-submit");btn.disabled=true;btn.textContent="Salvando…";
+    if(next.length<2){toast("Digite pelo menos dois caracteres.",true);return;}
+    if(next===current){openLinksHub();return;}
+    const btn=$("#rename-group-submit");btn.disabled=true;
     try{
-      const result=await api("/api/admin/variations/rename","POST",{
-        grupo_atual:current,novo_nome:next,responsavel:state.actor||"Admin"
-      });
-      await adminReload();closeModal();adminBuild();
-      toast("Grupo renomeado para "+next+" em "+result.alterados+" material(is).");
-    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar nome do grupo";}
+      await api("/api/admin/variation-groups","POST",{acao:"renomear",nome:current,novo_nome:next,responsavel:state.actor||"Admin"});
+      await adminReload();openLinksHub();toast("Vínculo renomeado para "+next+".");
+    }catch(error){btn.disabled=false;toast(error.message,true);}
   };
+}
+function openLinksHub(){
+  const raw=state.admin?.grupos_variacoes||[];
+  const groups=new Map();
+  for(const x of raw){
+    const name=String(typeof x==="string"?x:x.nome||"").trim();
+    if(name)groups.set(name.toLocaleLowerCase("pt-BR"),name);
+  }
+  for(const x of state.admin?.componentes||[]){
+    const name=String(x.grupo_variacoes||"").trim();
+    if(name&&!groups.has(name.toLocaleLowerCase("pt-BR")))groups.set(name.toLocaleLowerCase("pt-BR"),name);
+  }
+  const orderedGroups=[...groups.values()].sort((a,b)=>a.localeCompare(b,"pt-BR",{sensitivity:"base"}));
+  openModal("Vínculos","Crie e organize grupos sem modificar os cadastros dos materiais.",
+    '<div class="modal-main links-hub">'+
+    '<div class="links-hub-top"><div class="field"><label for="links-hub-search">Buscar vínculos</label>'+
+      '<input id="links-hub-search" type="search" placeholder="Ex.: Arduino, Pilhas..."></div>'+
+      '<button type="button" class="primary-button" id="links-hub-create">+ Novo vínculo</button></div>'+
+    '<form id="links-hub-new-form" hidden><label for="links-hub-new-name">Nome do novo vínculo</label>'+
+      '<div class="links-hub-new-row"><input id="links-hub-new-name" maxlength="80" placeholder="Ex.: Arduino">'+
+      '<button class="primary-button" type="submit">Criar</button></div></form>'+
+    '<div id="links-hub-list" class="links-hub-list"></div>'+
+    '<p class="hint">Excluir um vínculo não exclui materiais. Os componentes voltam à lista individual, com todo o estoque preservado.</p></div>',
+    {size:"wide"});
+  let busy=false;
+  const list=$("#links-hub-list");
+  const draw=()=>{
+    const q=$("#links-hub-search").value;
+    const names=orderedGroups.filter(name=>!q||matchesCatalogSearch(name,q));
+    list.innerHTML=names.length?names.map(name=>{
+      const count=(state.admin.componentes||[]).filter(x=>
+        String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===name.toLocaleLowerCase("pt-BR")&&!isArchived(x)).length;
+      return '<div class="links-hub-row" data-link-group="'+attr(name)+'">'+
+        '<div class="links-hub-name"><strong>'+esc(name)+'</strong>'+
+        '<small>'+count+' '+(count===1?'material vinculado':'materiais vinculados')+'</small></div>'+
+        '<div class="links-hub-actions">'+
+        '<button type="button" class="primary-button small-button" data-link-open="'+attr(name)+'">Organizar</button>'+
+        '<button type="button" class="outline-button small-button" data-link-rename="'+attr(name)+'">Renomear</button>'+
+        '<button type="button" class="danger-button small-button" data-link-delete="'+attr(name)+'">Excluir</button></div></div>';
+    }).join(""):'<div class="variant-manager-empty">Nenhum vínculo encontrado.</div>';
+    $$("[data-link-open]",list).forEach(btn=>btn.onclick=()=>openVariantLinker(null,btn.dataset.linkOpen));
+    $$("[data-link-rename]",list).forEach(btn=>btn.onclick=()=>adminRenameVariationGroup(btn.dataset.linkRename));
+    $$("[data-link-delete]",list).forEach(btn=>btn.onclick=async()=>{
+      if(busy)return;
+      const name=btn.dataset.linkDelete;
+      const ok=await niceModalConfirm("Excluir vínculo?",
+        "O grupo "+name+" será removido. Nenhum material, quantidade ou empréstimo será excluído.","Excluir vínculo",true);
+      if(!ok){openLinksHub();return;}
+      busy=true;
+      try{
+        await api("/api/admin/variation-groups","POST",{acao:"excluir",nome:name,responsavel:state.actor||"Admin"});
+        await adminReload();openLinksHub();toast("Vínculo "+name+" excluído. Materiais preservados.");
+      }catch(error){toast(error.message,true);openLinksHub();}
+      finally{busy=false;}
+    });
+  };
+  $("#links-hub-search").oninput=draw;
+  $("#links-hub-create").onclick=()=>{
+    const form=$("#links-hub-new-form");
+    form.hidden=!form.hidden;
+    if(!form.hidden)$("#links-hub-new-name").focus();
+  };
+  $("#links-hub-new-form").onsubmit=async e=>{
+    e.preventDefault();
+    if(busy)return;
+    const name=$("#links-hub-new-name").value.trim();
+    if(name.length<2){toast("Informe um nome com pelo menos dois caracteres.",true);return;}
+    busy=true;
+    try{
+      await api("/api/admin/variation-groups","POST",{acao:"criar",nome:name,responsavel:state.actor||"Admin"});
+      await adminReload();
+      openVariantLinker(null,name);
+      toast("Vínculo criado. Você já pode adicionar os materiais.");
+    }catch(error){toast(error.message,true);}
+    finally{busy=false;}
+  };
+  draw();
 }
 function adminViewMaterial(id){
   const x=state.admin.componentes.find(z=>z.id===id);if(!x)return;
@@ -989,121 +1058,115 @@ function openBulkVisibility(currentId){
   $("#bulk-only-members").onclick=()=>save(false);
   draw();
 }
-/* Gestão de famílias: membros já vinculados ficam separados dos candidatos. */
+/* Vínculos não editam nenhum campo do material: só associam IDs existentes. */
 function openVariantLinker(currentId,groupName=""){
-  const model=adminMaterialPickerConfig("variations",currentId,groupName);
-  const fromGroup=Boolean(groupName);
-  const startingName=String(model.group||"").trim();
-  const normalized=value=>String(value||"").trim().normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR");
-  const itemLabel=x=>'<strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
-    ' · Total: '+Number(x.quantidade||0)+' · Em uso: '+Number(x.em_uso||0)+'</small>';
-  openModal(fromGroup?"Organizar grupo: "+startingName:"Criar ou organizar um grupo",
-    "O grupo reúne modelos num único card; o estoque de cada material continua separado.",
+  const name=String(groupName||"").trim();
+  if(!name){openLinksHub();return;}
+  const normalized=value=>String(value||"").normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
+  const hint=name.toLocaleLowerCase("pt-BR");
+  openModal("Vínculo: "+name,"Selecione componentes existentes. Fotos e estoques são editados apenas em Materiais.",
     '<div class="modal-main variant-manager">'+
-      '<div class="field"><label for="variant-group-name">Nome do grupo</label>'+
-        '<input id="variant-group-name" maxlength="80" '+(fromGroup?'readonly ':'')+'value="'+attr(startingName)+'" placeholder="Ex.: Arduino">'+
-        '<small class="hint">'+(fromGroup?'Para trocar o nome, use Renomear grupo no painel.':
-          'Escolha um nome e adicione um material. O grupo só aparece após receber seu primeiro modelo.')+'</small></div>'+
-      '<section class="variant-manager-block linked"><div class="variant-manager-heading"><h3>Já fazem parte deste grupo</h3>'+
-        '<strong id="variant-linked-count">0</strong></div>'+
-        '<div id="variant-linked-list" class="variant-manager-list"></div></section>'+
-      '<section class="variant-manager-block available"><div class="variant-manager-heading"><h3>Adicionar materiais ao grupo</h3></div>'+
-        '<div class="field"><label for="variant-search">Buscar material existente</label>'+
-        '<input id="variant-search" type="search" placeholder="Ex.: Arduino Uno, ESP32, pilha..." autocomplete="off" value="'+attr(startingName)+'"></div>'+
-        '<div id="variant-available-list" class="variant-manager-list"></div>'+
-        '<p class="hint">Clique em <strong>Adicionar ao grupo</strong> para salvar o vínculo. Se o material já pertence a outra família, você verá uma confirmação antes de movê-lo.</p></section>'+
-      '<div class="modal-footer variant-manager-actions">'+
-        '<button type="button" class="outline-button" id="variant-create">+ Cadastrar novo modelo neste grupo</button>'+
-        '<button type="button" class="primary-button" id="variant-close">Concluir</button></div></div>',{size:"wide"});
-  let saving=false;
-  // Uma confirmação não pode fechar a janela de vínculos nem apagar a busca.
-  const confirmInPlace=(title,message,action,danger=false)=>new Promise(resolve=>{
-    const root=$("#modal-root"),overlay=document.createElement("div");
-    overlay.className="modal-overlay editor-confirm-layer";
-    overlay.innerHTML='<section class="modal" role="alertdialog" aria-modal="true" aria-label="'+attr(title)+'">'+
-      '<header class="modal-header"><h2>'+esc(title)+'</h2></header><div class="confirm-body"><p>'+esc(message)+'</p>'+
-      '<div class="confirm-actions"><button type="button" class="secondary-button" data-variant-cancel>Cancelar</button>'+
-      '<button type="button" class="'+(danger?"danger-button":"primary-button")+'" data-variant-confirm>'+esc(action)+'</button></div></div></section>';
-    root.appendChild(overlay);
-    const finish=value=>{overlay.remove();resolve(value);};
-    overlay.querySelector("[data-variant-cancel]").onclick=()=>finish(false);
-    overlay.querySelector("[data-variant-confirm]").onclick=()=>finish(true);
-    overlay.onclick=e=>{if(e.target===overlay)finish(false);};
-  });
-  const refreshModel=()=>{
-    model.all=state.admin.componentes.filter(x=>!isArchived(x)&&
-      !state.admin.categorias.find(cat=>Number(cat.id)===Number(x.categoria_id))?.arquivada);
+    '<section class="variant-manager-block linked"><div class="variant-manager-heading"><h3>Já vinculados</h3>'+
+      '<strong id="variant-linked-count">0</strong></div><div id="variant-linked-list" class="variant-manager-list"></div></section>'+
+    '<section class="variant-manager-block available"><div class="variant-manager-heading"><h3>Adicionar componentes</h3></div>'+
+      '<div class="field"><label for="variant-search">Buscar materiais</label>'+
+      '<input id="variant-search" type="search" placeholder="Digite o nome do componente..." autocomplete="off"></div>'+
+      '<div class="variant-select-tools"><button class="outline-button small-button" id="variant-similar" type="button">Sugerir semelhantes</button>'+
+      '<button class="outline-button small-button" id="variant-select-results" type="button">Selecionar resultados</button>'+
+      '<button class="outline-button small-button" id="variant-clear" type="button">Desmarcar todos</button></div>'+
+      '<div id="variant-available-list" class="variant-manager-list"></div></section>'+
+    '<div class="modal-footer variant-manager-actions">'+
+      '<button class="outline-button" type="button" id="variant-back">Voltar aos vínculos</button>'+
+      '<button class="primary-button" type="button" id="variant-link-selected" disabled>Vincular selecionados (0)</button></div></div>',{size:"wide"});
+  let items=[],visible=[],saving=false;
+  const selected=new Set();
+  const refresh=()=>{
+    items=(state.admin.componentes||[]).filter(x=>!isArchived(x)&&
+      !state.admin.categorias.some(c=>Number(c.id)===Number(x.categoria_id)&&c.arquivada));
   };
-  const currentGroupName=()=>$("#variant-group-name")?.value.trim()||"";
-  const linked=()=>model.all.filter(x=>normalized(x.grupo_variacoes)===normalized(currentGroupName())&&normalized(currentGroupName()));
-  const makeRow=(x,already)=>{
-    const current=String(x.grupo_variacoes||"").trim();
-    return '<div class="variant-manager-row" data-variant-item="'+Number(x.id)+'">'+
-      '<div class="variant-manager-photo">'+thumb(x)+'</div>'+
-      '<div class="variant-manager-description">'+itemLabel(x)+
-        (!already&&current?'<span class="variant-manager-other">Pertence a: '+esc(current)+'</span>':'')+
-        '</div>'+
-      (already?
-        '<button class="outline-button small-button" type="button" data-variant-remove="'+Number(x.id)+'">Retirar do grupo</button>':
-        '<button class="primary-button small-button" type="button" data-variant-add="'+Number(x.id)+'">'+
-          (current?'Mover para este grupo':'Adicionar ao grupo')+'</button>')+'</div>';
-  };
+  const current=()=>items.filter(x=>normalized(x.grupo_variacoes)===normalized(name));
   const draw=()=>{
-    const name=currentGroupName();
-    const members=linked().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
-    $("#variant-linked-count").textContent=String(members.length);
-    $("#variant-linked-list").innerHTML=members.length?members.map(x=>makeRow(x,true)).join(""):
-      '<div class="variant-manager-empty">Este grupo ainda não tem nenhum material vinculado.</div>';
+    const linked=current().sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+    $("#variant-linked-count").textContent=String(linked.length);
+    $("#variant-linked-list").innerHTML=linked.length?linked.map(x=>
+      '<div class="variant-manager-row"><div class="variant-manager-photo">'+thumb(x)+'</div>'+
+      '<div class="variant-manager-description"><strong>'+esc(x.nome)+'</strong>'+
+      '<small>'+x.quantidade+' un. · '+x.em_uso+' em uso · '+x.com_defeito+' defeito</small></div>'+
+      '<button class="outline-button small-button" type="button" data-variant-remove="'+x.id+'">Retirar</button></div>'
+    ).join(""):'<div class="variant-manager-empty">Grupo vazio. Busque um material para vincular.</div>';
     const term=$("#variant-search").value.trim();
-    const free=model.all.filter(x=>!members.some(m=>m.id===x.id)&&
-      (!term||[x.nome,x.identificacao,x.grupo_variacoes].some(v=>matchesCatalogSearch(v,term))));
-    // Recomendação inicial: candidatos sem grupo primeiro, depois outros grupos.
-    free.sort((a,b)=>Number(Boolean(a.grupo_variacoes))-Number(Boolean(b.grupo_variacoes))||
-      a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
-    $("#variant-available-list").innerHTML=free.length?
-      free.slice(0,45).map(x=>makeRow(x,false)).join(""):
-      '<div class="variant-manager-empty">Nenhum outro material encontrado. Tente outro nome ou cadastre um modelo.</div>';
-    $$("[data-variant-add]",$("#variant-available-list")).forEach(button=>button.onclick=()=>updateMember(Number(button.dataset.variantAdd),true));
-    $$("[data-variant-remove]",$("#variant-linked-list")).forEach(button=>button.onclick=()=>updateMember(Number(button.dataset.variantRemove),false));
+    visible=items.filter(x=>!linked.some(l=>l.id===x.id)&&(!term||
+      [x.nome,x.identificacao].some(v=>matchesCatalogSearch(v,term))))
+      .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+    $("#variant-available-list").innerHTML=visible.length?visible.slice(0,60).map(x=>
+      '<label class="variant-manager-row variant-candidate '+(selected.has(x.id)?'is-selected':'')+'">'+
+      '<input type="checkbox" data-variant-select="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
+      '<div class="variant-manager-photo">'+thumb(x)+'</div>'+
+      '<div class="variant-manager-description"><strong>'+esc(x.nome)+'</strong>'+
+      '<small>'+esc(nameCategory(x.categoria_id))+' · '+x.quantidade+' un.'+
+        (x.grupo_variacoes?' · Vínculo atual: '+esc(x.grupo_variacoes):' · Sem vínculo')+'</small></div></label>'
+    ).join(""):'<div class="variant-manager-empty">Nenhum componente encontrado.</div>';
+    $$("[data-variant-select]",$("#variant-available-list")).forEach(box=>box.onchange=()=>{
+      const id=Number(box.dataset.variantSelect);
+      if(box.checked)selected.add(id);else selected.delete(id);
+      box.closest(".variant-candidate")?.classList.toggle("is-selected",box.checked);
+      updateCount();
+    });
+    $$("[data-variant-remove]",$("#variant-linked-list")).forEach(btn=>btn.onclick=async()=>{
+      if(saving)return;
+      const item=items.find(x=>x.id===Number(btn.dataset.variantRemove));
+      if(!item)return;
+      saving=true;btn.disabled=true;
+      try{
+        await api("/api/admin/variations","POST",{ids:[item.id],grupo:"",responsavel:state.actor||"Admin"});
+        await adminReload();refresh();draw();
+        toast(item.nome+" desvinculado. Estoque preservado.");
+      }catch(error){toast(error.message,true);btn.disabled=false;}
+      finally{saving=false;}
+    });
+    updateCount();
   };
-  const updateMember=async(id,add)=>{
-    if(saving)return;
-    const name=currentGroupName(),current=model.all.find(x=>x.id===id);
-    if(!current)return;
-    if(add&&name.length<2){toast("Digite o nome do grupo antes de adicionar um material.",true);$("#variant-group-name").focus();return;}
-    const oldName=String(current.grupo_variacoes||"").trim();
-    if(add&&oldName&&normalized(oldName)!==normalized(name)){
-      const yes=await confirmInPlace("Mover material para outro grupo?",
-        current.nome+" deixará o grupo "+oldName+" e passará para "+name+". Quantidades e empréstimos não serão alterados.",
-        "Mover material");
-      if(!yes)return;
-    }else if(!add){
-      const yes=await confirmInPlace("Retirar deste grupo?",
-        current.nome+" ficará como material individual no catálogo. O estoque continuará igual.","Retirar",true);
-      if(!yes)return;
-    }
-    saving=true;
-    try{
-      await api("/api/admin/variations","POST",{
-        ids:[id],grupo:add?name:"",responsavel:state.actor||"Admin"});
-      await adminReload();
-      refreshModel();
-      draw();
-      toast(add?current.nome+" vinculado a "+name+".":current.nome+" removido do grupo.");
-    }catch(error){toast(error.message,true);}
-    finally{saving=false;}
+  const updateCount=()=>{
+    const btn=$("#variant-link-selected");if(!btn)return;
+    btn.disabled=saving||!selected.size;
+    btn.textContent="Vincular selecionados ("+selected.size+")";
   };
-  $("#variant-group-name").oninput=draw;
+  $("#variant-similar").onclick=()=>{
+    const members=current(),seed=members[0]?.nome||name;
+    const type=materialFamilyHint(seed);
+    const candidates=items.filter(x=>normalized(x.grupo_variacoes)!==normalized(name)&&
+      (materialFamilyHint(x.nome)===type||normalized(x.nome).includes(normalized(name))));
+    for(const x of candidates)selected.add(x.id);
+    if(!candidates.length)toast("Nenhum material semelhante encontrado.");
+    draw();
+  };
+  $("#variant-select-results").onclick=()=>{
+    for(const x of visible.slice(0,60))selected.add(x.id);
+    draw();
+  };
+  $("#variant-clear").onclick=()=>{selected.clear();draw();};
   $("#variant-search").oninput=draw;
-  $("#variant-create").onclick=()=>{
-    const name=currentGroupName();
-    if(name.length<2){toast("Informe o nome do grupo antes de cadastrar um modelo.",true);$("#variant-group-name").focus();return;}
-    window.__newVariantGroup=name;
-    window.__variantReturnGroup=name;
-    adminItemEditor();
+  $("#variant-back").onclick=openLinksHub;
+  $("#variant-link-selected").onclick=async()=>{
+    if(!selected.size||saving)return;
+    const chosen=items.filter(x=>selected.has(x.id)&&normalized(x.grupo_variacoes)!==normalized(name));
+    if(!chosen.length){selected.clear();draw();return;}
+    const moving=chosen.filter(x=>x.grupo_variacoes);
+    if(moving.length){
+      const yes=await niceModalConfirm("Mover componentes de outro vínculo?",
+        moving.length+" material(is) serão retirados do vínculo anterior e vinculados a "+name+". Estoque preservado.",
+        "Mover e vincular");
+      if(!yes){openVariantLinker(null,name);return;}
+    }
+    saving=true;updateCount();
+    try{
+      await api("/api/admin/variations","POST",{ids:chosen.map(x=>x.id),grupo:name,responsavel:state.actor||"Admin"});
+      await adminReload();refresh();selected.clear();draw();
+      toast(chosen.length+" componente(s) vinculado(s) a "+name+".");
+    }catch(error){toast(error.message,true);}
+    finally{saving=false;updateCount();}
   };
-  $("#variant-close").onclick=()=>{closeModal();adminBuild();};
-  draw();
+  refresh();draw();
 }
 function adminItemEditor(id){
   itemEditor(id);
