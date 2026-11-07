@@ -94,7 +94,14 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       }
       body={ok:true,alterados:changed};
     }
-    else if(path==="/api/admin/variations")body={ok:true,vinculados:2};
+    else if(path==="/api/admin/variations"){
+      const payload=JSON.parse(init.body||"{}");
+      for(const id of payload.ids||[]){
+        const item=fullAdmin.componentes.find(x=>x.id===id);
+        if(item)item.grupo_variacoes=payload.grupo;
+      }
+      body={ok:true,vinculados:(payload.ids||[]).length};
+    }
     else if(path==="/api/admin/visibility")body={ok:true,alterados:2};
     else {status=404;body={error:"Rota simulada não encontrada: "+path};}
     return {ok:status<400,status,json:async()=>body};
@@ -519,27 +526,32 @@ assert.equal(ad.querySelector("#i-link-variations"),null,
   "Vínculos não devem ser alterados a partir do editor individual.");
 await adminClick("#modal-root [data-close]");
 await adminClick('[data-group-links="Resistores"]');
-assert.ok(ad.querySelector("#variant-similar"));
-assert.ok(ad.querySelector("#variant-group-name"),"Vínculos devem ser organizados a partir do cartão do grupo.");
-assert.equal(ad.querySelector("#variant-group-name").readOnly,true,"Renomear deve ser uma ação separada de vincular.");
-assert.equal(ad.querySelector("#variant-group-name").value,"Resistores","O nome salvo da família deve aparecer no organizador.");
-assert.equal(ad.querySelector('[data-bulk-id="1"]')?.checked,true,"O modelo atual já vinculado deve aparecer marcado.");
-assert.equal(ad.querySelector('[data-bulk-id="2"]')?.checked,true,"O outro modelo já vinculado deve aparecer marcado também.");
+assert.ok(ad.querySelector("#variant-linked-list"),"O organizador deve mostrar claramente os modelos já vinculados.");
+assert.ok(ad.querySelector("#variant-available-list"),"Deve existir lista de materiais disponíveis para adicionar.");
+assert.equal(ad.querySelector("#variant-group-name").readOnly,true,"Renomear deve ser ação separada de vincular.");
+assert.equal(ad.querySelector("#variant-group-name").value,"Resistores");
+assert.equal(ad.querySelector("#variant-linked-count").textContent,"3","A família tem três modelos vinculados.");
+assert.equal(ad.querySelectorAll("[data-variant-remove]").length,3,"Cada membro vinculado deve ter botão Retirar do grupo.");
 const variantSearch=ad.querySelector("#variant-search");
 variantSearch.value="";
 variantSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
 await wait(20);
-assert.equal(ad.querySelector('[data-bulk-id="3"]')?.checked,false,"Material de outra família não deve aparecer marcado ao limpar a busca.");
-assert.ok(ad.querySelectorAll(".variant-photo-row.is-selected").length>=2,"Itens já vinculados devem ter destaque visual.");
-assert.match(ad.querySelector("#variant-list").textContent,/Já vinculado/);
-assert.match(ad.querySelector("#variant-selected").textContent,/3 já vinculados/,"Todos os vínculos existentes devem ser contabilizados, inclusive de outra categoria.");
-assert.equal(ad.querySelector('[data-bulk-id="4"]')?.checked,true,"Material que já estava vinculado, mesmo em outra categoria, precisa ficar marcado.");
-ad.querySelector('[data-bulk-id="2"]').click();await wait(20);
-assert.equal(ad.querySelector('[data-bulk-id="2"]').checked,false,"É necessário poder desmarcar um vínculo manualmente.");
-ad.querySelector('[data-bulk-id="2"]').click();await wait(20);
-assert.equal(ad.querySelector('[data-bulk-id="2"]').checked,true,"A marcação deve acompanhar a ação imediatamente.");
-assert.ok(ad.querySelector('[data-variant-photo="1"]'),"Foto individual deve continuar disponível.");
-assert.ok(ad.querySelector('[data-variant-file="1"][type="file"]'),"Upload por variação deve continuar disponível.");
+assert.ok(ad.querySelector('[data-variant-add="3"]'),"Arduino Uno deve aparecer como candidato para mover.");
+await adminClick('[data-variant-add="3"]');
+assert.ok(ad.querySelector("[data-variant-confirm]"),"Mover de outra família exige confirmação.");
+await adminClick("[data-variant-confirm]");
+await wait(120);
+assert.ok(ad.querySelector("#variant-linked-list"),"A confirmação não pode fechar o organizador de vínculos.");
+assert.equal(ad.querySelector("#variant-linked-count").textContent,"4","Material deve entrar imediatamente no grupo após salvar.");
+assert.equal(fullAdmin.componentes.find(x=>x.id===3).grupo_variacoes,"Resistores");
+await adminClick('[data-variant-remove="3"]');
+assert.ok(ad.querySelector("[data-variant-confirm]"),"Retirar do grupo exige confirmação.");
+await adminClick("[data-variant-confirm]");
+await wait(120);
+assert.equal(ad.querySelector("#variant-linked-count").textContent,"3","Após retirar, o grupo volta a ter três materiais.");
+assert.equal(fullAdmin.componentes.find(x=>x.id===3).grupo_variacoes,"");
+assert.ok(ad.querySelector('[data-variant-add="3"]'),"Material retirado deve voltar à lista de candidatos.");
+assert.ok(ad.querySelector("#variant-create"),"Deve ser possível cadastrar um novo modelo dentro da família.");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
 await adminClick("#modal-root [data-close]");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");

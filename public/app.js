@@ -239,6 +239,12 @@ function itemEditor(id){
     '<div class="item-editor-intro"><strong>Edição rápida</strong><span>Altere nome ou estoque e salve. Outras opções ficam recolhidas abaixo.</span></div>'+
     '<div class="field-grid">'+inputField("i-name","Nome do material *",x?.nome||"",{required:true})+
       selectField("i-category","Categoria",categories,x?.categoria_id||categories[0].value)+'</div>'+
+    (!x?'<div class="field item-group-new"><label for="i-variation-family">Adicionar ao grupo (opcional)</label>'+
+      '<select id="i-variation-family"><option value="">Sem grupo — material individual</option>'+
+      [...new Set([family,...groups].filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"))
+        .map(name=>'<option value="'+attr(name)+'"'+(name===family?' selected':'')+'>'+esc(name)+'</option>').join("")+
+      '</select><small class="hint">'+(family?'Este modelo já será vinculado a '+esc(family)+' quando você salvar.':
+      'Se escolher um grupo, este material aparecerá como modelo dentro dele. Também é possível fazer isso depois na área Grupos de variações.')+'</small></div>':'')+
     '<section class="item-editor-essentials" aria-labelledby="item-editor-stock-title">'+
       '<h3 id="item-editor-stock-title">Estoque</h3>'+
       '<div class="field-grid thirds">'+stepInput("i-quantity","Quantidade total",x?.quantidade||0)+
@@ -268,9 +274,9 @@ function itemEditor(id){
       '</div></details>'+
     '<details class="item-editor-section" id="item-editor-media"><summary>Foto, variações e exibição <small>Imagem, grupo e opções de visualização</small></summary>'+
       '<div class="item-editor-extra">'+
-      '<div class="field"><label>Grupo de variações</label><input id="i-variation-family" type="hidden" value="'+attr(family)+'">'+
+      (x?'<div class="field"><label>Grupo de variações</label><input id="i-variation-family" type="hidden" value="'+attr(family)+'">'+
         '<div class="item-group-reference">'+(family?'<strong>'+esc(family)+'</strong>':'<span>Sem grupo</span>')+
-        '<small>Renomeie grupos e organize os vínculos na seção Grupos de variações da aba Materiais. Este formulário altera somente o material.</small></div></div>'+
+        '<small>Para adicionar ou retirar este material de um grupo, use Grupos de variações na aba Materiais.</small></div></div>':'')+
       switchInput("i-public","Exibir para todos",x?flag(x.visivel_visitante):true,"Desmarque para mostrar somente aos PETianes.")+
       '<div class="field"><label>Imagem do material (opcional)</label><div id="i-photo-preview" class="media-preview"><img alt="Ilustração do material" src="'+attr(x?itemImage(x):defaultImage("material"))+'"></div><input type="file" id="i-photo" accept="image/png,image/jpeg,image/webp" style="margin-top:9px"><small class="hint">Imagem própria ou ilustração automática.</small><label class="switch-row"><span><strong>Remover fundo claro automaticamente</strong><small>Para fotos com fundo uniforme.</small></span><input type="checkbox" id="i-remove-bg" checked></label><button type="button" class="outline-button small-button" id="i-photo-remove">Usar desenho padrão</button></div>'+
       '<details class="editor-advanced"><summary>Exibição das quantidades no catálogo</summary>'+
@@ -307,7 +313,16 @@ function itemEditor(id){
       mostrar_em_uso:$("#i-show-used").checked,mostrar_defeito:$("#i-show-broken").checked,
       visivel_visitante:$("#i-public").checked,permitir_petianos:["todos","petianos"].includes($("#i-loan-audience").value),permitir_visitantes:["todos","visitantes"].includes($("#i-loan-audience").value),grupo_variacoes:$("#i-variation-family").value,
       descricao_defeito:$("#i-description").value,observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
-    try{await api("/api/admin/item","POST",body);$("#item-form")?.dispatchEvent(new Event("pet:item-saved"));await adminReload();adminModal();toast("Material salvo!");}
+    try{
+      await api("/api/admin/item","POST",body);
+      $("#item-form")?.dispatchEvent(new Event("pet:item-saved"));
+      await adminReload();
+      const returnGroup=window.__variantReturnGroup;
+      window.__variantReturnGroup="";
+      if(returnGroup){adminBuild();openVariantLinker(null,returnGroup);}
+      else adminModal();
+      toast("Material salvo!");
+    }
     catch(error){toast(error.message,true);submit.disabled=false;submit.textContent=x?"Salvar alterações":"Cadastrar material";}
   };
 }

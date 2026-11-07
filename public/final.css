@@ -832,3 +832,35 @@ body[data-admin-route="true"] #admin-stage.admin-loading:not([hidden]){display:g
  .admin-family-actions button{min-width:0;white-space:normal}
  .admin-family-model-row{padding:8px;gap:7px}
 }
+
+
+/* Gerenciador de famílias: ação direta sem caixinhas e sem listas confusas. */
+.variant-manager{display:flex;flex-direction:column;gap:14px;max-height:min(78dvh,780px);overflow-y:auto;overscroll-behavior:contain}
+.variant-manager-block{border:1px solid #dbe8ec;border-radius:14px;background:#fff;padding:13px}
+.variant-manager-block.linked{background:#eff9f5;border-color:#b7e3d6}
+.variant-manager-heading{display:flex;align-items:center;gap:10px;justify-content:space-between;margin:0 0 10px}
+.variant-manager-heading h3{font-size:14px;line-height:1.4;margin:0;color:#254e60}
+.variant-manager-heading strong{display:inline-flex;align-items:center;justify-content:center;min-width:27px;height:27px;background:#d1efe6;border-radius:99px;color:#11775f;font-size:12px}
+.variant-manager-list{display:grid;gap:9px;min-width:0}
+.variant-manager-row{display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #e1ecf0;border-radius:12px;background:#fff;min-width:0}
+.variant-manager-photo{flex:0 0 49px;min-width:49px}
+.variant-manager-photo .material-thumb{width:49px;height:49px}
+.variant-manager-description{flex:1;min-width:0;line-height:1.5}
+.variant-manager-description strong{display:block;overflow-wrap:anywhere;color:#24475c;font-size:13px}
+.variant-manager-description small{display:block;color:#63808e;font-size:11px}
+.variant-manager-other{display:block;color:#a46f28;font-weight:650;font-size:11px;margin-top:3px}
+.variant-manager-row button{min-height:35px;max-width:170px;padding:7px 11px;font-size:12px;font-weight:750;white-space:normal}
+.variant-manager-empty{padding:18px 12px;text-align:center;font-size:12px;color:#6e8491}
+.variant-manager-actions{display:flex;flex-wrap:wrap;justify-content:space-between;gap:9px;margin:0;padding:12px 0 0;border-top:1px solid #dae7e9}
+.variant-manager-actions button{flex:1;min-width:180px;min-height:43px}
+@media(max-width:600px){
+ .modal:has(.variant-manager){width:100%;max-height:calc(100dvh - 20px)}
+ .variant-manager{max-height:calc(100dvh - 110px);gap:11px;padding:10px 12px}
+ .variant-manager-block{padding:11px}
+ .variant-manager-row{padding:8px;gap:7px;flex-wrap:wrap}
+ .variant-manager-photo{flex-basis:39px;min-width:39px}
+ .variant-manager-photo .material-thumb{width:39px;height:39px}
+ .variant-manager-row button{width:100%;max-width:none;min-height:38px}
+ .variant-manager-description strong{font-size:12px}
+ .variant-manager-actions button{min-width:0;flex-basis:100%}
+}
