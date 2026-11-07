@@ -117,26 +117,6 @@ export async function mailAdminAPI(req,env){
     await db.batch(statements);
     return reply({ok:true,mensagem:"Preferências de e-mail por perfil e tipo salvas."});
   }
-  if(path==="/api/admin/mail/check-now"&&req.method==="POST"){
-    const result=await generateDailyEmails(env);
-    return result.ok?reply(result):fail(result.reason,409);
-  }
-  if(path==="/api/admin/mail/test"&&req.method==="POST"){
-    let data;try{data=await req.json();}catch{return fail("Dados inválidos.");}
-    const destination=clean(data?.email,180).toLowerCase(),event=clean(data?.evento,30);
-    if(!emailOK(destination))return fail("Informe um e-mail válido para receber o teste.");
-    if(!Object.hasOwn(TEMPLATE_TYPES,event))return fail("Selecione o tipo de e-mail a testar.");
-    if(!env.MAIL_BRIDGE_TOKEN||String(env.MAIL_BRIDGE_TOKEN).length<32)return fail("Integração Gmail não configurada.",503);
-    const tomorrow=new Date(Date.now()+86400000).toLocaleDateString("en-CA",{timeZone:"America/Sao_Paulo"});
-    const example={id:0,nome_solicitante:"Pessoa de teste",componente_nome:"Arduino Uno (exemplo)",quantidade:1,data_devolucao:tomorrow};
-    const mail=await content(db,example,event);
-    const subject="[TESTE] "+mail.subject;
-    const message="ESTE É UM TESTE DO INVENTÁRIO PET. Nenhuma reserva real foi alterada.\n\n"+mail.body;
-    const uid="teste:"+crypto.randomUUID();
-    await db.prepare("INSERT INTO mail_queue(reserva_id,evento,chave_unica,destinatario,assunto,mensagem,prazo_referencia,origem,criado_em) VALUES(NULL,'teste',?,?,?,?,?,'manual',?)")
-      .bind(uid,destination,subject,message,"",iso()).run();
-    return reply({ok:true,queued:true,mensagem:"E-mail de teste colocado na fila do Gmail.",destinatario:destination});
-  }
   if(path==="/api/admin/mail/templates"&&req.method==="GET"){
     const templates=[];
     for(const event of TEMPLATE_EVENTS)templates.push({evento:event,nome:TEMPLATE_TYPES[event],...await templateFor(db,event)});
@@ -204,7 +184,7 @@ export async function mailBridgeAPI(req,env){
     const candidates=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,mensagem,prazo_referencia FROM mail_queue WHERE situacao='pendente' OR (situacao='processando' AND processado_em<?) ORDER BY id ASC LIMIT 20",[deadline]);
     for(const item of candidates){
       const row=item.reserva_id?await current(db,item.reserva_id):null;
-      if(item.evento!=="teste"&&(!row||!await allowed(db,row,item.evento)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||Number(row.sem_prazo)===1)){
+      if(!row||!await allowed(db,row,item.evento)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||Number(row.sem_prazo)===1){
         await db.prepare("UPDATE mail_queue SET situacao='cancelado',ultimo_erro='Empréstimo modificado, devolvido ou notificações desativadas' WHERE id=? AND situacao IN ('pendente','processando')").bind(item.id).run();
         continue;
       }
