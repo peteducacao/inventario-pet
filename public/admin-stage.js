@@ -217,15 +217,14 @@ function adminMaterials(root){
   const cats=state.admin.categorias;
   const categoryOptions='<option value="all">Todas as categorias</option>'+cats.map(c=>'<option value="'+c.id+'" '+(UI.adminCategory===String(c.id)?"selected":"")+'>'+esc(c.nome)+'</option>').join("")+
     '<option value="archived" '+(UI.adminCategory==="archived"?"selected":"")+'>Arquivados</option>';
-  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Materiais cadastrados</h2></div>'+
-    '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade em lote</button><button class="outline-button" type="button" id="admin-group-variations">'+iconSvg("layers",15)+' Variações</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
+  root.innerHTML='<section class="admin-panel"><div class="admin-section-head admin-materials-heading"><div><h2>Materiais cadastrados</h2></div>'+
+    '<div class="buttons"><button class="outline-button" type="button" id="admin-bulk-visibility">'+iconSvg("eye",15)+' Visibilidade</button><button class="primary-button" id="admin-item-new" type="button">'+iconSvg("plus",16)+' Novo material</button></div></div>'+
     '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-material-search" placeholder="Buscar materiais..." value="'+attr(UI.adminSearch)+'"></div>'+
     '<select id="admin-material-category" class="admin-filter" aria-label="Categoria">'+categoryOptions+'</select>'+
     '<select id="admin-material-sort" class="admin-sort" aria-label="Ordenação">'+sortOptions(UI.adminSort)+'</select></div>'+
     '<div id="admin-material-list"></div><nav id="admin-material-pages" class="page-controls admin-paginate"></nav></section>';
   $("#admin-item-new").onclick=()=>adminItemEditor();
   $("#admin-bulk-visibility").onclick=()=>openBulkVisibility();
-  $("#admin-group-variations").onclick=()=>openVariantLinker();
   $("#admin-material-search").oninput=e=>{UI.adminSearch=e.target.value;UI.adminPage=1;stored("pet_admin_search",UI.adminSearch);paintAdminMaterials()};
   $("#admin-material-category").onchange=e=>{UI.adminCategory=e.target.value;UI.adminPage=1;stored("pet_admin_category",UI.adminCategory);paintAdminMaterials()};
   $("#admin-material-sort").onchange=e=>{UI.adminSort=e.target.value;UI.adminPage=1;stored("pet_admin_sort",UI.adminSort);paintAdminMaterials()};
@@ -341,9 +340,9 @@ function userRow(x){
   return '<div class="user-row"><span class="user-icon">'+esc((x.nome||"P")[0].toUpperCase())+'</span>'+
     '<div><strong>'+esc(x.nome)+'</strong><small>'+esc(x.login||"Sem login")+' · '+esc(x.id)+'</small></div>'+
     '<span class="tag '+(member?"picked":"")+'">'+(member?"PETiano":"Visitante")+'</span>'+
-    '<div class="user-actions"><button class="outline-button small-button" type="button" data-user-role="'+attr(x.id)+'" title="Alterar tag">'+iconSvg("edit",15)+' Tag</button>'+
-    '<button class="outline-button small-button" type="button" data-user-password="'+attr(x.id)+'" title="Redefinir senha">Senha</button>'+
-    '<button class="danger-button small-button" type="button" data-user-delete="'+attr(x.id)+'" title="Excluir usuário">'+iconSvg("trash",16)+'</button></div></div>';
+    '<div class="user-actions"><button class="outline-button small-button" type="button" data-user-role="'+attr(x.id)+'" title="Alterar tag">'+iconSvg("tag",15)+' Tag</button>'+
+    '<button class="outline-button small-button" type="button" data-user-password="'+attr(x.id)+'" title="Redefinir senha">'+iconSvg("key",15)+' Senha</button>'+
+    '<button class="danger-button small-button" type="button" data-user-delete="'+attr(x.id)+'" title="Excluir usuário">'+iconSvg("trash",15)+' Excluir</button></div></div>';
 }
 function paintUsers(){
   const list=$("#admin-users-list");if(!list)return;
@@ -559,7 +558,7 @@ function adminMaterialPickerConfig(mode,currentId){
 function openBulkVisibility(currentId){
   const model=adminMaterialPickerConfig("visibility",currentId);
   const initial=model.current?.nome.split(/\s+/)[0]||"";
-  openModal("Visibilidade em lote","Selecione materiais e escolha o público. As sugestões não são aplicadas automaticamente.",
+  openModal("Visibilidade dos materiais","Selecione os materiais e defina quem poderá visualizá-los.",
     '<div class="modal-main"><div class="field"><label for="bulk-search">Buscar materiais</label><input id="bulk-search" placeholder="Ex.: Resistor, Arduino..." value="'+attr(initial)+'"></div>'+
     '<div class="admin-bulk-actions"><button class="outline-button small-button" id="bulk-similar" type="button">Selecionar semelhantes ('+model.similar.length+')</button>'+
     '<button class="outline-button small-button" type="button" id="bulk-select-all">Selecionar resultados</button>'+
@@ -568,16 +567,16 @@ function openBulkVisibility(currentId){
     '<p class="hint" id="bulk-selected-count"></p>'+
     '<div class="modal-footer" style="border:0;padding:15px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="outline-button" id="bulk-show-all" type="button">Exibir para todos</button>'+
-    '<button class="primary-button" id="bulk-only-members" type="button">Só PETianes</button></div></div>',{size:"wide"});
+    '<button class="primary-button" id="bulk-only-members" type="button">Só PETianes</button></div></div>',{size:"wide bulk-visibility-modal"});
   let visible=[];
   const draw=()=>{
     const result=materialPickerRows(model.all,model.selected,$("#bulk-search").value);
     visible=result.visible;$("#bulk-list").innerHTML=result.html;
-    $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
+    $("#bulk-selected-count").textContent=model.selected.size+(model.selected.size===1?" material selecionado.":" materiais selecionados.");
     $$("[data-bulk-id]",$("#bulk-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);
       if(b.checked)model.selected.add(id);else model.selected.delete(id);
-      $("#bulk-selected-count").textContent=model.selected.size+" material(is) selecionado(s).";
+      $("#bulk-selected-count").textContent=model.selected.size+(model.selected.size===1?" material selecionado.":" materiais selecionados.");
     });
   };
   $("#bulk-search").oninput=draw;
