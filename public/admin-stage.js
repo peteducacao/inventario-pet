@@ -120,7 +120,7 @@ function adminDashboard(root){
     '<button class="admin-shortcut" type="button" data-dashboard-go="filamentos">'+iconSvg("grid",21)+' Filamentos</button>'+
     '</div></section>'+
     '<section class="admin-panel"><div class="admin-section-head"><h2>Atividade recente</h2><button class="outline-button small-button" type="button" id="dashboard-log-all">Ver histórico</button></div><div id="dashboard-recent-log" class="admin-log-list">Carregando…</div></section>';
-  $("[data-dashboard-go]",root).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.dashboardGo));
+  $$("[data-dashboard-go]",root).forEach(b=>b.onclick=()=>selectAdminTab(b.dataset.dashboardGo));
   $("#dashboard-log-all").onclick=()=>selectAdminTab("historico");
   api("/api/admin/log?pagina=1").then(data=>{
     const recent=$("#dashboard-recent-log"),latest=$("#dashboard-last-change");
