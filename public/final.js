@@ -49,7 +49,7 @@ const iconSvg=(name,size=19)=>{
 };
 const identityIsMember=()=>state.identity?.tag==="petiano"&&!state.identity?.trocar_senha&&!state.identity?.precisa_criar_login;
 const isArchived=x=>Number(x.arquivado)===1;
-const stock=x=>Math.max(0,(Number(x.quantidade)||0)-(Number(x.em_uso)||0)-(Number(x.com_defeito)||0));
+const stock=x=>Math.max(0,(Number(x.quantidade)||0)-(Number(x.em_uso)||0));
 const niceDate=x=>x?fmt(x):"—";
 const ordered=(array,sort)=>{
   const arr=[...array];const cmp=(a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"});
@@ -145,7 +145,7 @@ function finalCard(original,siblings=[]){
   const grouped=Boolean(familyName)&&siblings.length>0;
   const x=selection||original;
   if(x._filament){
-    const free=Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0));
+    const free=Math.max(0,Number(x.quantidade)-Number(x.em_uso||0));
     const member=identityIsMember();
     const enabled=Number(x.componente_id)>0&&Number(member?x.permitir_petianos:x.permitir_visitantes)===1&&Number(member?x.categoria_petianos:x.categoria_visitantes)===1;
     return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
@@ -161,7 +161,6 @@ function finalCard(original,siblings=[]){
   // com o estoque de uma variação específica.
   const total=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.quantidade)||0),0):Number(x.quantidade)||0;
   const used=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.em_uso)||0),0):Number(x.em_uso)||0;
-  const broken=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.com_defeito)||0),0):Number(x.com_defeito)||0;
   const free=showGroupTotals?siblings.reduce((n,v)=>n+stock(v),0):stock(x);
   const status=free===0?"Sem estoque":used>free?"Em uso":"Disponível";
   const type=free===0?"empty":used>free?"busy":"";
@@ -185,7 +184,7 @@ function finalCard(original,siblings=[]){
     (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':"")+openModel:
       (familyName?'<span class="variant-selected">Modelo: '+esc(x.nome)+'</span>':""))+
     (asset&&!showGroupTotals?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':"")+
-    '<div class="catalog-numbers"><div><span>Qtd.</span><strong>'+total+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Defeito</span><strong class="'+(broken?"stock-defect":"")+'">'+broken+'</strong></div></div>'+
+    '<div class="catalog-numbers"><div><span>Quantidade</span><strong>'+total+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Disponível</span><strong>'+free+'</strong></div></div>'+
     action+'</div></article>';
 }
 function openVariantChoices(groupKey){
@@ -232,7 +231,6 @@ function finalRender(){
   $("#stat-items").textContent=moneyless(items.length);
   $("#stat-stock").textContent=moneyless(ordinary.reduce((s,x)=>s+stock(x),0)+colorItems.reduce((s,x)=>s+Math.max(0,Number(x.quantidade)-Number(x.em_uso||0)-Number(x.com_defeito||0)),0));
   $("#stat-used").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.em_uso||0),0)+colorItems.reduce((s,x)=>s+Number(x.em_uso||0),0));
-  $("#stat-broken").textContent=moneyless(ordinary.reduce((s,x)=>s+Number(x.com_defeito||0),0)+colorItems.reduce((s,x)=>s+Number(x.com_defeito||0),0));
   $("#category-filters").innerHTML=[{id:"all",nome:"Todos"},...(state.data.categorias||[]).filter(c=>ordinary.some(x=>x.categoria_id===c.id)||colorItems.some(x=>Number(x.categoria_id)===Number(c.id)))].map(c=>
     '<button type="button" class="chip '+(String(UI.category)===String(c.id)?"active":"")+'" data-category="'+attr(c.id)+'">'+esc(c.nome)+'</button>').join("");
   const q=String(state.query||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLocaleLowerCase("pt-BR").trim();
