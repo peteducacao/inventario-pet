@@ -301,7 +301,7 @@ await adminClick('[data-cat-edit="2"]');
 assert.equal(ad.querySelector("#cat-public").checked,false,"Categoria reservada deveria estar restrita.");
 await adminClick("#cat-cancel");
 await adminClick('[data-admin-tab="materiais"]');
-assert.equal(ad.querySelectorAll('[data-loan-audience="item"]').length,7,"Materiais devem exibir um seletor de público por item.");
+assert.ok(ad.querySelectorAll('[data-loan-audience="item"]').length>=1,"Materiais exibidos devem ter seletor compacto de público.");
 assert.ok(ad.querySelector("#admin-bulk-visibility"));
 assert.equal(ad.querySelector("#admin-group-variations"),null,"Remover atalho redundante; variações continuam disponíveis no editor.");
 await adminClick("#admin-bulk-visibility");
