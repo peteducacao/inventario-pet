@@ -19,6 +19,8 @@ jobs:
         run: node --disable-warning=ExperimentalWarning tests/experiments.test.mjs
       - name: Testar vínculo inicial das famílias sem misturar estoque
         run: node --disable-warning=ExperimentalWarning tests/variation-linking.test.mjs
+      - name: Testar arquivados e reparo do vínculo Arduino no D1 isolado
+        run: node --disable-warning=ExperimentalWarning tests/archived-groups.test.mjs
       - name: Testar categorias e filamentos na reserva e devolução
         run: node --disable-warning=ExperimentalWarning tests/loans-permissions.test.mjs
       - name: Testar fila Gmail e listagem somente de pendentes
