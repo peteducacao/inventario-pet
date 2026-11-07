@@ -100,6 +100,7 @@ async function reserveModal(itemId){
     '<div class="field-grid">'+dateInput("r-start","Data de retirada",date,date)+dateInput("r-end","Previsão de devolução",date,date)+'</div>'+
     '<div id="r-availability" class="reservation-availability">Consultando disponibilidade…</div>'+
     inputField("r-name","Nome do solicitante *",state.actor,{required:true,max:100,placeholder:"Nome completo"})+
+    inputField("r-email","E-mail para cobranças *","",{required:true,max:180,placeholder:"voce@exemplo.com"})+
     inputField("r-contact","Contato (opcional)","",{max:140,placeholder:"Telefone"})+
     '<div class="field"><label for="r-note">Observação (opcional)</label><textarea id="r-note" maxlength="500" placeholder="Detalhes da solicitação"></textarea></div>'+
     '<p class="notice">A reserva só será confirmada após aprovação da equipe do PET. O contato informado fica restrito ao painel administrativo.</p>'+
@@ -137,7 +138,7 @@ async function reserveModal(itemId){
   $("#reservation-form").onsubmit=async e=>{
     e.preventDefault();const submit=$("#r-submit");submit.disabled=true;submit.textContent="Enviando…";
     try{
-      await api("/api/reservations","POST",{componente_id:Number($("#r-item").value),quantidade:Number($("#r-qty").value),data_inicio:$("#r-start").value,data_devolucao:$("#r-end").value,nome_solicitante:$("#r-name").value.trim(),contato:$("#r-contact").value.trim(),observacao:$("#r-note").value.trim()});
+      await api("/api/reservations","POST",{componente_id:Number($("#r-item").value),quantidade:Number($("#r-qty").value),data_inicio:$("#r-start").value,data_devolucao:$("#r-end").value,nome_solicitante:$("#r-name").value.trim(),email:$("#r-email").value.trim(),contato:$("#r-contact").value.trim(),observacao:$("#r-note").value.trim()});
       closeModal();toast("Solicitação enviada! Aguarde a aprovação do PET.");
     }catch(error){toast(error.message,true);submit.disabled=false;submit.textContent="Enviar solicitação";}
   };
