@@ -8,7 +8,7 @@ const one={id:1,categoria_id:1,nome:"Resistor 100Ω",imagem:"",grupo_variacoes:"
   quantidade:15,em_uso:0,com_defeito:0,mostrar_quantidade:1,mostrar_em_uso:1,mostrar_defeito:1,
   visivel_visitante:1,permitir_petianos:1,permitir_visitantes:1,arquivado:0,patrimonio:"",identificacao:"",ultima_alteracao:"2026-11-06T10:00:00Z"};
 const two={...one,id:2,nome:"Resistor 220Ω",quantidade:9};
-const three={...one,id:3,nome:"Arduino Uno",grupo_variacoes:"",quantidade:6};
+const three={...one,id:3,nome:"Arduino Uno",grupo_variacoes:"Arduino",quantidade:6};
 const extra={...one,id:4,categoria_id:2,nome:"Tablet de uso interno",visivel_visitante:0};
 const alkalineNormal={...one,id:5,nome:"Alcalina 1.5V Pilha normal",grupo_variacoes:"Alcalina",quantidade:25};
 const alkalinePalito={...one,id:6,nome:"Alcalina 1.5V Pilha Palito",grupo_variacoes:"Alcalina",quantidade:4};
@@ -130,6 +130,15 @@ assert.equal(d.querySelector("#search-mobile"),null,"Busca duplicada não deveri
 assert.ok(d.querySelector("#public-sidebar").textContent.includes("Meus empréstimos"));
 assert.equal(d.querySelectorAll("[data-public-action='reservations']").length,0,"Reservas redundantes ainda aparecem no menu.");
 assert.equal(d.querySelectorAll(".grouped-card").length,2,"Resistores e Alcalinas devem ter cards de família.");
+const arduinoSingle=Array.from(d.querySelectorAll(".catalog-card")).find(x=>x.querySelector("h3")?.textContent==="Arduino");
+assert.ok(arduinoSingle,"Mesmo com um único vínculo, o catálogo deve exibir o nome salvo do grupo Arduino.");
+assert.match(arduinoSingle.textContent,/Arduino Uno/,"O material individual não pode desaparecer sob o título do grupo.");
+w.__adminTestState.query="Resistor 100";w.__finalRender();
+assert.equal(d.querySelector('[data-open-variants="resistores"]')?.closest(".grouped-card")?.querySelector(".catalog-numbers strong")?.textContent,"24",
+  "Buscar por um modelo deve manter o grupo completo no card, somando seus estoques.");
+w.__adminTestState.query="Arduino";w.__finalRender();
+assert.equal(d.querySelector(".catalog-card h3")?.textContent,"Arduino","A busca pelo grupo deve usar seu nome, não o do primeiro item.");
+w.__adminTestState.query="";w.__finalRender();
 assert.equal(d.querySelectorAll(".catalog-card").length,4,"Estoque agrupado não deveria gerar cards repetidos.");
 assert.equal(d.querySelectorAll(".filament-public-card").length,1,"Filamentos devem continuar na grade do catálogo.");
 assert.match(d.querySelector(".filament-public-card").textContent,/Reservar/,"Card de visitante deve exibir sempre a ação Reservar, mesmo quando o Admin a desativou.");
@@ -342,8 +351,16 @@ const groupSearch=ad.querySelector("#admin-material-search");
 groupSearch.value="Alcalina";
 groupSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
 await wait(30);
-assert.equal(ad.querySelectorAll('[data-rename-group="Alcalina"]').length,3,
-  "O botão Renomear grupo deve ficar junto das três variações Alcalina.");
+assert.equal(ad.querySelectorAll('[data-admin-group="Alcalina"]').length,1,
+  "A família Alcalina precisa aparecer uma única vez no topo.");
+assert.equal(ad.querySelectorAll('[data-rename-group="Alcalina"]').length,1,
+  "O botão Renomear grupo deve ficar só no cartão da família, não repetido nos modelos.");
+assert.equal(ad.querySelectorAll('#admin-material-list [data-item-edit]').length,0,
+  "Os modelos de uma família não podem repetir a lista de materiais individuais.");
+assert.match(ad.querySelector('[data-admin-group="Alcalina"]').textContent,/3 materiais vinculados/);
+assert.ok(ad.querySelector('[data-group-links="Alcalina"]'),"A família precisa ter Gerenciar vínculos.");
+assert.equal(ad.querySelector('[data-admin-group="Alcalina"] .admin-family-models').open,false,
+  "Os modelos individuais precisam começar recolhidos.");
 await adminClick('[data-rename-group="Alcalina"]');
 assert.ok(ad.querySelector("#rename-group-name"),"Modal de renomear ausente. Erros: "+JSON.stringify(adminUI.errors)+" · Modal: "+String(ad.querySelector("#modal-root")?.innerHTML||"").slice(0,1200));
 assert.equal(ad.querySelector("#rename-group-name").value,"Alcalina",
@@ -359,6 +376,9 @@ assert.equal(adminUI.variationRenameRequests[0].grupo_atual,"Alcalina");
 assert.equal(adminUI.variationRenameRequests[0].novo_nome,"Pilhas");
 assert.ok(fullAdmin.componentes.filter(x=>x.grupo_variacoes==="Pilhas").length===3,
   "Todas as três variações devem ser renomeadas sem mudar seu cadastro.");
+assert.equal(ad.querySelectorAll('[data-admin-group="Pilhas"]').length,1,
+  "O grupo deve continuar numa só linha após renomear.");
+assert.equal(ad.querySelectorAll('[data-rename-group="Pilhas"]').length,1);
 assert.ok(!ad.querySelector("#rename-group-form"),"Ao concluir o salvamento, o modal deve fechar.");
 const freshSearch=ad.querySelector("#admin-material-search");
 freshSearch.value="";
@@ -407,7 +427,13 @@ assert.equal(ad.querySelectorAll("#bulk-list input:checked").length,0,"A caixa i
 assert.equal(ad.querySelectorAll(".bulk-visibility-badge.category-locked").length,1,"A visibilidade salva deve continuar marcada ao reabrir.");
 
 await adminClick("#modal-root [data-close]");
-await adminClick('[data-item-edit="1"]');
+const resistorGroup=ad.querySelector('[data-admin-group="Resistores"]');
+assert.ok(resistorGroup,"Grupo Resistores deve aparecer no topo.");
+const models=resistorGroup.querySelector(".admin-family-models");
+models.open=true;
+assert.equal(resistorGroup.querySelectorAll('[data-group-model]').length,3,
+  "A família deve conter seus três modelos, inclusive os de outras categorias.");
+await adminClick('[data-admin-group="Resistores"] [data-item-edit="1"]');
 assert.ok(ad.querySelector(".item-edit-modal"),"Editor compacto deve usar modal próprio.");
 assert.ok(ad.querySelector(".item-editor-intro"),"A edição rápida precisa ter instruções curtas.");
 assert.ok(ad.querySelector("#i-name")?.closest("details")===null,"Nome deve ficar visível sem expandir seções.");
@@ -417,14 +443,19 @@ assert.equal(ad.querySelector("#item-editor-media").open,false,"Fotos, vínculos
 assert.ok(ad.querySelector("#i-save")?.closest(".item-editor-savebar"),"Salvar deve ficar na barra fixa inferior.");
 assert.match(ad.querySelector("#i-save").textContent,/Salvar alterações/);
 assert.ok(ad.querySelector("#i-public"),"Visibilidade individual não está disponível.");
-assert.ok(ad.querySelector("#i-variation-family"),"Campo de grupo de variações não está disponível.");
+assert.equal(ad.querySelector("#i-variation-family")?.value,"Resistores","O grupo salvo deve ser preservado ao editar o material.");
+assert.equal(ad.querySelector("#i-variation-family")?.type,"hidden","Nome e vínculos não devem ser alterados no editor individual.");
 assert.equal(ad.querySelector("#i-unit").tagName,"SELECT","Unidade precisa ter seletor.");
 assert.ok([...ad.querySelectorAll("#i-unit option")].some(x=>x.value==="pacotes"),"Unidades como pacotes precisam ser preservadas.");
 assert.ok(ad.querySelector('#i-unit option[value="__outro__"]'),"Unidade personalizada deve existir.");
 assert.equal(ad.querySelector("#i-available"),null,"Aviso redundante de disponíveis não foi removido.");
-await adminClick("#i-link-variations");
+assert.equal(ad.querySelector("#i-link-variations"),null,
+  "Vínculos não devem ser alterados a partir do editor individual.");
+await adminClick("#modal-root [data-close]");
+await adminClick('[data-group-links="Resistores"]');
 assert.ok(ad.querySelector("#variant-similar"));
-assert.ok(ad.querySelector("#variant-group-name"),"Variações continuam editáveis dentro do material.");
+assert.ok(ad.querySelector("#variant-group-name"),"Vínculos devem ser organizados a partir do cartão do grupo.");
+assert.equal(ad.querySelector("#variant-group-name").readOnly,true,"Renomear deve ser uma ação separada de vincular.");
 assert.equal(ad.querySelector("#variant-group-name").value,"Resistores","O nome salvo da família deve aparecer no organizador.");
 assert.equal(ad.querySelector('[data-bulk-id="1"]')?.checked,true,"O modelo atual já vinculado deve aparecer marcado.");
 assert.equal(ad.querySelector('[data-bulk-id="2"]')?.checked,true,"O outro modelo já vinculado deve aparecer marcado também.");
