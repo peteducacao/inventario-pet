@@ -552,6 +552,7 @@ assert.equal(ad.querySelector("#variant-selected-count").textContent,"0 materiai
 assert.equal(ad.querySelector("#variant-link-selected").disabled,true);
 await adminClick("#variant-back");
 await adminClick("#modal-root [data-close]");
+await adminClick('[data-admin-tab="materiais"]');
 // Nenhuma exclusão deve baixar arquivos sem o administrador escolher.
 await adminClick('[data-item-delete="110"]');
 assert.equal(ad.querySelector("#delete-item-backup").checked,false);
