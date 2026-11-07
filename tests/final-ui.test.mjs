@@ -429,6 +429,10 @@ assert.ok(ad.querySelector("#admin-links-hub"),"Botão Vínculos deve aparecer."
 assert.ok(ad.querySelector("#admin-download-excel"),"Exportação Excel deve aparecer.");
 assert.equal(ad.querySelector("#admin-group-new"),null,"Sem ações redundantes.");
 assert.equal(ad.querySelector("[data-rename-group]"),null,"Renomear apenas na central.");
+const clearMaterialsSearch=ad.querySelector("#admin-material-search");
+clearMaterialsSearch.value="";
+clearMaterialsSearch.dispatchEvent(new aw.Event("input",{bubbles:true}));
+await wait(20);
 assert.ok(ad.querySelector('[data-admin-group="Arduino"] .admin-family-models'),"Admin deve mostrar variações.");
 const adminSearch=ad.querySelector("#admin-material-search"),espAdmin=fullAdmin.componentes.find(x=>x.id===3),previous=espAdmin.nome;
 espAdmin.nome="ESP 32 DevKit";
