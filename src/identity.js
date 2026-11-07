@@ -215,7 +215,8 @@ async function adminUpdate(req,env){
   const active=b.ativo===false?0:1;
   const user=await env.DB.prepare("SELECT id FROM usuarios WHERE public_id=?").bind(id).first();
   if(!user)return error("Usuário não encontrado.",404);
-  await env.DB.prepare("UPDATE usuarios SET papel=?,ativo=?,atualizado_em=? WHERE id=?").bind(tag,active,now(),user.id).run();
+  const notify=typeof b.notificar_email==="boolean"?(b.notificar_email?1:0):null;
+  await env.DB.prepare("UPDATE usuarios SET papel=?,ativo=?,notificar_email=COALESCE(?,notificar_email),atualizado_em=? WHERE id=?").bind(tag,active,notify,now(),user.id).run();
   if(!active)await env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id).run();
   await identityAudit(env.DB,"Alterou acesso","usuario",user.id,id+" · "+tag+" · "+(active?"Ativo":"Bloqueado"));
   return respond({ok:true});
@@ -258,7 +259,7 @@ async function adminDeleteUser(req,env){
   return respond({ok:true,excluido:id});
 }
 async function adminList(env){
-  const list=await rows(env.DB,"SELECT public_id AS id,nome,login,must_change_password,papel AS tag,ativo,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
+  const list=await rows(env.DB,"SELECT public_id AS id,nome,login,must_change_password,papel AS tag,ativo,notificar_email,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
   const loans=await rows(env.DB,"SELECT usuario_id,COUNT(*) AS n FROM reservas WHERE tipo='retirada_direta' AND status='retirada' AND usuario_id IS NOT NULL GROUP BY usuario_id");
   const usersIds=await rows(env.DB,"SELECT id,public_id FROM usuarios WHERE id IN (SELECT DISTINCT usuario_id FROM reservas WHERE tipo='retirada_direta' AND status='retirada')");
   const map=new Map(usersIds.map(x=>[x.id,x.public_id])),counts=new Map(loans.map(x=>[map.get(x.usuario_id),x.n]));
