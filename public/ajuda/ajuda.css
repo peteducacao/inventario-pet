@@ -1,0 +1,81 @@
+/* Manual compartilhado entre /ajuda/ e o painel Admin. Não depende de bibliotecas externas. */
+:root{--help-ink:#17334a;--help-muted:#5d7184;--help-border:#dce7ec;--help-paper:#fff;--help-green:#168771;--help-navy:#102c42}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body.help-document{margin:0;font:15px/1.75 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;color:var(--help-ink);background:#f2f6f8}
+.help-document a,.help-inline a{color:#126d76;text-underline-offset:3px}
+.help-header{background:#102e44;color:white;position:sticky;top:0;z-index:20;box-shadow:0 5px 15px #061e301a}
+.help-header-inner{max-width:1450px;margin:auto;padding:14px 26px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.help-brand{text-decoration:none;color:white!important;display:flex;align-items:center;gap:12px;font-size:23px}.help-brand span{display:grid;gap:0}.help-brand strong{font-size:16px;line-height:1.35}.help-brand small{font-size:12px;color:#aed8cf;line-height:1.3}
+.help-actions{display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+.help-actions .help-link{color:#f7fffe;text-decoration:none;padding:9px 13px;font-weight:600}
+.help-actions .help-link:hover{text-decoration:underline}
+.help-print,.help-action{display:inline-flex;align-items:center;justify-content:center;min-height:42px;border:0;border-radius:12px;background:#0aa98b;color:white!important;text-decoration:none!important;padding:10px 17px;font:600 14px/1.3 inherit;cursor:pointer}
+.help-print:hover,.help-action:hover{background:#0b866e}
+.help-layout{max-width:1450px;margin:auto;display:grid;grid-template-columns:254px minmax(0,1fr);gap:24px;padding:26px 25px 70px;align-items:start}
+.help-aside{position:sticky;top:98px;background:#fff;border:1px solid var(--help-border);border-radius:20px;padding:22px 16px;box-shadow:0 10px 24px #17334a0b;max-height:calc(100vh - 125px);overflow:auto}
+.help-toc-title{font-size:11px;letter-spacing:1.7px;font-weight:800;color:#688190;margin:0 11px 12px}
+.help-aside nav{display:grid;gap:3px}
+.help-aside nav a{display:block;padding:8px 12px;text-decoration:none;border-radius:10px;font-size:13px;font-weight:600;color:#314c60}
+.help-aside nav a:hover,.help-aside nav a:focus-visible{background:#e9f5f2;color:#087d68;outline:none}
+.help-aside-note{border-top:1px solid #e3ebef;padding-top:15px;margin:16px 9px 0;font-size:11px;line-height:1.65;color:var(--help-muted)}
+.help-main{min-width:0;background:#fff;border:1px solid var(--help-border);border-radius:23px;box-shadow:0 14px 42px #17334a12;padding:clamp(22px,4vw,55px)}
+.help-cover{padding:0 0 24px;border-bottom:1px solid var(--help-border)}
+.help-eyebrow,.help-number{font-size:11px;font-weight:800;letter-spacing:1.6px;color:var(--help-green);text-transform:uppercase}
+.help-cover h1{font-size:clamp(27px,3.2vw,42px);line-height:1.22;letter-spacing:-1px;margin:12px 0;color:#132f48}
+.help-lead{font-size:17px!important;color:#526b7d!important;max-width:850px}
+.help-cover-meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}.help-cover-meta span{background:#eaf7f4;color:#20735f;font-size:12px;padding:6px 11px;border-radius:999px;font-weight:700}
+.help-print-note{background:#f0f6ff;color:#23445f;border:1px solid #cee0ed;border-radius:13px;margin-top:22px;padding:14px 18px;font-size:13px;line-height:1.7}
+.help-topic{padding:31px 0 8px;scroll-margin-top:110px;border-bottom:1px solid #e6ecf0}
+.help-topic h2{font-size:clamp(21px,2vw,27px);line-height:1.25;letter-spacing:-.5px;margin:8px 0 15px;color:#163752}
+.help-topic h3{font-size:16px;line-height:1.45;color:#20435b;margin:19px 0 7px}
+.help-main p,.help-inline p{font-size:14px;line-height:1.79;margin:12px 0;color:#3e5669}
+.help-main li,.help-inline li{font-size:14px;line-height:1.75;color:#3e5669;margin:4px 0}
+.help-main ul,.help-main ol,.help-inline ul,.help-inline ol{padding-left:25px;margin:12px 0 16px}
+.help-main code,.help-inline code{font:12px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;padding:2px 5px;border-radius:5px;background:#eff4f7;color:#183d5a;overflow-wrap:anywhere}
+.help-topic a{word-break:break-word}
+.help-callout{border-left:4px solid #13a787;background:#ecf8f5;padding:14px 17px;border-radius:0 12px 12px 0;font-size:13px;line-height:1.8;color:#2a5263;margin:19px 0}
+.help-flow{display:flex;gap:9px;align-items:center;flex-wrap:wrap;background:#f4f8fa;border-radius:14px;border:1px solid #e3edf1;padding:14px;margin:19px 0;color:#47657a;font-size:12px;font-weight:700}
+.help-flow span{background:white;border:1px solid #dae7e9;padding:8px 10px;border-radius:8px}.help-flow b{color:#0c8d7b}
+.help-table-wrap{overflow-x:auto;border:1px solid #dae7ec;border-radius:13px;margin:15px 0}
+.help-table-wrap table{border-collapse:collapse;width:100%;font-size:13px}
+.help-table-wrap th,.help-table-wrap td{text-align:left;padding:10px 14px;vertical-align:top;border-bottom:1px solid #e7eef1}
+.help-table-wrap th{background:#eaf3f6;color:#173d52;font-size:12px}
+.help-table-wrap tr:last-child td{border-bottom:0}
+.help-table-wrap td:first-child{font-weight:750;white-space:nowrap;color:#17485b}
+.help-faq{border-bottom:1px dashed #dde9ed;padding:4px 0 10px}
+.help-faq:last-child{border-bottom:0}
+.help-last-note{background:#eef7fa;border-radius:12px;padding:15px 18px}
+.help-manual-footer{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;padding-top:24px;font-size:12px;color:#69808e}
+.help-manual-footer strong{color:#17445c}
+.help-panel .help-panel-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.help-inline{margin-top:17px;border:1px solid #dce8ec;border-radius:17px;background:white;padding:clamp(17px,3vw,32px);max-width:100%}
+.help-inline .help-cover h1{font-size:30px}
+.help-inline .help-topic{scroll-margin-top:35px}
+.help-inline .help-topic h2{font-size:23px}
+.help-inline .help-cover-meta{margin-top:10px}
+.help-inline .help-print-note{display:none}
+@media(max-width:1020px){.help-layout{grid-template-columns:210px minmax(0,1fr);gap:15px;padding:17px}.help-aside{padding:16px 9px}.help-header-inner{padding:13px 18px}}
+@media(max-width:780px){.help-layout{display:block;padding:12px 11px 35px}.help-aside{position:static;max-height:none;margin-bottom:12px}.help-aside nav{grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}.help-aside nav a{padding:6px 8px}.help-main{padding:21px 17px;border-radius:16px}.help-header-inner{padding:11px 15px;flex-wrap:wrap}.help-header{position:relative}.help-actions{gap:5px}.help-actions .help-link{padding:7px}.help-cover h1{letter-spacing:-.3px}.help-topic{scroll-margin-top:20px}.help-inline{padding:15px}.help-flow{gap:6px}.help-flow span{padding:6px 7px}}
+@media print{
+ @page{size:A4;margin:16mm 15mm}
+ html{scroll-behavior:auto}
+ body.help-document{background:#fff!important;color:#111;font-size:10.5pt;line-height:1.5;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .no-print,.help-header,.help-aside,.help-print-note{display:none!important}
+ .help-layout{display:block;padding:0;margin:0;max-width:none}
+ .help-main{border:0;box-shadow:none;border-radius:0;padding:0;margin:0}
+ .help-cover{padding-bottom:14mm}
+ .help-cover h1{font-size:24pt}
+ .help-lead{font-size:12pt!important}
+ .help-topic{scroll-margin-top:0;padding:12mm 0 3mm;break-inside:auto;page-break-inside:auto}
+ .help-topic h2{font-size:17pt}
+ .help-topic h3{font-size:12pt}
+ .help-main p,.help-main li{font-size:10pt;line-height:1.55}
+ .help-topic h2,.help-topic h3,.help-number{break-after:avoid;page-break-after:avoid}
+ .help-callout,.help-flow,.help-faq,.help-table-wrap tr{break-inside:avoid;page-break-inside:avoid}
+ .help-table-wrap{overflow:visible}
+ .help-table-wrap table{font-size:9pt}
+ .help-table-wrap td,.help-table-wrap th{padding:5px 7px}
+ .help-manual-footer{margin-top:9mm;border-top:1px solid #ddd}
+ a[href]:after{content:none!important}
+}
