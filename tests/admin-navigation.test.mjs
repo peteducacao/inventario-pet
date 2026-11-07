@@ -109,6 +109,8 @@ await click(tab("materiais"));
 await click(d.querySelector("#add-item"));
 assert.ok(d.querySelector("#item-form"),"Formulário de cadastro de materiais não abriu");
 await click(d.querySelector("#i-cancel"));
+assert.ok(tab("usuarios"),"Aba Usuários ausente após cancelar material. Modal: "+
+  (d.querySelector("#modal-root")?.textContent||"sem modal").slice(0,420)+" | erros: "+JSON.stringify(errors.slice(-5)));
 await click(tab("usuarios"));
 await click(d.querySelector('[data-user-tag="petiano"]'));
 assert.equal(userTag,"petiano","O administrador não conseguiu dar a tag PETiano");
