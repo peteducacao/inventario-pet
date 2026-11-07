@@ -785,9 +785,13 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
     if(!withPhotos)return '<label class="admin-bulk-row '+(showVisibility?'bulk-visibility-row ':'')+(selected.has(x.id)?'is-selected':'')+'">'+
       '<input type="checkbox" aria-label="Selecionar '+attr(x.nome)+' para alterar" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+info+'</label>';
     const hasCustomPhoto=/^data:image\//i.test(String(x.imagem||""));
-    return '<div class="admin-bulk-row variant-photo-row">'+
-      '<label class="variant-photo-select"><input type="checkbox" data-bulk-id="'+x.id+'" '+(selected.has(x.id)?'checked':'')+'>'+
-      '<img class="variant-photo-thumb" src="'+attr(itemImage(x))+'" alt="Imagem de '+attr(x.nome)+'">'+info+'</label>'+
+    const alreadyLinked=Boolean(x.grupo_variacoes)&&selected.has(x.id);
+    return '<div class="admin-bulk-row variant-photo-row '+(selected.has(x.id)?'is-selected':'')+'">'+
+      '<label class="variant-photo-select"><input type="checkbox" data-bulk-id="'+x.id+'" aria-label="Incluir '+attr(x.nome)+' na seleção da família" '+(selected.has(x.id)?'checked':'')+'>'+
+      '<img class="variant-photo-thumb" src="'+attr(itemImage(x))+'" alt="Imagem de '+attr(x.nome)+'">'+
+      '<span class="bulk-row-details"><strong>'+esc(x.nome)+'</strong><small>'+esc(nameCategory(x.categoria_id))+
+      (x.grupo_variacoes?' · Família atual: '+esc(x.grupo_variacoes):' · Sem grupo')+'</small>'+
+      (alreadyLinked?'<span class="variant-linked-label">✓ Selecionado</span>':'')+'</span></label>'+
       '<button type="button" class="variant-photo-upload" data-variant-photo="'+x.id+'" aria-label="Enviar foto para '+attr(x.nome)+'">'+
       (hasCustomPhoto?'Trocar foto':'Enviar foto')+'</button>'+
       '<input type="file" accept="image/png,image/jpeg,image/webp" data-variant-file="'+x.id+'" hidden>'+
@@ -797,7 +801,14 @@ function materialPickerRows(items,selected,term="",withPhotos=false,showVisibili
 function adminMaterialPickerConfig(mode,currentId){
   const all=state.admin.componentes.filter(x=>!isArchived(x) && !(state.admin.categorias.find(cat=>cat.id===x.categoria_id)?.arquivada));
   const selected=new Set(),current=all.find(x=>x.id===currentId);
-  if(current)selected.add(current.id);
+  if(mode==="variations"&&current?.grupo_variacoes){
+    // O que já está vinculado deve aparecer marcado ao abrir o organizador.
+    // Apenas itens pertencentes à família atual são marcados; sugestões ficam livres.
+    const linked=String(current.grupo_variacoes).trim().toLocaleLowerCase("pt-BR");
+    for(const item of all){
+      if(String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===linked)selected.add(item.id);
+    }
+  }else if(current)selected.add(current.id);
   const similar=current?all.filter(x=>x.id!==current.id&&materialFamilyHint(x.nome)===materialFamilyHint(current.nome)):[];
   const group=current?.grupo_variacoes||materialFamilyHint(current?.nome||"");
   return {all,selected,current,similar,group,mode};
@@ -934,19 +945,24 @@ function openVariantLinker(currentId){
     '<div class="admin-bulk-actions"><button class="outline-button small-button" type="button" id="variant-similar">Sugerir semelhantes ('+model.similar.length+')</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-all">Selecionar resultados</button>'+
     '<button class="outline-button small-button" type="button" id="variant-check-none">Limpar seleção</button></div>'+
+    '<p class="variant-linked-info">Materiais já vinculados ao grupo aparecem <strong>marcados</strong>. Para adicionar, marque outros materiais. Para retirar vínculos, use <strong>Desvincular marcados</strong> e confira a confirmação.</p>'+
     '<div class="admin-bulk-list" id="variant-list"></div><p class="hint" id="variant-selected"></p>'+
     '<div class="modal-footer" style="border:0;padding:14px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button type="button" class="outline-button" id="variant-create">Cadastrar nova variação</button>'+
-    '<button type="button" class="outline-button" id="variant-unlink">Desvincular selecionados</button>'+
-    '<button type="button" class="primary-button" id="variant-save">Vincular selecionados</button></div></div>',{size:"wide"});
+    '<button type="button" class="outline-button" id="variant-unlink">Desvincular marcados</button>'+
+    '<button type="button" class="primary-button" id="variant-save">Vincular marcados</button></div></div>',{size:"wide"});
   let visible=[];
   const draw=()=>{
     const r=materialPickerRows(model.all,model.selected,$("#variant-search").value,true);
     visible=r.visible;$("#variant-list").innerHTML=r.html;
-    $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
-    $$("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
+    const linked=model.all.filter(x=>model.selected.has(x.id)&&
+      String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===
+      String($("#variant-group-name").value||"").trim().toLocaleLowerCase("pt-BR")).length;
+    $("#variant-selected").textContent=model.selected.size+" marcados · "+linked+
+      " já vinculados ao grupo · "+(model.selected.size-linked)+" a vincular.";
+    $("[data-bulk-id]",$("#variant-list")).forEach(b=>b.onchange=()=>{
       const id=Number(b.dataset.bulkId);if(b.checked)model.selected.add(id);else model.selected.delete(id);
-      $("#variant-selected").textContent=model.selected.size+" material(is) selecionado(s).";
+      draw();
     });
     $$("[data-variant-photo]",$("#variant-list")).forEach(button=>button.onclick=()=>{
       $("#variant-list [data-variant-file='"+button.dataset.variantPhoto+"']")?.click();
@@ -977,6 +993,7 @@ function openVariantLinker(currentId){
     });
   };
   $("#variant-search").oninput=draw;
+  $("#variant-group-name").oninput=draw;
   $("#variant-similar").onclick=()=>{for(const x of model.similar)model.selected.add(x.id);draw();};
   $("#variant-check-all").onclick=()=>{for(const x of visible)model.selected.add(x.id);draw();};
   $("#variant-check-none").onclick=()=>{model.selected.clear();draw();};
@@ -988,10 +1005,16 @@ function openVariantLinker(currentId){
     const group=unlink?"":$("#variant-group-name").value.trim();
     if(!model.selected.size){toast("Selecione pelo menos um material.",true);return;}
     if(!unlink&&group.length<2){toast("Informe um nome de grupo com pelo menos 2 caracteres.",true);return;}
-    const ok=await niceModalConfirm(unlink?"Desvincular variações?":"Vincular variações?",model.selected.size+" materiais serão "+(unlink?"separados em cards individuais.":"ligados ao grupo "+group+"."),unlink?"Desvincular":"Vincular");
+    const linked=model.all.filter(x=>model.selected.has(x.id)&&
+      String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===group.toLocaleLowerCase("pt-BR"));
+    const changed=unlink?[...model.selected]:[...model.selected].filter(id=>!linked.some(x=>x.id===id));
+    if(!changed.length){toast(unlink?"Marque os materiais que deseja desvincular.":"Todos os materiais marcados já pertencem a essa família.");return;}
+    const ok=await niceModalConfirm(unlink?"Desvincular "+changed.length+" materiais?":"Vincular "+changed.length+" materiais?",
+      changed.length+" material(is) "+(unlink?"deixarão suas famílias atuais e aparecerão em cards separados.":"passarão para o grupo "+group+". Os demais vínculos serão preservados."),
+      unlink?"Desvincular":"Vincular",unlink);
     if(!ok)return;
     try{
-      await api("/api/admin/variations","POST",{ids:[...model.selected],grupo:group,responsavel:state.actor||"Admin"});
+      await api("/api/admin/variations","POST",{ids:changed,grupo:group,responsavel:state.actor||"Admin"});
       await adminReload();closeModal();adminBuild();toast(unlink?"Variações desvinculadas.":"Materiais vinculados no mesmo card.");
     }catch(error){toast(error.message,true);}
   };
