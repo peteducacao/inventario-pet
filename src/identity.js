@@ -293,12 +293,14 @@ async function memberReturn(req,env,user){
   const stamp=now(),actor=user.nome+" ("+user.public_id+")";
   // Em uma mesma transacao, atualizar o estoque apenas se a retirada ainda estiver ativa.
   const done=await env.DB.batch([
-    env.DB.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND usuario_id=? AND status='retirada')")
-      .bind(r.quantidade,discarded,stamp,actor,"Devolução de "+r.quantidade+" unidade(s)"+(discarded?" • "+discarded+" descartada(s)":""),r.componente_id,r.quantidade,discarded,id,user.id),
-    env.DB.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=?").bind(discarded,r.componente_id,discarded),
-    env.DB.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND usuario_id=? AND status='retirada'").bind(stamp,actor,note||r.observacao,id,user.id)
+    // O saldo só é reduzido quando esta retirada ainda pertence ao titular e está ativa.
+    // changes() evita concluir a reserva ou descartar filamento se a baixa falhar.
+    env.DB.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND usuario_id=? AND status='retirada') AND (?=0 OR NOT EXISTS(SELECT 1 FROM filamentos WHERE componente_id=?) OR EXISTS(SELECT 1 FROM filamentos WHERE componente_id=? AND quantidade>=?))")
+      .bind(r.quantidade,discarded,stamp,actor,"Devolução de "+r.quantidade+" unidade(s)"+(discarded?" • "+discarded+" descartada(s)":""),r.componente_id,r.quantidade,discarded,id,user.id,discarded,r.componente_id,r.componente_id,discarded),
+    env.DB.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND usuario_id=? AND status='retirada' AND changes()=1").bind(stamp,actor,note||r.observacao,id,user.id),
+    env.DB.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=? AND changes()=1").bind(discarded,r.componente_id,discarded)
   ]);
-  if(done[0].meta?.changes!==1||done[2].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
+  if(done[0].meta?.changes!==1||done[1].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
   // PETiane confirmou a devolução: não criar notificação redundante no próprio sino.
   await identityAudit(env.DB,"Devolução pelo titular","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(discarded?" · "+discarded+" descartada(s)":""),actor);
   return respond({ok:true});
