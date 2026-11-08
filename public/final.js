@@ -314,15 +314,12 @@ function finalAccount(){
     '<div class="identity-profile-head"><span class="identity-avatar">'+esc(u.nome[0].toUpperCase())+'</span><div><strong>'+esc(u.nome)+'</strong><span class="tag '+cls+'">'+(u.tag==="petiano"?"PETiano":"Visitante")+'</span></div></div>'+
     '<div class="field-grid">'+inputField("v2-account-name","Nome",u.nome,{max:80})+inputField("v2-account-login","Login",u.login,{max:24})+'</div>'+
     '<div class="field" style="margin-top:12px"><label>Meu e-mail</label><input readonly value="'+attr(u.email||"")+'"></div>'+ 
-    '<div class="identity-actions"><button type="button" class="secondary-button" id="v2-change-name">Alterar nome</button><button type="button" class="outline-button" id="v2-change-email">Alterar e-mail</button><button type="button" class="outline-button" id="v2-change-password">Alterar senha</button><button type="button" class="outline-button" id="v2-refresh-role">Atualizar cargo</button></div>'+
+    '<div class="identity-actions"><button type="button" class="secondary-button" id="v2-change-name">Alterar nome</button><button type="button" class="outline-button" id="v2-change-email">Alterar e-mail</button><button type="button" class="outline-button" id="v2-change-password">Alterar senha</button></div>'+
     '</div>');
   $("#v2-account-login").readOnly=true;$("#v2-account-name").readOnly=true;
   $("#v2-change-name").onclick=identityRenameModal;
   $("#v2-change-email").onclick=()=>identityEmailModal(false);
   $("#v2-change-password").onclick=()=>identityChangePasswordModal(false);
-  $("#v2-refresh-role").onclick=async()=>{
-    try{const r=await api("/api/identity/me");if(r.usuario){setIdentity(r.usuario);finalAccount();toast("Conta atualizada!");}else{setIdentity(null);identityLoginModal();}}catch(e){toast(e.message,true);}
-  };
 }
 async function openMyLoans(){
   // Uma página independente, acessível também por nova guia.
@@ -342,12 +339,12 @@ async function openMyLoans(){
     target.innerHTML=loans.length?'<div class="reservation-list loans-page-list">'+loans.map(r=>{
       const title=esc(r.componente_nome||"Material"),active=r.status==="retirada",pending=r.status==="pendente";
       const returnPending=active&&!!r.devolucao_solicitada_em,visitor=state.identity?.tag!=="petiano";
-      const label=returnPending?"Aguardando confirmação":({pendente:"Aguardando aprovação",aprovada:"Aprovada (registro antigo)",retirada:"Em uso",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"}[r.status]||r.status);
+      const label=returnPending?"Devolvido · aguardando conferência":({pendente:"Aguardando aprovação",aprovada:"Aprovada (registro antigo)",retirada:"Em uso",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"}[r.status]||r.status);
       const owner=(r.status==="recusada"?"Recusada":r.status==="aprovada"?"Aprovada anteriormente":null);
       const by=owner&&r.responsavel_admin?'<small class="loan-decision-by">'+owner+' por '+esc(r.responsavel_admin)+'</small>':"";
-      const waiting=returnPending?'<small class="loan-decision-by">O material continua em uso até a confirmação do Admin.</small>':"";
+      const waiting=returnPending?'<small class="loan-decision-by">Entrega informada. O material continua em uso até o Admin confirmar o recebimento.</small>':"";
       return '<div class="admin-list-row"><div class="main-info"><strong>'+title+' · '+r.quantidade+' un.</strong><small>'+esc(formatDay(r.data_inicio))+' — '+esc(formatDay(r.data_devolucao))+'</small><span class="tag '+(pending||returnPending?"pending":active?"picked":"")+'">'+esc(label)+'</span>'+by+waiting+'</div>'+
-        (active&&!returnPending?'<button type="button" class="primary-button small-button" data-my-return="'+r.id+'">'+(visitor?"Solicitar devolução":"Registrar devolução")+'</button>':'')+'</div>';
+        (active&&!returnPending?'<button type="button" class="primary-button small-button" data-my-return="'+r.id+'">'+(visitor?"Devolvido":"Registrar devolução")+'</button>':'')+'</div>';
     }).join("")+'</div>':'<div class="empty-state">Você ainda não possui empréstimos.</div>';
     $$("[data-my-return]",target).forEach(button=>button.onclick=()=>memberReturnModal(loans.find(r=>r.id===Number(button.dataset.myReturn))));
   }catch(error){if(document.contains(target))target.textContent=error.message;}
@@ -444,8 +441,8 @@ function setupFinalPublic(){
     if(!event.target.closest("#notification-button,#notification-popover"))$("#notification-popover").hidden=true;
   });
   // O carregamento inicial ocorre em app.js; atualizar também ao voltar ao navegador.
-  window.addEventListener("focus",()=>{if(state.identity)refreshNotifications();});
-  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state.identity)refreshNotifications();});
+  window.addEventListener("focus",()=>{if(state.identity){refreshNotifications();refreshIdentityFromServer();}});
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state.identity){refreshNotifications();refreshIdentityFromServer();}});
   setInterval(()=>{if(state.identity)refreshNotifications()},90000);
   // Admin possui endereço independente.
 }

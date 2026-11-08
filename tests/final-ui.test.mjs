@@ -4,6 +4,10 @@ import {JSDOM,VirtualConsole} from "jsdom";
 
 const identitySource=readFileSync("public/identity-ui.js","utf8");
 const visualCss=readFileSync("public/final.css","utf8");
+const publicUIJS=readFileSync("public/final.js","utf8");
+assert.match(publicUIJS,/visitor\?"Devolvido":"Registrar devolução"/,"Visitante deve sinalizar Devolvido, sem chamar solicitação.");
+assert.match(publicUIJS,/Devolvido · aguardando conferência/,"O estado de entrega informada precisa da conferência Admin.");
+assert.match(identitySource,/visitor\?'Devolvido':'Confirmar devolução'/,"A confirmação visual do visitante precisa mostrar Devolvido.");
 assert.match(identitySource,/password-strength-track/,"Cadastro deve renderizar barra da força da senha.");
 assert.match(identitySource,/aria-valuenow/,"Barra precisa acompanhar o nível e ser acessível.");
 for(const color of ["#d92d20","#e3ad22","#168756"])assert.ok(visualCss.includes(color),"Cor do indicador de senha ausente: "+color);
@@ -51,6 +55,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   w.addEventListener("error",e=>errors.push(String(e.error||e.message)));
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
   let adminAuthenticated=alreadyAdmin;
+  let profile={...identity};
   const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[];
   const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
   let noticeRequestCount=0,backupReadCount=0;
@@ -61,7 +66,8 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     let status=200,body={ok:true};
     if(path==="/api/catalog")body=visitorCatalog;
     else if(path==="/api/filaments")body={ok:true,filamentos:[colors[0]]};
-    else if(path==="/api/identity/me")body={ok:true,usuario:identityLoggedIn?identity:null};
+    else if(path==="/api/identity/me")body={ok:true,usuario:identityLoggedIn?profile:null};
+    else if(path==="/api/identity/login"){identityLoggedIn=true;body={ok:true,usuario:profile};}
     else if(path==="/api/notifications"){noticeRequestCount++;body={notificacoes:pendingNotices,nao_lidas:pendingNotices.filter(x=>!x.lida_em).length};}
     else if(path==="/api/admin/reservation"){adminReservationRequests.push(JSON.parse(init.body||"{}"));body={ok:true,notificacao_registrada:true};}
     else if(path==="/api/admin/state"){
@@ -148,7 +154,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,backupReadCount:()=>backupReadCount,deletedMaterials,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,backupReadCount:()=>backupReadCount,deletedMaterials,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests,setRole:role=>{profile={...profile,tag:role};}};
 }
 
 const publicUI=build(false);
@@ -317,6 +323,28 @@ assert.equal(userAlreadyLogged.d.querySelector("#post-admin-personal-login"),nul
 assert.deepEqual(userAlreadyLogged.errors,[],"Erros com conta pessoal já autenticada.");
 userAlreadyLogged.dom.window.close();
 
+// Login deve fechar o modal, e o cargo é atualizado automaticamente ao voltar à guia.
+const realLogin=build(false,false,false);
+await wait(230);
+const {w:lw,d:ld}=realLogin;
+lw.identityLoginModal(true);
+ld.querySelector("#identity-login").value="teste01";
+ld.querySelector("#identity-login-password").value="senha";
+ld.querySelector("#identity-login-form").dispatchEvent(new lw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(110);
+assert.equal(ld.querySelector("#modal-root .modal"),null,"Login normal deve voltar diretamente ao catálogo.");
+assert.equal(ld.querySelector("#profile-name").textContent,identity.nome,"Cabeçalho precisa mostrar a pessoa autenticada.");
+await realLogin.click("#profile-button");
+await realLogin.click('[data-user-act="account"]');
+assert.equal(ld.querySelector("#v2-refresh-role"),null,"Atualizar cargo não deve aparecer na Minha conta.");
+assert.match(ld.querySelector("#modal-root").textContent,/Visitante/);
+realLogin.setRole("petiano");
+lw.dispatchEvent(new lw.Event("focus"));
+await wait(140);
+assert.match(ld.querySelector("#modal-root").textContent,/PETiano/,"O cargo deve ser sincronizado ao retornar à guia.");
+assert.equal(ld.querySelector("#v2-refresh-role"),null);
+assert.deepEqual(realLogin.errors,[],"Erros no login e sincronização do cargo.");
+realLogin.dom.window.close();
 
 const refreshed=build(true,true);
 await wait(180);
@@ -419,6 +447,8 @@ assert.equal(adminUI.templateSaves.length,1,"Salvar modelo deve atualizar a API 
 assert.equal(adminUI.templateSaves[0].assunto,"Novo aviso do {material}");
 assert.equal(ad.querySelectorAll("#mail-event-form input[type=checkbox]").length,10,"Duas tags devem ter cinco opções de aviso cada.");
 assert.equal(ad.querySelector("#mail-test-submit"),null,"Não criar envio de teste extra.");
+assert.equal(ad.querySelector("#v2-mail-test-send"),null,"Retirar botão de teste Gmail após validação.");
+assert.equal(ad.querySelector("#v2-mail-test-email"),null,"Retirar campo de endereço do teste Gmail.");
 assert.equal(ad.querySelector("#mail-check-now"),null,"Não adicionar botão de verificação extra.");
 const petBefore=ad.querySelector("#mail-event-petiano-antes");
 petBefore.checked=false;
@@ -609,6 +639,31 @@ await adminClick("#reset-reservations-cancel");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");
 assert.equal(ad.querySelector("#admin-back").getAttribute("href"),"/");
+// O Admin decide só se recebeu ou não: sem campos de descartes e observações.
+const pendingReturn={id:987,componente_id:1,componente_nome:"Resistor 100Ω",
+  nome_solicitante:"Visitante exemplo",quantidade:2,status:"retirada",
+  data_inicio:"2026-11-07",data_devolucao:"2026-11-07",devolucao_solicitada_em:"2026-11-07T21:00:00Z"};
+fullAdmin.reservas.push(pendingReturn);
+await adminClick('[data-admin-tab="reservas"]');
+await adminClick('[data-admin-res-filter="devolucoes"]');
+assert.ok(ad.querySelector('[data-res-do="devolver"][data-id="987"]'),"Admin deve poder confirmar recebimento.");
+assert.ok(ad.querySelector('[data-res-do="cancelar_solicitacao_devolucao"][data-id="987"]'),"Admin deve poder marcar não recebido.");
+await adminClick('[data-res-do="devolver"][data-id="987"]');
+assert.match(ad.querySelector("#modal-root").textContent,/Material recebido/);
+assert.equal(ad.querySelector("#return-discard"),null,"A confirmação não pode pedir descartes.");
+assert.equal(ad.querySelector("#return-note"),null,"A confirmação não pode pedir observações.");
+await adminClick("#v2-confirm");
+assert.equal(adminUI.adminReservationRequests.at(-1).acao,"devolver");
+assert.equal(adminUI.adminReservationRequests.at(-1).id,987);
+assert.equal("descartados" in adminUI.adminReservationRequests.at(-1),false,"Não enviar descarte no recebimento.");
+assert.equal("observacao" in adminUI.adminReservationRequests.at(-1),false,"Não enviar observações no recebimento.");
+await adminClick('[data-res-do="cancelar_solicitacao_devolucao"][data-id="987"]');
+assert.match(ad.querySelector("#modal-root").textContent,/não recebido/);
+await adminClick("#v2-confirm");
+assert.equal(adminUI.adminReservationRequests.at(-1).acao,"cancelar_solicitacao_devolucao");
+assert.equal("descartados" in adminUI.adminReservationRequests.at(-1),false);
+fullAdmin.reservas.pop();
+await adminClick('[data-admin-tab="painel"]');
 await adminClick("#admin-logout");
 assert.ok(ad.querySelector("#v2-confirm"),"Sair do Admin exige confirmação.");
 await adminClick("#v2-confirm");
