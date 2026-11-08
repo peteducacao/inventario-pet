@@ -668,7 +668,12 @@ async function processRequest(req, env, ctx) {
   }
   if (path === "/api/admin/reservation" && method === "POST") {
     const b = await input(req,8000), id = requireId(b.id), action = str(b.acao,30);
-    const actor = str(b.responsavel,80) || "PETiane";
+    // Na recusa, atribuir a decisão à conta pessoal autenticada, jamais ao nome
+    // escrito no formulário/payload. Sem sessão pessoal, usar a identidade do Admin.
+    const personalActor=action==="recusar"?await currentIdentity(req,db):null;
+    const actor=action==="recusar"
+      ?(str(personalActor?.nome,80)||"Administração do PET")
+      :(str(b.responsavel,80)||"PETiane");
     const r = await db.prepare("SELECT * FROM reservas WHERE id=?").bind(id).first();
     if (!r) return bad("Reserva não encontrada.",404);
     const item = await db.prepare("SELECT * FROM componentes WHERE id=?").bind(r.componente_id).first();
