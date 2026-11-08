@@ -11,7 +11,7 @@ const rows=async(db,sql,args=[])=>((await db.prepare(sql).bind(...args).all()).r
 const pref=async(db,key,fallback)=>((await db.prepare("SELECT valor FROM configuracoes WHERE chave=?").bind(key).first())?.valor??fallback);
 const digest=async x=>Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(x)))).map(v=>v.toString(16).padStart(2,"0")).join("");
 const formatDate=s=>s&&/^\d{4}-\d\d-\d\d$/.test(s)?s.split("-").reverse().join("/"):"sem prazo";
-const TEMPLATE_TYPES={antes:"Um dia antes do prazo",hoje:"No dia da devolução",atraso2:"Dois dias de atraso",atraso7:"Sete dias de atraso",manual:"Cobrança manual"};
+const TEMPLATE_TYPES={antes:"Um dia antes do prazo",hoje:"No dia da devolução",atraso2:"Dois dias de atraso",atraso7:"Sete dias de atraso",manual:"Cobrança manual",nao_recebido:"Entrega não confirmada"};
 const TEMPLATE_EVENTS=Object.keys(TEMPLATE_TYPES);
 const MAIL_PROFILES={petiano:"PETianes",visitante:"Visitantes"};
 const emailEventKey=(tag,event)=>"mail_event_"+tag+"_"+event;
@@ -21,6 +21,10 @@ async function eventEnabled(db,tag,event){
 }
 const BASE_END="\n\nMaterial: {material}\nQuantidade: {quantidade}\nDevolução prevista: {prazo}\nRegistro: #{registro}\n\nPedimos que organize a devolução ou entre em contato com a equipe do PET Educação. Se já devolveu, avise a equipe para atualizar o registro.\n\nPET Educação - UFS\n{link}";
 function defaultTemplate(event){
+  if(event==="nao_recebido")return {
+    assunto:"Inventário PET Educação - Entrega não confirmada",
+    mensagem:"Olá, {nome}!\n\nA equipe do PET Educação não confirmou o recebimento do material {material} ({quantidade} unidade(s), registro #{registro}).\n\nO empréstimo continua em uso. Depois de entregar o material, acesse {link}, entre em Meus empréstimos e marque Devolvido novamente. Se você já fez a entrega, entre em contato com a equipe do PET Educação para conferência.\n\nPET Educação - UFS"
+  };
   const intro={antes:"A devolução do material abaixo está prevista para amanhã.",hoje:"A data prevista para devolução do material é hoje.",atraso2:"Nossa equipe identificou que a devolução do material abaixo está em atraso.",atraso7:"Nossa equipe identificou que a devolução do material abaixo está em atraso há alguns dias.",manual:"Este é um lembrete da equipe do PET Educação sobre o material ainda em empréstimo."}[event];
   return {assunto:["atraso2","atraso7","manual"].includes(event)?"Inventário PET Educação - Lembrete de devolução":"Inventário PET Educação - Prazo de devolução",mensagem:"Olá, {nome}!\n\n"+intro+BASE_END};
 }
@@ -65,6 +69,24 @@ async function queue(db,row,event,origin="automatica",custom=null){
   const result=await db.prepare("INSERT OR IGNORE INTO mail_queue(reserva_id,evento,chave_unica,destinatario,assunto,mensagem,prazo_referencia,origem,criado_em) VALUES(?,?,?,?,?,?,?,?,?)")
     .bind(row.id,event,key,row.email,msg.subject,msg.body,row.data_devolucao,origin,iso()).run();
   return {ok:true,queued:result.meta?.changes===1};
+}
+// Aviso de "Não recebido", somente após alteração da reserva no banco.
+// O carimbo da tentativa original identifica o evento e impede duplicação.
+export async function queueUnreceivedReturnEmail(env,id,attempt){
+  try{
+    if(!env?.DB||!attempt)return {ok:false,queued:false};
+    const db=env.DB,row=await current(db,id);
+    if(!await allowed(db,row,"nao_recebido"))
+      return {ok:false,queued:false,reason:"Sem e-mail válido ou avisos desabilitados."};
+    const msg=await content(db,row,"nao_recebido");
+    const key="auto:"+row.id+":nao_recebido:"+String(attempt);
+    const inserted=await db.prepare("INSERT OR IGNORE INTO mail_queue(reserva_id,evento,chave_unica,destinatario,assunto,mensagem,prazo_referencia,origem,criado_em) VALUES(?,?,?,?,?,?,?,?,?)")
+      .bind(row.id,"nao_recebido",key,row.email,msg.subject,msg.body,row.data_devolucao||"","automatica",iso()).run();
+    return {ok:true,queued:inserted.meta?.changes===1};
+  }catch(error){
+    console.error("Falha ao preparar aviso de não recebimento",String(error).slice(0,120));
+    return {ok:false,queued:false};
+  }
 }
 export async function queueManual(db,id,custom=null){
   const row=await current(db,id);
@@ -264,7 +286,7 @@ export async function mailBridgeAPI(req,env){
     for(const item of candidates){
       const row=item.reserva_id?await current(db,item.reserva_id):null;
       if(!(item.evento==="teste"&&item.reserva_id==null&&emailOK(item.destinatario))&&
-        (!row||!await allowed(db,row,item.evento)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||Number(row.sem_prazo)===1)){
+        (!row||!await allowed(db,row,item.evento)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||(item.evento!=="nao_recebido"&&Number(row.sem_prazo)===1))){
         await db.prepare("UPDATE mail_queue SET situacao='cancelado',ultimo_erro='Empréstimo modificado, devolvido ou notificações desativadas' WHERE id=? AND situacao IN ('pendente','processando')").bind(item.id).run();
         continue;
       }
