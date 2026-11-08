@@ -242,7 +242,7 @@ async function rename(req,env,user){
   return respond({ok:true,usuario:{...publicUser(user),nome:name}});
 }
 async function listMine(db,user){
-  const list=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.sem_prazo,r.status,r.observacao,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.tipo,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 300",[user.id]);
+  const list=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.sem_prazo,r.status,r.observacao,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.tipo,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? AND (r.status NOT IN ('devolvida','recusada','cancelada') OR r.id IN (SELECT id FROM reservas WHERE usuario_id=? AND status IN ('devolvida','recusada','cancelada') ORDER BY solicitado_em DESC, id DESC LIMIT 300)) ORDER BY r.solicitado_em DESC, r.id DESC",[user.id,user.id]);
   return respond({ok:true,retiradas:list});
 }
 async function withdraw(req,env,user){
@@ -401,7 +401,8 @@ export async function identityAPI(req,env,adminAuth,ctx){
   const u=await loggedIn(req,db);
   if(path==="/api/my/loans"&&method==="GET"){
     if(!u)return error("Entre em sua conta para consultar os empréstimos.",401);
-    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.responsavel_admin,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 250",[u.id]);
+    // Manter todas as reservas abertas/retiradas visíveis, mesmo depois de 250 conclusões.
+    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.responsavel_admin,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? AND (r.status NOT IN ('devolvida','recusada','cancelada') OR r.id IN (SELECT id FROM reservas WHERE usuario_id=? AND status IN ('devolvida','recusada','cancelada') ORDER BY solicitado_em DESC, id DESC LIMIT 250)) ORDER BY r.solicitado_em DESC, r.id DESC",[u.id,u.id]);
     return respond({ok:true,emprestimos:loanRows});
   }
   if(path==="/api/notifications"&&method==="GET"){
