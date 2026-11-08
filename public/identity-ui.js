@@ -130,8 +130,9 @@ function identityLoginModal(first=false){
       const r=await api("/api/identity/login","POST",{login:$("#identity-login").value,senha:$("#identity-login-password").value});
       setIdentity(r.usuario);
       if(r.usuario.trocar_senha)identityChangePasswordModal(true);
-      else identityProfileModal();
-      toast("Você entrou no seu perfil!");
+      else if(!r.usuario.email)identityEmailModal(true);
+      else closeModal();
+      toast("Você entrou na sua conta!");
     }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Entrar";}
   };
   if(first)$("#identity-login")?.focus();
@@ -212,6 +213,19 @@ async function identityLogout(){
     setIdentity(null);identityLoginModal();toast("Você saiu deste dispositivo.");
   }catch(error){toast(error.message,true);}
 }
+// O cargo é atribuído pelo Admin e sincronizado ao retornar à guia.
+async function refreshIdentityFromServer(){
+  if(!state.identity)return;
+  try{
+    const response=await api("/api/identity/me");
+    if(!response.usuario){setIdentity(null);return;}
+    const current=state.identity,next=response.usuario;
+    if(["tag","ativo","nome","email","login","trocar_senha","precisa_criar_login"].some(key=>current[key]!==next[key])){
+      setIdentity(next);
+      if(state.modal==="Minha conta"||state.modal==="Meu perfil")identityProfileModal();
+    }
+  }catch(error){console.warn("Atualização da conta:",error.message);}
+}
 function identityProfileModal(){
   const u=state.identity;if(!u)return identityLoginModal();
   if(u.precisa_criar_login)return identityUpgradeModal();
@@ -225,7 +239,6 @@ function identityProfileModal(){
     (member?'<div class="notice"><strong>Cargo PETiano ativo:</strong> você pode registrar retiradas e devoluções sem aprovação.</div>':'<div class="notice">Seu cargo é Visitante. Solicitações de reserva aguardam aprovação do PET.</div>')+
     '<div class="identity-actions">'+(member?'<button type="button" class="primary-button" id="identity-open-withdraw">Registrar retirada</button>':'')+
     '<button type="button" class="outline-button" id="identity-my-items">Meus empréstimos e devoluções</button>'+
-    '<button type="button" class="outline-button" id="identity-refresh-tag">Atualizar meu cargo</button>'+
     '<button type="button" class="outline-button" id="identity-email-edit">Alterar meu e-mail</button>'+
     '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button>'+
     '<button type="button" class="outline-button" id="identity-change-password">Alterar minha senha</button>'+
@@ -234,14 +247,6 @@ function identityProfileModal(){
   $("#identity-copy-id").onclick=()=>copyValue(u.id,$("#identity-public-id"));
   if(member)$("#identity-open-withdraw").onclick=()=>memberWithdrawModal();
   $("#identity-my-items").onclick=()=>openMyLoans();
-  $("#identity-refresh-tag").onclick=async()=>{
-    try{
-      const r=await api("/api/identity/me");
-      if(!r.usuario){setIdentity(null);identityLoginModal();toast("Sua sessão expirou. Entre novamente.",true);return;}
-      const old=state.identity?.tag;setIdentity(r.usuario);identityProfileModal();
-      toast(r.usuario.tag===old?"Seu perfil já está atualizado.":"Seu cargo foi atualizado!");
-    }catch(error){toast(error.message,true);}
-  };
   $("#identity-change-password").onclick=()=>identityChangePasswordModal(false);
   $("#identity-rename").onclick=identityRenameModal;
   $("#identity-email-edit").onclick=()=>identityEmailModal();
@@ -345,14 +350,14 @@ async function memberHistoryModal(){
 function memberReturnModal(loan){
   if(!loan)return memberHistoryModal();
   const visitor=state.identity?.tag!=="petiano";
-  if(visitor&&loan.devolucao_solicitada_em){toast("Esta devolução já aguarda confirmação da administração.");return;}
+  if(visitor&&loan.devolucao_solicitada_em){toast("A entrega já foi informada e aguarda a confirmação do Admin.");return;}
   const body='<form id="member-return-form" class="modal-main">'+
-    '<p>'+(visitor?'Solicitar devolução de ':'Confirmar a devolução de ')+'<strong>'+loan.quantidade+' unidade(s) de '+esc(loan.componente_nome)+'</strong>?</p>'+
-    (visitor?'<p class="notice">Sua solicitação será enviada ao Admin. O material continuará em uso e só ficará disponível após a confirmação do recebimento.</p>':
+    '<p>'+(visitor?'Você já devolveu ':'Confirmar a devolução de ')+'<strong>'+loan.quantidade+' unidade(s) de '+esc(loan.componente_nome)+'</strong>?</p>'+
+    (visitor?'<p class="notice">Ao marcar como devolvido, você informa que entregou o material. O Admin conferirá o recebimento; até lá, o estoque continua em uso.</p>':
     '<div class="field"><label for="member-discard">Unidades descartadas (opcional)</label><div class="stepper"><button type="button" class="step" data-target="member-discard" data-delta="-1">−</button><input id="member-discard" type="number" min="0" max="'+loan.quantidade+'" value="0" required><button type="button" class="step" data-target="member-discard" data-delta="1">+</button></div><small>Unidades descartadas saem da quantidade total; as demais ficam disponíveis.</small></div>')+
     '<div class="field"><label for="member-return-note">Observações (opcional)</label><textarea id="member-return-note" maxlength="500" placeholder="Condição do material"></textarea></div>'+
-    '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">'+(visitor?'Solicitar devolução':'Confirmar devolução')+'</button></div></form>';
-  openModal(visitor?"Solicitar devolução":"Devolver material",visitor?"Aguardando conferência da administração.":"Seu estoque será atualizado imediatamente.",body);
+    '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">'+(visitor?'Devolvido':'Confirmar devolução')+'</button></div></form>';
+  openModal(visitor?"Informar devolução":"Devolver material",visitor?"O Admin dará a confirmação final do recebimento.":"Seu estoque será atualizado imediatamente.",body);
   $("#member-return-cancel").onclick=()=>{closeModal();openMyLoans();};
   if(!visitor)$$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
   $("#member-return-form").onsubmit=async e=>{
@@ -365,7 +370,7 @@ function memberReturnModal(loan){
         observacao:$("#member-return-note").value
       });
       await publicReload();
-      toast(result.aguardando_confirmacao?"Solicitação enviada! Aguarde a confirmação do Admin.":"Devolução registrada!");
+      toast(result.aguardando_confirmacao?"Entrega informada! Aguardando confirmação do Admin.":"Devolução registrada!");
       closeModal();await openMyLoans();
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
