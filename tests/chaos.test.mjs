@@ -91,7 +91,7 @@ status(200,await auth("/api/admin/item",{...itemData,id:item.id,nome:"Sensor de 
 assert.equal(q("SELECT quantidade FROM componentes WHERE id=?",item.id).quantidade,10);
 for(const quantity of [-1,1.5,1000001,Number.MAX_SAFE_INTEGER]){
   const before=q("SELECT quantidade FROM componentes WHERE id=?",item.id).quantidade;
-  status(400,await auth("/api/admin/item",{...itemData,id:item.id,quantidade}),"Negar estoque inválido "+quantity);
+  status(400,await auth("/api/admin/item",{...itemData,id:item.id,quantidade:quantity}),"Negar estoque inválido "+quantity);
   assert.equal(q("SELECT quantidade FROM componentes WHERE id=?",item.id).quantidade,before);
 }
 status(400,await auth("/api/admin/item",{...itemData,id:item.id,em_uso:11,quantidade:10}),"Em uso não supera quantidade");
