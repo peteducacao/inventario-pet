@@ -28,7 +28,9 @@ const formatDateValid = x => {
 async function bodyJson(req,max=6000){
   if(!req.headers.get("content-type")?.toLowerCase().includes("application/json"))throw Error("Use o formato JSON.");
   const raw=await req.text();if(raw.length>max)throw Error("Dados muito grandes.");
-  const data=JSON.parse(raw);if(!data||typeof data!=="object"||Array.isArray(data))throw Error("Dados inválidos.");
+  let data;
+  try{data=JSON.parse(raw);}catch{throw Error("Dados inválidos.");}
+  if(!data||typeof data!=="object"||Array.isArray(data))throw Error("Dados inválidos.");
   return data;
 }
 const rows = async(db,sql,args=[]) => (await db.prepare(sql).bind(...args).all()).results||[];
@@ -246,7 +248,8 @@ async function listMine(db,user){
   return respond({ok:true,retiradas:list});
 }
 async function withdraw(req,env,user){
-  if(!user||user.papel!=="petiano")return error("Somente PETianos autorizados podem retirar materiais diretamente.",403);
+  if(!user)return error("Entre na sua conta pessoal antes de retirar materiais.",401);
+  if(user.papel!=="petiano")return error("Somente PETianos autorizados podem retirar materiais diretamente.",403);
   const b=await bodyJson(req,5000),id=Number(b.componente_id),quantity=Number(b.quantidade),due=clean(b.data_devolucao,10),email=clean(user.email,180).toLowerCase(),note=clean(b.observacao,500);
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(quantity)||quantity<1||quantity>1000)return error("Material ou quantidade inválidos.");
   if(due&&(!formatDateValid(due)||due<brazilDate()))return error("Informe uma data de devolução válida.");

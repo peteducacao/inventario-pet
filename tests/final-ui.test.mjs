@@ -673,4 +673,56 @@ assert.equal(aw.__adminTestState.admin===null,true,"Logout deve limpar estado ad
 assert.ok(!ad.querySelector("#admin-stage").classList.contains("admin-loading"),"Logout não pode deixar tela carregando.");
 assert.deepEqual(adminUI.errors.filter(x=>!x.includes("Not implemented: navigation (except hash changes)")),[],"Erros de logout além da navegação indisponível no jsdom.");
 adminUI.dom.window.close();
+// XSS armazenado: nem nomes de materiais/categorias, conta pessoal, observações
+// ou notificações podem virar script/event handler executável no DOM.
+const payload='"><img src=x onerror="window.__xssExecuted=true"><svg onload="window.__xssExecuted=true">';
+const originalOneName=one.nome,originalCatName=categories[0].nome,originalPersonName=identity.nome;
+one.nome=payload;
+categories[0].nome=payload;
+identity.nome=payload;
+const hostileReservation={id:994,componente_id:1,componente_nome:payload,
+  nome_solicitante:payload,observacao:payload,contato:payload,quantidade:1,
+  status:"pendente",data_inicio:"2026-12-01",data_devolucao:"2026-12-03"};
+fullAdmin.reservas.push(hostileReservation);
+const checkNoHtmlInjection=(doc,label)=>{
+  assert.equal(doc.querySelectorAll("img[onerror],svg[onload],*[onclick],script:not([src])").length,0,
+    label+": nenhum conteúdo injetado pode criar handlers HTML ou scripts inline.");
+  assert.ok(!doc.defaultView.__xssExecuted,label+": JavaScript não pode ser executado.");
+};
+const xssPublic=build(false,false,true);
+await wait(300);
+xssPublic.w.__xssExecuted=false;
+checkNoHtmlInjection(xssPublic.d,"Catálogo com dados maliciosos");
+assert.match(xssPublic.d.querySelector("#category-sections").textContent,/onerror=/,
+  "O nome malicioso deve ser exibido como texto literal.");
+xssPublic.addNotice({id:996,titulo:payload,mensagem:payload,
+  criada_em:"2026-11-07T12:10:00Z",lida_em:null});
+await xssPublic.click("#notification-button");
+checkNoHtmlInjection(xssPublic.d,"Notificações com dados maliciosos");
+xssPublic.dom.window.close();
+
+const xssAdmin=build(true,true,true);
+await wait(280);
+xssAdmin.w.__xssExecuted=false;
+await xssAdmin.click('[data-admin-tab="usuarios"]');
+await wait(85);
+checkNoHtmlInjection(xssAdmin.d,"Usuários do Admin");
+await xssAdmin.click('[data-admin-tab="materiais"]');
+await xssAdmin.click('#admin-material-list [data-item-edit="1"]');
+assert.equal(xssAdmin.d.querySelector("#i-name")?.value,payload,
+  "Editor deve conservar a entrada como valor textual, sem interpretá-la.");
+checkNoHtmlInjection(xssAdmin.d,"Editor do Admin com dados maliciosos");
+await xssAdmin.click("#modal-root [data-close]");
+await xssAdmin.click('[data-admin-tab="reservas"]');
+await wait(65);
+checkNoHtmlInjection(xssAdmin.d,"Reservas do Admin com dados maliciosos");
+assert.match(xssAdmin.d.querySelector("#admin-content").textContent,/onerror=/,
+  "Observações maliciosas precisam ser exibidas como texto.");
+assert.deepEqual(xssAdmin.errors,[],"Nenhum erro de execução causado pelos dados maliciosos.");
+xssAdmin.dom.window.close();
+fullAdmin.reservas.pop();
+one.nome=originalOneName;
+categories[0].nome=originalCatName;
+identity.nome=originalPersonName;
+console.log("XSS OK: entradas maliciosas em catálogo, editor, usuários, notificações e reservas viram apenas texto.");
 console.log("NOVA UI OK: catálogo, variações, busca, painel próprio, histórico, visibilidade e filamentos.");
