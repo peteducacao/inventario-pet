@@ -1,5 +1,5 @@
 import { identityAPI, currentIdentity } from "./identity.js";
-import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual } from "./mail-bridge.js";
+import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual, queueNewLoanReminder } from "./mail-bridge.js";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const j = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...extra } });
 const bad = (message, status = 400) => j({ error: message }, status);
@@ -664,6 +664,8 @@ async function processRequest(req, env) {
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
     await auditLog(db,action==="aprovar"?"Aprovou e entregou":action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
+    // O cron diário pode ter ocorrido antes desta aprovação; preparar aviso do dia agora.
+    if(action==="aprovar"||action==="retirar")await queueNewLoanReminder(env,id);
     return j({ ok:true, notificacao_registrada:Boolean(r.usuario_id) });
   }
   if (path === "/api/admin/settings" && method === "POST") {
@@ -871,6 +873,7 @@ export default {
         if (setting?.valor === "1min") await cleanup(env.DB);
         return;
       }
+      if(event.cron==="*/15 * * * *"){await generateDailyEmails(env);return;}
       await generateDailyEmails(env);
       await cleanup(env.DB);
     })());
