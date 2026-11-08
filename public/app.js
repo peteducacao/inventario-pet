@@ -1,5 +1,18 @@
 /* Inventário PET Educação — interface leve, sem frameworks. */
 "use strict";
+// Tratamento de imagens sem JavaScript embutido no HTML: compatível com CSP.
+document.addEventListener("error",event=>{
+  const img=event.target;
+  if(!img?.matches?.("img"))return;
+  if(img.hasAttribute("data-pet-photo-fallback")){
+    img.hidden=true;
+    if(img.nextElementSibling?.classList.contains("fallback-icon"))img.nextElementSibling.hidden=false;
+  }
+  if(img.hasAttribute("data-pet-board-fallback") && !img.dataset.petFallbackApplied){
+    img.dataset.petFallbackApplied="1";
+    img.src="/img/reference-board.svg";
+  }
+},true);
 const state = { data:{categorias:[],componentes:[],demonstracao:false}, admin:null, tab:"materiais", filter:"all", query:"", actor:localStorage.getItem("pet_inventario_nome")||"", identity:null, busy:false, modal:null };
 const $ = (s,root=document) => root.querySelector(s);
 const $$ = (s,root=document) => Array.from(root.querySelectorAll(s));
@@ -62,7 +75,7 @@ function render(){
   $("#profile-button").title=state.identity?state.identity.nome+" · "+(isMember?"PETiano":"Visitante")+" · "+state.identity.id:"Criar meu perfil";
 }
 function card(x, category){
-  const img=x.imagem?'<img loading="lazy" src="'+attr(x.imagem)+'" alt="Fotografia de '+attr(x.nome)+'" onerror="this.hidden=true;this.nextElementSibling.hidden=false"><span class="fallback-icon" hidden>'+iconFor(category)+'</span>':'<span class="fallback-icon">'+iconFor(category)+'</span>';
+  const img=x.imagem?'<img loading="lazy" src="'+attr(x.imagem)+'" alt="Fotografia de '+attr(x.nome)+'" data-pet-photo-fallback><span class="fallback-icon" hidden>'+iconFor(category)+'</span>':'<span class="fallback-icon">'+iconFor(category)+'</span>';
   const status='<div class="count-row">'+
     '<div class="count-pill"><span>Quantidade</span><strong>'+moneyless(x.quantidade)+'</strong></div>'+
     '<div class="count-pill"><span>Em uso</span><strong>'+moneyless(x.em_uso)+'</strong></div>'+
