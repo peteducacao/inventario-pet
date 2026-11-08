@@ -639,6 +639,31 @@ await adminClick("#reset-reservations-cancel");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");
 assert.equal(ad.querySelector("#admin-back").getAttribute("href"),"/");
+// O Admin decide só se recebeu ou não: sem campos de descartes e observações.
+const pendingReturn={id:987,componente_id:1,componente_nome:"Resistor 100Ω",
+  nome_solicitante:"Visitante exemplo",quantidade:2,status:"retirada",
+  data_inicio:"2026-11-07",data_devolucao:"2026-11-07",devolucao_solicitada_em:"2026-11-07T21:00:00Z"};
+fullAdmin.reservas.push(pendingReturn);
+await adminClick('[data-admin-tab="reservas"]');
+await adminClick('[data-admin-res-filter="devolucoes"]');
+assert.ok(ad.querySelector('[data-res-do="devolver"][data-id="987"]'),"Admin deve poder confirmar recebimento.");
+assert.ok(ad.querySelector('[data-res-do="cancelar_solicitacao_devolucao"][data-id="987"]'),"Admin deve poder marcar não recebido.");
+await adminClick('[data-res-do="devolver"][data-id="987"]');
+assert.match(ad.querySelector("#modal-root").textContent,/Material recebido/);
+assert.equal(ad.querySelector("#return-discard"),null,"A confirmação não pode pedir descartes.");
+assert.equal(ad.querySelector("#return-note"),null,"A confirmação não pode pedir observações.");
+await adminClick("#v2-confirm");
+assert.equal(adminUI.adminReservationRequests.at(-1).acao,"devolver");
+assert.equal(adminUI.adminReservationRequests.at(-1).id,987);
+assert.equal("descartados" in adminUI.adminReservationRequests.at(-1),false,"Não enviar descarte no recebimento.");
+assert.equal("observacao" in adminUI.adminReservationRequests.at(-1),false,"Não enviar observações no recebimento.");
+await adminClick('[data-res-do="cancelar_solicitacao_devolucao"][data-id="987"]');
+assert.match(ad.querySelector("#modal-root").textContent,/não recebido/);
+await adminClick("#v2-confirm");
+assert.equal(adminUI.adminReservationRequests.at(-1).acao,"cancelar_solicitacao_devolucao");
+assert.equal("descartados" in adminUI.adminReservationRequests.at(-1),false);
+fullAdmin.reservas.pop();
+await adminClick('[data-admin-tab="painel"]');
 await adminClick("#admin-logout");
 assert.ok(ad.querySelector("#v2-confirm"),"Sair do Admin exige confirmação.");
 await adminClick("#v2-confirm");
