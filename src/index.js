@@ -115,7 +115,9 @@ async function listVariationGroups(db) {
 }
 async function state(db) {
   const data = await catalog(db, true);
-  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id ORDER BY r.solicitado_em DESC LIMIT 1500");
+  // Histórico concluído limitado para a tela, mas reservas e empréstimos abertos
+  // nunca podem desaparecer atrás de milhares de registros antigos.
+  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE r.status NOT IN ('devolvida','recusada','cancelada') OR r.id IN (SELECT id FROM reservas WHERE status IN ('devolvida','recusada','cancelada') ORDER BY solicitado_em DESC, id DESC LIMIT 1500) ORDER BY r.solicitado_em DESC, r.id DESC");
   data.filamentos = await results(db,"SELECT f.*,c.em_uso,c.com_defeito FROM filamentos f LEFT JOIN componentes c ON c.id=f.componente_id ORDER BY f.ordem,f.cor COLLATE NOCASE");
   // Inclui grupos vazios, que não existem em componentes e nunca entram no catálogo.
   data.grupos_variacoes = await listVariationGroups(db);
