@@ -58,7 +58,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   let adminAuthenticated=alreadyAdmin;
   let profile={...identity};
   const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[],filamentWrites=[],groupImageWrites=[];
-  const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
+  const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual","nao_recebido"].map(event=>[event,true]));
   let noticeRequestCount=0,backupReadCount=0;
   const deletedMaterials=[];
   
@@ -95,7 +95,8 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       if(init.method==="POST"){templateSaves.push(JSON.parse(init.body||"{}"));body={ok:true};}
       else body={ok:true,templates:[
         {evento:"antes",nome:"Um dia antes",assunto:"Prazo de {material}",mensagem:"Olá {nome}, entregue em {prazo}. Consulte {link}"},
-        {evento:"manual",nome:"Cobrança manual",assunto:"Cobrança: {material}",mensagem:"Olá {nome}. Devolva {material} até {prazo}."}
+        {evento:"manual",nome:"Cobrança manual",assunto:"Cobrança: {material}",mensagem:"Olá {nome}. Devolva {material} até {prazo}."},
+        {evento:"nao_recebido",nome:"Entrega não confirmada",assunto:"Entrega não recebida: {material}",mensagem:"Olá {nome}. Sua devolução de {material} não foi recebida."}
       ]};
     }
     else if(path==="/api/my/loans")body={emprestimos:[]};
@@ -470,7 +471,7 @@ await adminClick('[data-admin-tab="configuracoes"]');
 await wait(100);
 assert.equal(ad.querySelectorAll("#admin-settings-form .settings-toggle").length,4,"Checkboxes grandes devem dar lugar a quatro switches compactos.");
 assert.equal(ad.querySelectorAll("#admin-settings-form [role=switch]").length,4,"Controles de configuração devem ser acessíveis.");
-assert.equal(ad.querySelectorAll("#mail-template-type option").length,2,"Editor de mensagens deve carregar os modelos configurados.");
+assert.equal(ad.querySelectorAll("#mail-template-type option").length,3,"Editor deve incluir modelo editável de Entrega não confirmada.");
 assert.match(ad.querySelector("#mail-template-preview-body").textContent,/Ana/,"Prévia deve usar dados fictícios.");
 const editedSubject=ad.querySelector("#mail-template-subject");
 editedSubject.value="Novo aviso do {material}";
@@ -479,7 +480,9 @@ assert.match(ad.querySelector("#mail-template-preview-subject").textContent,/Nov
 await adminClick("#mail-template-save");
 assert.equal(adminUI.templateSaves.length,1,"Salvar modelo deve atualizar a API do Gmail.");
 assert.equal(adminUI.templateSaves[0].assunto,"Novo aviso do {material}");
-assert.equal(ad.querySelectorAll("#mail-event-form input[type=checkbox]").length,10,"Duas tags devem ter cinco opções de aviso cada.");
+assert.equal(ad.querySelectorAll("#mail-event-form input[type=checkbox]").length,12,"Duas tags devem ter seis opções de aviso cada.");
+assert.ok(ad.querySelector("#mail-event-visitante-nao_recebido"),"Desativar apenas o aviso de Não recebido deve ser possível.");
+assert.ok(ad.querySelector("#mail-template-type option[value=nao_recebido]"),"Texto de Não recebido deve existir na lista editável.");
 assert.equal(ad.querySelector("#mail-test-submit"),null,"Não criar envio de teste extra.");
 assert.equal(ad.querySelector("#v2-mail-test-send"),null,"Retirar botão de teste Gmail após validação.");
 assert.equal(ad.querySelector("#v2-mail-test-email"),null,"Retirar campo de endereço do teste Gmail.");
@@ -490,6 +493,7 @@ await adminClick("#mail-event-save");
 assert.equal(adminUI.mailEventSaves.length,1);
 assert.equal(adminUI.mailEventSaves[0].profiles.petiano.antes,false);
 assert.equal(adminUI.mailEventSaves[0].profiles.visitante.antes,true);
+assert.equal(adminUI.mailEventSaves[0].profiles.visitante.nao_recebido,true);
 await adminClick('[data-admin-tab="filamentos"]');
 assert.match(ad.querySelector("#admin-content").textContent,/Preto/,"Admin não vê filamento restrito.");
 assert.equal(ad.querySelectorAll('[data-loan-audience="filament"]').length,2,"Cada cor deve ter um seletor compacto de público.");
@@ -718,6 +722,7 @@ assert.equal(ad.querySelectorAll(".admin-res-filter").length,6,"Os seis filtros 
 assert.equal(ad.querySelector('.admin-res-filter[data-admin-res-filter="devolucoes"]').getAttribute("aria-pressed"),"true");
 const returnCard=ad.querySelector(".reservation-card-devolucoes");
 assert.ok(returnCard,"A devolução deve estar na lista de conferência.");
+assert.ok(returnCard.querySelector(".reservation-thumb img"),"Materiais individuais devem exibir a miniatura cadastrada/ilustrada.");
 assert.match(returnCard.querySelector(".reservation-return-report").textContent,/Devolução informada em/);
 assert.match(returnCard.querySelector(".reservation-return-note").textContent,/Observação da devolução/);
 assert.equal(returnCard.querySelector(".reservation-return-note p").textContent,"Teste","A observação opcional deve ter rótulo e bloco separados.");
@@ -741,6 +746,15 @@ assert.match(ad.querySelector("#modal-root").textContent,/não recebido/);
 await adminClick("#v2-confirm");
 assert.equal(adminUI.adminReservationRequests.at(-1).acao,"cancelar_solicitacao_devolucao");
 assert.equal("descartados" in adminUI.adminReservationRequests.at(-1),false);
+fullAdmin.reservas.pop();
+const filamentReturned={...pendingReturn,id:989,componente_id:200,componente_nome:"Filamento - Azul"};
+fullAdmin.reservas.push(filamentReturned);
+await adminClick('[data-admin-tab="reservas"]');
+await adminClick('[data-admin-res-filter="devolucoes"]');
+const filamentCard=ad.querySelector(".reservation-filament-thumb");
+assert.ok(filamentCard,"Filamento deve ter miniatura colorida nas reservas (espelho ausente em componentes).");
+assert.match(filamentCard.getAttribute("style"),/#2A69D6/);
+assert.ok(filamentCard.querySelector(".reservation-filament-reel"),"Miniatura de bobina deve estar presente.");
 fullAdmin.reservas.pop();
 await adminClick('[data-admin-tab="painel"]');
 await adminClick("#admin-logout");
