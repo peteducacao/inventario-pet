@@ -544,12 +544,13 @@ function reservationGroup(r){
 function adminReservations(root){
   const all=state.admin.reservas||[];
   const filter=UI.reservationFilter;
-  const filters=[["pendente","Pendentes"],["devolucoes","Devoluções a confirmar"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]];
-  root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Reservas e devoluções</h2></div></div>'+
-    '<div class="admin-tools" style="gap:8px">'+filters.map(([key,label])=>
-      '<button type="button" class="chip '+(filter===key?"active":"")+'" data-admin-res-filter="'+key+'">'+label+' <small>'+all.filter(r=>key==="todas"||reservationGroup(r)===key).length+'</small></button>').join("")+'</div>'+
-    '<div class="admin-tools"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-res-search" placeholder="Buscar material ou solicitante..."></div></div>'+
-    '<div class="reservation-list" id="admin-res-list"></div><nav id="admin-res-pages" class="page-controls"></nav></section>';
+  const filters=[["pendente","Pendentes","Pendentes"],["devolucoes","Devoluções a confirmar","A conferir"],["ativas","Ativas","Ativas"],["atrasadas","Atrasadas","Atrasadas"],["concluidas","Concluídas","Concluídas"],["todas","Todas","Todas"]];
+  const counts=Object.fromEntries(filters.map(([key])=>[key,all.filter(r=>key==="todas"||reservationGroup(r)===key).length]));
+  root.innerHTML='<section class="admin-panel admin-reservations-panel"><div class="admin-section-head"><div><h2>Reservas e devoluções</h2><p class="admin-res-helper">Solicitações, empréstimos e entregas para conferência.</p></div></div>'+
+    '<div class="admin-res-filters" role="group" aria-label="Filtrar reservas">'+filters.map(([key,label,short])=>
+      '<button type="button" class="admin-res-filter '+(filter===key?"active":"")+'" data-admin-res-filter="'+key+'" aria-label="'+label+': '+counts[key]+'" aria-pressed="'+(filter===key?'true':'false')+'"><span class="admin-res-filter-name"><span class="admin-res-filter-full">'+label+'</span><span class="admin-res-filter-short">'+short+'</span></span><strong>'+counts[key]+'</strong></button>').join("")+'</div>'+
+    '<div class="admin-tools admin-res-search"><div class="search-box">'+iconSvg("search")+'<input type="search" id="admin-res-search" aria-label="Buscar reservas por material, solicitante ou número" placeholder="Buscar material, pessoa ou nº..."></div></div>'+
+    '<div class="reservation-list" id="admin-res-list"></div><nav id="admin-res-pages" class="page-controls" aria-label="Páginas de reservas"></nav></section>';
   $$("[data-admin-res-filter]",root).forEach(b=>b.onclick=()=>{
     UI.reservationFilter=b.dataset.adminResFilter;
     UI.reservationPage=1;stored("pet_admin_reservas",UI.reservationFilter);adminReservations(root);
@@ -566,21 +567,27 @@ function reservationRow(r){
     r.status==="aprovada"?'<button type="button" class="outline-button" data-res-do="retirar" data-id="'+r.id+'">Regularizar aprovação antiga</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
     r.status==="retirada"?(r.devolucao_solicitada_em?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Confirmar recebimento</button><button type="button" class="outline-button" data-res-do="cancelar_solicitacao_devolucao" data-id="'+r.id+'">Não recebido</button>':'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>'):"";
   const mailAction=r.status==="retirada"&&!r.devolucao_solicitada_em&&(r.email_conta||r.email)?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
-  return '<div class="reservation-row">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb"></div>')+
-    '<div><h3>#'+r.id+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3><small>'+esc(r.nome_solicitante)+' · '+r.quantidade+' un.'+(r.tipo==="retirada_direta"?" · PETiano":"")+'</small>'+
-    (r.contato?'<small style="display:block">'+esc(r.contato)+'</small>':"")+
-    (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+
-    (r.devolucao_solicitada_em?'<small style="display:block;color:#936000">Devolução informada em '+esc(fmt(r.devolucao_solicitada_em))+(r.devolucao_solicitada_observacao?' · '+esc(r.devolucao_solicitada_observacao):"")+'</small>':"")+'</div>'+
-    '<div class="reservation-date"><small>Retirada</small><strong>'+esc(formatDay(r.data_inicio))+'</strong></div>'+
-    '<div class="reservation-date"><small>Devolução</small><strong>'+(r.sem_prazo?'Sem prazo':esc(formatDay(r.data_devolucao)))+'</strong></div>'+
-    '<span class="tag '+cls+'">'+tag+'</span><div class="reservation-actions">'+actions+mailAction+'</div></div>';
+  const reservationNote=r.observacao?'<div class="reservation-note"><span>Observação da reserva</span><p>'+esc(r.observacao)+'</p></div>':"";
+  const returnNote=r.devolucao_solicitada_observacao?'<div class="reservation-note reservation-return-note"><span>Observação da devolução</span><p>'+esc(r.devolucao_solicitada_observacao)+'</p></div>':"";
+  const returnReport=r.devolucao_solicitada_em?'<div class="reservation-return-report"><span>Devolução informada em</span><strong>'+esc(fmt(r.devolucao_solicitada_em))+'</strong></div>':"";
+  return '<article class="reservation-row reservation-card reservation-card-'+group+'">'+
+    '<div class="reservation-card-top">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb" aria-hidden="true"></div>')+
+    '<div class="reservation-summary"><h3>#'+esc(r.id)+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3>'+
+    '<p class="reservation-person">'+esc(r.nome_solicitante)+' <span>· '+esc(r.quantidade)+' un.'+(r.tipo==="retirada_direta"?' · PETiane':'')+'</span></p>'+
+    (r.contato?'<p class="reservation-contact"><strong>Contato:</strong> '+esc(r.contato)+'</p>':"")+'</div>'+
+    '<span class="tag '+cls+'">'+tag+'</span></div>'+
+    '<div class="reservation-details"><div class="reservation-date"><small>Retirada</small><strong>'+esc(formatDay(r.data_inicio))+'</strong></div>'+
+    '<div class="reservation-date"><small>Prazo de devolução</small><strong>'+(r.sem_prazo?'Sem prazo':esc(formatDay(r.data_devolucao)))+'</strong></div>'+
+    returnReport+'</div>'+
+    (reservationNote||returnNote?'<div class="reservation-notes">'+reservationNote+returnNote+'</div>':"")+
+    (actions||mailAction?'<div class="reservation-actions">'+actions+mailAction+'</div>':"")+'</article>';
 }
 function paintReservations(){
   const list=$("#admin-res-list");if(!list)return;
   const q=$("#admin-res-search")?.value?.toLowerCase().trim()||"";
   const found=state.admin.reservas.filter(r=>
     (UI.reservationFilter==="todas"||reservationGroup(r)===UI.reservationFilter)&&
-    (!q||[r.componente_nome,r.nome_solicitante,r.contato,String(r.id)].some(v=>String(v||"").toLowerCase().includes(q))));
+    (!q||[r.componente_nome,r.nome_solicitante,r.contato,r.observacao,r.devolucao_solicitada_observacao,String(r.id)].some(v=>String(v||"").toLowerCase().includes(q))));
   const p=paginate(found,UI.reservationPage);
   UI.reservationPage=p.page;
   list.innerHTML=p.total?p.items.map(reservationRow).join(""):'<div class="empty-state">Nenhuma reserva neste filtro.</div>';

@@ -710,10 +710,21 @@ assert.equal(ad.querySelector("#admin-back").getAttribute("href"),"/");
 // O Admin decide só se recebeu ou não: sem campos de descartes e observações.
 const pendingReturn={id:987,componente_id:1,componente_nome:"Resistor 100Ω",
   nome_solicitante:"Visitante exemplo",quantidade:2,status:"retirada",
-  data_inicio:"2026-11-07",data_devolucao:"2026-11-07",devolucao_solicitada_em:"2026-11-07T21:00:00Z"};
+  data_inicio:"2026-11-07",data_devolucao:"2026-11-07",devolucao_solicitada_em:"2026-11-07T21:00:00Z",observacao:"Pedido inicial",devolucao_solicitada_observacao:"Teste"};
 fullAdmin.reservas.push(pendingReturn);
 await adminClick('[data-admin-tab="reservas"]');
 await adminClick('[data-admin-res-filter="devolucoes"]');
+assert.equal(ad.querySelectorAll(".admin-res-filter").length,6,"Os seis filtros precisam continuar disponíveis.");
+assert.equal(ad.querySelector('.admin-res-filter[data-admin-res-filter="devolucoes"]').getAttribute("aria-pressed"),"true");
+const returnCard=ad.querySelector(".reservation-card-devolucoes");
+assert.ok(returnCard,"A devolução deve estar na lista de conferência.");
+assert.match(returnCard.querySelector(".reservation-return-report").textContent,/Devolução informada em/);
+assert.match(returnCard.querySelector(".reservation-return-note").textContent,/Observação da devolução/);
+assert.equal(returnCard.querySelector(".reservation-return-note p").textContent,"Teste","A observação opcional deve ter rótulo e bloco separados.");
+assert.doesNotMatch(returnCard.querySelector(".reservation-return-report").textContent,/Teste/,"Observação não deve ser anexada à data.");
+assert.match(returnCard.querySelector(".reservation-note:not(.reservation-return-note)").textContent,/Pedido inicial/);
+assert.match(returnCard.textContent,/Prazo de devolução/);
+assert.ok(visualCss.includes(".admin-res-filters{grid-template-columns:repeat(2"),"Filtros precisam ocupar duas colunas no celular.");
 assert.ok(ad.querySelector('[data-res-do="devolver"][data-id="987"]'),"Admin deve poder confirmar recebimento.");
 assert.ok(ad.querySelector('[data-res-do="cancelar_solicitacao_devolucao"][data-id="987"]'),"Admin deve poder marcar não recebido.");
 await adminClick('[data-res-do="devolver"][data-id="987"]');
