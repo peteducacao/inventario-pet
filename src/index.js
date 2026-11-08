@@ -884,7 +884,13 @@ export default {
       if (msg.includes("UNIQUE constraint")) return bad("Já existe um cadastro com esse nome.",409);
       if (msg.includes("FOREIGN KEY constraint")) return bad("O registro está ligado a outros dados.",409);
       if (msg.includes("CHECK constraint")) return bad("As quantidades ou os dados são inconsistentes.",409);
-      return bad(msg.length < 180 ? msg : "Não foi possível concluir a operação.",500);
+      // Apenas mensagens validadas da própria API são exibidas ao público.
+      // Erros internos (SQLite, Worker, infraestrutura) nunca devem expor SQL/segredos.
+      const inputs=new Set(["Identificador inválido.","Dados grandes demais.","Os dados enviados são inválidos.",
+        "Dados inválidos.","Informe o nome do material.","Confira as quantidades.",
+        "Em uso não pode ultrapassar a quantidade total.","A imagem deve ser uma foto válida."]);
+      if(inputs.has(msg))return bad(msg,400);
+      return bad("Não foi possível concluir a operação. Tente novamente ou procure a administração.",500);
     }
   },
   async scheduled(event, env, ctx) {
