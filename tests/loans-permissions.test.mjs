@@ -271,5 +271,16 @@ assert.equal((await req("/api/my/return","POST",{id:directA,descartados:1},membe
 assert.deepEqual(sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(blue.componente_id),qtyOnce,"Baixa duplicada não pode reduzir componentes.");
 assert.equal(sqlite.prepare("SELECT quantidade FROM filamentos WHERE id=?").get(blue.id).quantidade,filamentOnce,"Baixa duplicada não pode consumir um segundo rolo.");
 assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(directB).status,"retirada","Outra retirada do PETiane permanece ativa.");
+// Se os rolos estiverem inconsistentes, a tentativa de descarte não pode
+// concluir a retirada nem baixar o material parcialmente.
+sqlite.prepare("UPDATE filamentos SET quantidade=0 WHERE id=?").run(blue.id);
+const beforeFailedDiscard=sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(blue.componente_id);
+const failedDiscard=await req("/api/my/return","POST",{id:directB,descartados:1},member);
+assert.equal(failedDiscard.status,409,"Descarte de rolos incoerente deve falhar.");
+assert.deepEqual(sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(blue.componente_id),beforeFailedDiscard,"Erro não pode baixar componente.");
+assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(directB).status,"retirada","Erro não pode encerrar empréstimo.");
+sqlite.prepare("UPDATE filamentos SET quantidade=? WHERE id=?").run(filamentOnce,blue.id);
+assert.equal((await req("/api/my/return","POST",{id:directB,descartados:1},member)).status,200,"Após corrigir saldos, a devolução deve funcionar.");
+
 console.log("EMPRÉSTIMOS OK: permissões, reservas, estoque, visitantes/PETianes, devolução e histórico volumoso e corridas administrativas.");
 sqlite.close();
