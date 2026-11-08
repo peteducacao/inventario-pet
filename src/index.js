@@ -886,7 +886,8 @@ export default {
       if (msg.includes("CHECK constraint")) return bad("As quantidades ou os dados são inconsistentes.",409);
       // Apenas mensagens validadas da própria API são exibidas ao público.
       // Erros internos (SQLite, Worker, infraestrutura) nunca devem expor SQL/segredos.
-      const inputs=new Set(["Identificador inválido.","Dados grandes demais.","Os dados enviados são inválidos.",
+      const inputs=new Set(["Identificador inválido.","Dados grandes demais.","Dados muito grandes.",
+        "Os dados enviados são inválidos.","Use o formato JSON.",
         "Dados inválidos.","Informe o nome do material.","Confira as quantidades.",
         "Em uso não pode ultrapassar a quantidade total.","A imagem deve ser uma foto válida."]);
       if(inputs.has(msg))return bad(msg,400);
