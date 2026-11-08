@@ -453,7 +453,14 @@ async function processRequest(req, env, ctx) {
     item.grupo_variacoes=old?.grupo_variacoes||"";
     if(isFilamentMirror(old))return bad("Edite esta cor pela aba Filamentos.",409);
     const available = baseAvailable(item);
-    if (id && (await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(id).first()).n > available) return bad("As quantidades não cobrem as reservas já aprovadas.",409);
+    if (id) {
+      // O editor não pode reduzir "Em uso" abaixo de empréstimos ainda ativos.
+      // Caso contrário, uma devolução posterior não consegue dar baixa no estoque.
+      const active=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='retirada'").bind(id).first();
+      if(Number(active?.n||0)>item.em_uso)return bad("Em uso não pode ser menor que as unidades de empréstimos ativos. Confirme as devoluções primeiro.",409);
+      const approved=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(id).first();
+      if(Number(approved?.n||0)>available)return bad("As quantidades não cobrem as reservas já aprovadas.",409);
+    }
     const actor = str(body.responsavel,100) || "PETiane";
     const audit = [now(),actor,changes(old,item)];
     const vals = fields.map(k => item[k]);
