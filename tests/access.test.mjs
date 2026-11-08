@@ -179,6 +179,13 @@ const safeEdit=await postAdmin("/api/admin/item",{...auditPayload,id:auditItem.i
 assert.equal(safeEdit.status,200,"Editar a quantidade total sem prejudicar empréstimos deve ser permitido.");
 assert.equal((await post("/api/my/return",{id:auditWithdraw.body.retirada_id,descartados:0},loginUser.cookie)).status,200,"Devolução deve continuar funcionando após edição segura.");
 assert.equal((await call("/api/admin/item?id="+auditItem.id,"DELETE",null,admin)).status,200);
+// Falhas internas não podem mostrar SQL, caminhos privados ou segredos ao visitante.
+const injectedDB={prepare(){throw new Error("SQLITE_ERROR: internals_should_never_leave_api");}};
+const unexpected=await worker.fetch(new Request("https://inventario-pet.pet-educacao.workers.dev/api/catalog"),{...env,DB:injectedDB});
+assert.equal(unexpected.status,500);
+assert.doesNotMatch(JSON.stringify(await unexpected.json()),/internals_should_never_leave_api|SQLITE_ERROR/,"Resposta HTTP 500 não pode expor detalhes internos.");
+const invalidMaterial=await postAdmin("/api/admin/item",{categoria_id:catId,quantidade:3,em_uso:0,nome:""});
+assert.equal(invalidMaterial.status,400,"Validação de material precisa continuar retornando 400.");
 const signedOut=await post("/api/logout",{},admin);
 assert.equal(signedOut.status,200);
 assert.match(signedOut.setCookie,/Max-Age=0/,"Logout explícito deve apagar imediatamente o cookie do Admin.");
