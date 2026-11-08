@@ -556,7 +556,15 @@ function confirmReservationRefusal(reservation){
 }
 async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
-  if(action==="devolver")return returnModal(r);
+  if(action==="devolver"){
+    const material=r.componente_nome||state.admin.componentes.find(x=>x.id===r.componente_id)?.nome||"o material";
+    if(!await niceModalConfirm("Material recebido?","Confirma que "+r.nome_solicitante+" devolveu "+r.quantidade+" unidade(s) de "+material+"?","Recebido"))return;
+    try{
+      await api("/api/admin/reservation","POST",{id,acao:"devolver",responsavel:"Administração"});
+      await adminReload();adminBuild();toast("Recebimento confirmado. Estoque liberado.");
+    }catch(error){toast(error.message,true);}
+    return;
+  }
   if(action==="cancelar_solicitacao_devolucao"){
     if(!await niceModalConfirm("Material não recebido?","A entrega informada pelo visitante será marcada como não recebida, e o empréstimo continuará em uso. Confirme apenas se o material não foi recebido.","Não recebido",true))return;
     try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:"Administração"});await adminReload();adminBuild();toast("Entrega não confirmada. O visitante poderá informar a devolução novamente.");}
