@@ -113,7 +113,10 @@ async function auditLog(db, action, type, id, description, actor="Admin"){
 }
 async function catalog(db, isAdmin = false, member = false) {
   let cats = await results(db, "SELECT id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes FROM categorias ORDER BY ordem,nome");
-  let items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT * FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
+  // A API pública tem lista explícita de campos. Novas colunas privadas do D1
+  // não podem ser expostas automaticamente por um SELECT *.
+  const publicFields="id,categoria_id,nome,imagem,patrimonio,identificacao,quantidade,em_uso,com_defeito,mostrar_quantidade,mostrar_em_uso,mostrar_defeito,descricao_defeito,observacoes,unidade,visivel_visitante,grupo_variacoes,permitir_emprestimos,permitir_petianos,permitir_visitantes,import_key,arquivado,ultima_alteracao";
+  let items = await results(db, isAdmin ? "SELECT * FROM componentes ORDER BY nome COLLATE NOCASE" : "SELECT "+publicFields+" FROM componentes WHERE arquivado=0 ORDER BY nome COLLATE NOCASE");
   if(isAdmin)items=items.filter(item=>!isFilamentMirror(item));
   if (!isAdmin) {
     if (!member){
