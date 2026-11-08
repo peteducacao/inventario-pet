@@ -121,7 +121,7 @@ assert.equal((await req("/api/my/return","POST",{id:direct.body.retirada_id,defe
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,0);
 let individual=await postAdmin("/api/admin/filaments",{acao:"emprestimos",id:blue.id,permitir_emprestimos:false});
 assert.equal(individual.status,200);
-assert.equal((await req("/api/availability?id="+blue.componente_id+"&inicio="+today+"&fim="+end)).status,409,"Bloquear cor não pode desbloquear a categoria.");
+assert.equal((await req("/api/availability?id="+blue.componente_id+"&inicio="+today+"&fim="+end)).status,404,"Cor restrita aos PETianes não deve aparecer para visitantes na consulta de disponibilidade.");
 assert.equal((await req("/api/availability?id="+red.componente_id+"&inicio="+today+"&fim="+end)).status,200,"Bloqueio individual não deve bloquear outra cor.");
 assert.equal((await postAdmin("/api/admin/category",{acao:"emprestimos",id:filamentCat.id,permitir_emprestimos:false})).status,200);
 assert.equal((await req("/api/availability?id="+red.componente_id+"&inicio="+today+"&fim="+end)).status,409);

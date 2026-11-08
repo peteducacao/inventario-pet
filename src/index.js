@@ -398,38 +398,41 @@ async function processRequest(req, env, ctx) {
         if(typeof b.permitir_petianos!=="boolean"||typeof b.permitir_visitantes!=="boolean")return bad("Selecione uma permissão válida.");
         const pet=Number(b.permitir_petianos),visitor=Number(b.permitir_visitantes),both=Number(!!(pet||visitor));
         await db.batch([
-          db.prepare("UPDATE filamentos SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,id),
-          db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=? WHERE id=?").bind(pet,visitor,both,f.componente_id)
+          db.prepare("UPDATE filamentos SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=?,visivel_visitante=? WHERE id=?").bind(pet,visitor,both,visitor,id),
+          db.prepare("UPDATE componentes SET permitir_petianos=?,permitir_visitantes=?,permitir_emprestimos=?,visivel_visitante=? WHERE id=?").bind(pet,visitor,both,visitor,f.componente_id)
         ]);
         await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(pet&&visitor?"Todos":pet?"PETianes":visitor?"Visitantes":"Ninguém"));
       }else if(profile==="petianos"||profile==="visitantes"){
         if(typeof b.permitir!=="boolean")return bad("Permissão inválida.");
         const col=profile==="petianos"?"permitir_petianos":"permitir_visitantes";
         const other=profile==="petianos"?"permitir_visitantes":"permitir_petianos",enabled=b.permitir?1:0;
+        // O acesso de visitantes também governa a visibilidade da cor e do material espelhado.
+        const visibility=profile==="visitantes"?"?":"permitir_visitantes";
+        const extra=profile==="visitantes"?[enabled]:[];
         await db.batch([
-          db.prepare("UPDATE filamentos SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,id),
-          db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END WHERE id=?").bind(enabled,enabled,f.componente_id)
+          db.prepare("UPDATE filamentos SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END,visivel_visitante="+visibility+" WHERE id=?").bind(enabled,enabled,...extra,id),
+          db.prepare("UPDATE componentes SET "+col+"=?,permitir_emprestimos=CASE WHEN ?=1 OR "+other+"=1 THEN 1 ELSE 0 END,visivel_visitante="+visibility+" WHERE id=?").bind(enabled,enabled,...extra,f.componente_id)
         ]);
         await auditLog(db,"Alterou retiradas","filamento",id,f.cor+" · "+(profile==="petianos"?"PETianes":"Visitantes")+" · "+(enabled?"Liberada":"Bloqueada"));
       }else{
         if(typeof b.permitir_emprestimos!=="boolean")return bad("Permissão inválida.");
         const enabled=b.permitir_emprestimos?1:0;
         await db.batch([
-          db.prepare("UPDATE filamentos SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,id),
-          db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=? WHERE id=?").bind(enabled,enabled,enabled,f.componente_id)
+          db.prepare("UPDATE filamentos SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,visivel_visitante=? WHERE id=?").bind(enabled,enabled,enabled,enabled,id),
+          db.prepare("UPDATE componentes SET permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,visivel_visitante=? WHERE id=?").bind(enabled,enabled,enabled,enabled,f.componente_id)
         ]);
         await auditLog(db,"Alterou empréstimos","filamento",id,f.cor+" · "+(enabled?"Liberados":"Bloqueados"));
       }
       return j({ok:true});
     }
     if(action!=="criar"&&action!=="editar")return bad("Ação inválida.");
-    const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade),show=b.visivel_visitante===undefined?1:(b.visivel_visitante?1:0);
+    const cor=str(b.cor,55),hexadecimal=str(b.hexadecimal,7).toUpperCase(),q=integer(b.quantidade);
     if(!cor||cor.length<2||!/^#[0-9A-F]{6}$/.test(hexadecimal)||!Number.isSafeInteger(q)||q<0||q>1000000)return bad("Informe cor, código de cor e quantidade válidos.");
     if(action==="criar"){
       const position=await db.prepare("SELECT COALESCE(MAX(ordem),-1)+1 AS proximo FROM filamentos").first();
       const pet=b.permitir_petianos===undefined?Number(b.permitir_emprestimos!==false):Number(b.permitir_petianos===true);
       const visitor=b.permitir_visitantes===undefined?Number(b.permitir_emprestimos!==false):Number(b.permitir_visitantes===true);
-      const enabled=Number(!!(pet||visitor));
+      const enabled=Number(!!(pet||visitor)),show=visitor;
       await db.batch([
         db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?,?)").bind(cor,hexadecimal,q,position.proximo,now(),show,enabled,pet,visitor),
         db.prepare("INSERT INTO componentes(categoria_id,nome,quantidade,em_uso,com_defeito,import_key,unidade,visivel_visitante,permitir_emprestimos,permitir_petianos,permitir_visitantes,ultima_alteracao) SELECT cat.id,'Filamento - '||f.cor,f.quantidade,0,0,'FILAMENTO-'||f.id,'rolos',f.visivel_visitante,f.permitir_emprestimos,f.permitir_petianos,f.permitir_visitantes,? FROM filamentos f JOIN categorias cat ON cat.nome='Filamentos' WHERE f.cor=?").bind(now(),cor),
@@ -445,7 +448,7 @@ async function processRequest(req, env, ctx) {
       if(q<Number(component.em_uso)+Number(approved?.n||0))return bad("A quantidade não cobre os materiais em uso e já aprovados.",409);
       const pet=b.permitir_petianos===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_petianos):Number(b.permitir_emprestimos===true)):Number(b.permitir_petianos===true);
       const visitor=b.permitir_visitantes===undefined?(b.permitir_emprestimos===undefined?Number(old.permitir_visitantes):Number(b.permitir_emprestimos===true)):Number(b.permitir_visitantes===true);
-      const enabled=Number(!!(pet||visitor));
+      const enabled=Number(!!(pet||visitor)),show=visitor;
       await db.batch([
         db.prepare("UPDATE filamentos SET cor=?,hexadecimal=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,atualizado_em=? WHERE id=?").bind(cor,hexadecimal,q,show,enabled,pet,visitor,now(),id),
         db.prepare("UPDATE componentes SET nome=?,quantidade=?,visivel_visitante=?,permitir_emprestimos=?,permitir_petianos=?,permitir_visitantes=?,ultima_alteracao=? WHERE id=?").bind("Filamento - "+cor,q,show,enabled,pet,visitor,now(),old.componente_id)
