@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {JSDOM,VirtualConsole} from "jsdom";
 
+const identitySource=readFileSync("public/identity-ui.js","utf8");
+const visualCss=readFileSync("public/final.css","utf8");
+assert.match(identitySource,/password-strength-track/,"Cadastro deve renderizar barra da força da senha.");
+assert.match(identitySource,/aria-valuenow/,"Barra precisa acompanhar o nível e ser acessível.");
+for(const color of ["#d92d20","#e3ad22","#168756"])assert.ok(visualCss.includes(color),"Cor do indicador de senha ausente: "+color);
+assert.match(identitySource,/confirmWeakPassword/,"A decisão sobre senha fraca continua livre e consciente.");
 const scripts=["photo-editor.js","excel-export.js","app.js","identity-ui.js","component-art.js","final.js","admin-stage.js"]
   .map(name=>readFileSync("public/"+name,"utf8")).join("\n;\n");
 const invalidSelectors=readFileSync("public/admin-stage.js","utf8").split("\n")
