@@ -81,6 +81,9 @@ assert.ok(sqlite.prepare("SELECT retirado_em FROM reservas WHERE id=?").get(rId)
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"retirar"})).status,409,"Não exigir nem permitir uma segunda retirada.");
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"aprovar"})).status,409,"Não aprovar duas vezes.");
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,2);
+const panelUsers=(await req("/api/admin/users","GET",undefined,admin)).body.usuarios;
+assert.equal(panelUsers.find(x=>x.id===user.body.usuario.id).retiradas_ativas,1,"Painel de Usuários deve contar a retirada ativa de visitante aprovada pelo Admin.");
+assert.equal(panelUsers.find(x=>x.id===memberUser.body.usuario.id).retiradas_ativas,0,"Conta PETiane ainda sem retirada não deve contar.");
 assert.equal((await req("/api/filaments")).body.filamentos.find(x=>x.id===blue.id).em_uso,2);
 assert.equal((await req("/api/my/loans","GET",undefined,visitor)).body.emprestimos.find(r=>r.id===rId).status,"retirada");
 assert.equal((await req("/api/my/return","POST",{id:rId,defeituosos:0},member)).status,404,"Outro titular não pode devolver empréstimo alheio.");
@@ -102,6 +105,8 @@ assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver"})
 const direct=await req("/api/member/withdraw","POST",{componente_id:blue.componente_id,quantidade:1,data_devolucao:""},member);
 assert.equal(direct.status,201,JSON.stringify(direct.body));
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,1);
+const directUsers=(await req("/api/admin/users","GET",undefined,admin)).body.usuarios;
+assert.equal(directUsers.find(x=>x.id===memberUser.body.usuario.id).retiradas_ativas,1,"Painel de Usuários deve contar também as retiradas diretas de PETianes.");
 assert.equal((await req("/api/my/return","POST",{id:direct.body.retirada_id,defeituosos:0},member)).status,200);
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,0);
 let individual=await postAdmin("/api/admin/filaments",{acao:"emprestimos",id:blue.id,permitir_emprestimos:false});
