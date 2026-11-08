@@ -15,7 +15,8 @@ for(const filename of [
   "0010_historico_visibilidade.sql","0013_gmail_queue.sql","0014_email_usuarios.sql",
   "0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql",
   "0020_central_vinculos.sql","0021_estoque_sem_defeitos.sql",
-  "0022_seguranca_contas_email_recuperacao.sql","0023_devolucoes_visitantes_pendentes.sql"
+  "0022_seguranca_contas_email_recuperacao.sql","0023_devolucoes_visitantes_pendentes.sql",
+  "0024_imagem_independente_vinculos.sql"
 ])sqlite.exec(readFileSync("migrations/"+filename,"utf8"));
 // Coluna futura simulando dado que nunca deve aparecer no catálogo público.
 sqlite.exec("ALTER TABLE componentes ADD COLUMN segredo_privado_admin TEXT DEFAULT 'SENTINELA_PRIVADA_NAO_EXIBIR'");
@@ -228,7 +229,7 @@ for(const [path,method,body,cookie] of badRequests){
 }
 const noAdmin=await request("/api/admin/state","GET");
 status(401,noAdmin,"Painel sem sessão não permite acesso");
-const reset=await auth("/api/admin/reservations/reset",{confirmar:"APAGAR TODAS AS RESERVAS"});
+const reset=await auth("/api/admin/reservations/reset",{confirmar:true});
 status(200,reset,"Limpeza total sem retiradas ativas");
 assert.equal(count("SELECT COUNT(*) AS n FROM reservas"),0);
 status(200,await post("/api/logout",{},admin),"Sair do Admin");
