@@ -5,7 +5,7 @@ function adminCounts(){
   const reservations=state.admin?.reservas||[];
   return {items:items.length,used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
     available:items.reduce((n,x)=>n+stock(x),0),
-    pending:reservations.filter(x=>x.status==="pendente").length};
+    pending:reservations.filter(x=>x.status==="pendente"||(x.status==="retirada"&&x.devolucao_solicitada_em)).length};
 }
 function adminLastUpdate(){
   const items=state.admin?.componentes||[];
@@ -480,6 +480,7 @@ function paintAdminMaterials(){
 /* Reservas: grupos mutuamente exclusivos. */
 function reservationGroup(r){
   if(r.status==="pendente")return "pendente";
+  if(r.status==="retirada"&&r.devolucao_solicitada_em)return "devolucoes";
   if(r.status==="retirada"&&!Number(r.sem_prazo)&&r.data_devolucao<localDate())return "atrasadas";
   if(r.status==="aprovada"||r.status==="retirada")return "ativas";
   return "concluidas";
@@ -487,7 +488,7 @@ function reservationGroup(r){
 function adminReservations(root){
   const all=state.admin.reservas||[];
   const filter=UI.reservationFilter;
-  const filters=[["pendente","Pendentes"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]];
+  const filters=[["pendente","Pendentes"],["devolucoes","Devoluções a confirmar"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]];
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Reservas e devoluções</h2></div></div>'+
     '<div class="admin-tools" style="gap:8px">'+filters.map(([key,label])=>
       '<button type="button" class="chip '+(filter===key?"active":"")+'" data-admin-res-filter="'+key+'">'+label+' <small>'+all.filter(r=>key==="todas"||reservationGroup(r)===key).length+'</small></button>').join("")+'</div>'+
@@ -503,16 +504,17 @@ function adminReservations(root){
 }
 function reservationRow(r){
   const x=state.admin.componentes.find(z=>z.id===r.componente_id);
-  const group=reservationGroup(r),tag={pendente:"Pendente",ativas:r.status==="aprovada"?"Aprovada":"Retirado",atrasadas:"Atrasada",concluidas:r.status==="devolvida"?"Devolvido":"Encerrada"}[group];
-  const cls=group==="pendente"?"pending":group==="ativas"?(r.status==="retirada"?"picked":"approved"):group==="atrasadas"?"late":"";
+  const group=reservationGroup(r),tag={pendente:"Pendente",devolucoes:"Aguardando conferência",ativas:r.status==="aprovada"?"Aprovada":"Retirado",atrasadas:"Atrasada",concluidas:r.status==="devolvida"?"Devolvido":"Encerrada"}[group];
+  const cls=group==="pendente"||group==="devolucoes"?"pending":group==="ativas"?(r.status==="retirada"?"picked":"approved"):group==="atrasadas"?"late":"";
   const actions=r.status==="pendente"?'<button class="primary-button" type="button" data-res-do="aprovar" data-id="'+r.id+'">'+iconSvg("check",14)+' Aprovar e entregar</button><button type="button" class="danger-button" data-res-do="recusar" data-id="'+r.id+'">Recusar</button>':
     r.status==="aprovada"?'<button type="button" class="outline-button" data-res-do="retirar" data-id="'+r.id+'">Regularizar aprovação antiga</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
-    r.status==="retirada"?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>':"";
-  const mailAction=r.status==="retirada"&&(r.email_conta||r.email)?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
+    r.status==="retirada"?(r.devolucao_solicitada_em?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Confirmar recebimento</button><button type="button" class="outline-button" data-res-do="cancelar_solicitacao_devolucao" data-id="'+r.id+'">Não recebido</button>':'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>'):"";
+  const mailAction=r.status==="retirada"&&!r.devolucao_solicitada_em&&(r.email_conta||r.email)?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
   return '<div class="reservation-row">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb"></div>')+
     '<div><h3>#'+r.id+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3><small>'+esc(r.nome_solicitante)+' · '+r.quantidade+' un.'+(r.tipo==="retirada_direta"?" · PETiano":"")+'</small>'+
     (r.contato?'<small style="display:block">'+esc(r.contato)+'</small>':"")+
-    (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+'</div>'+
+    (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+
+    (r.devolucao_solicitada_em?'<small style="display:block;color:#936000">Devolução solicitada em '+esc(fmt(r.devolucao_solicitada_em))+(r.devolucao_solicitada_observacao?' · '+esc(r.devolucao_solicitada_observacao):"")+'</small>':"")+'</div>'+
     '<div class="reservation-date"><small>Retirada</small><strong>'+esc(formatDay(r.data_inicio))+'</strong></div>'+
     '<div class="reservation-date"><small>Devolução</small><strong>'+(r.sem_prazo?'Sem prazo':esc(formatDay(r.data_devolucao)))+'</strong></div>'+
     '<span class="tag '+cls+'">'+tag+'</span><div class="reservation-actions">'+actions+mailAction+'</div></div>';
@@ -555,6 +557,12 @@ function confirmReservationRefusal(reservation){
 async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
   if(action==="devolver")return returnModal(r);
+  if(action==="cancelar_solicitacao_devolucao"){
+    if(!await niceModalConfirm("Material não recebido?","A solicitação de devolução será devolvida ao visitante, e o empréstimo continuará em uso. Confirme apenas se o material não foi recebido.","Não recebido",true))return;
+    try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:"Administração"});await adminReload();adminBuild();toast("Solicitação devolvida ao visitante.");}
+    catch(e){toast(e.message,true);}
+    return;
+  }
   if(action==="cobrar"){
     try{
       const draft=await api("/api/admin/mail/preview?id="+id);
@@ -583,7 +591,7 @@ async function adminReservationAction(id,action){
     decision=await confirmReservationRefusal(r);
     if(!decision)return;
   }else{
-    const descriptions={aprovar:"Aprovar e confirmar que "+r.nome_solicitante+" recebeu o material? A retirada será registrada automaticamente, e a pessoa poderá registrar a devolução pela própria conta.",retirar:"Regularizar uma aprovação antiga e registrar a retirada?"};
+    const descriptions={aprovar:"Aprovar e confirmar que "+r.nome_solicitante+" recebeu o material? A retirada será registrada automaticamente. Visitantes deverão solicitar a devolução e aguardar a conferência pelo Admin.",retirar:"Regularizar uma aprovação antiga e registrar a retirada?"};
     if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar"))return;
   }
   try{
