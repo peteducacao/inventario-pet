@@ -104,6 +104,30 @@ export async function generateDailyEmails(env){
   }
   return {ok:true,verificados:checked,enfileirados:queued,hoje:today};
 }
+// Caminho opcional de entrega imediata: Google Apps Script publicado como Web App.
+// Sem configuração, o mesmo e-mail segue na fila normal (gatilho de 5 minutos).
+export async function triggerRecoveryEmail(env){
+  const endpoint=String(env?.PET_MAIL_WEBHOOK_URL||"").trim();
+  if(!endpoint||!env?.MAIL_BRIDGE_TOKEN)return false;
+  let url;
+  try{
+    url=new URL(endpoint);
+    if(url.protocol!=="https:"||url.hostname!=="script.google.com"||!/^\/macros\/s\/[^/]+\/exec$/.test(url.pathname))throw Error("URL de Apps Script inválida");
+    const response=await fetch(url.toString(),{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({acao:"recuperacao",token:env.MAIL_BRIDGE_TOKEN}),
+      signal:AbortSignal.timeout(25000)
+    });
+    if(!response.ok)throw Error("HTTP "+response.status);
+    const result=await response.json();
+    if(result?.ok!==true)throw Error("Web App não confirmou o acionamento");
+    return true;
+  }catch(error){
+    console.error("Envio imediato de recuperação indisponível; mensagem permanece na fila:",String(error?.message||error).slice(0,180));
+    return false;
+  }
+}
 export async function mailAdminAPI(req,env){
   const path=new URL(req.url).pathname, db=env.DB;
   if(path==="/api/admin/mail/events"&&req.method==="GET"){
