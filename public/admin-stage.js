@@ -377,8 +377,10 @@ function editVariationGroupPhoto(name){
   if(!group){toast("Vínculo não encontrado.",true);return;}
   const members=(state.admin?.componentes||[]).filter(x=>!isArchived(x)&&String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===key)
     .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
-  const current=group.imagem?"propria":group.imagem_componente_id?"integrante:"+group.imagem_componente_id:"nenhuma";
+  const current=group.imagem===PET_GROUP_DEFAULT_COVER?"padrao":
+    group.imagem?"propria":group.imagem_componente_id?"integrante:"+group.imagem_componente_id:"nenhuma";
   const options='<option value="nenhuma">Sem foto do vínculo</option>'+
+    '<option value="padrao">Usar imagem padrão</option>'+
     '<option value="propria" '+(current==="propria"?"selected":"")+'>Enviar foto própria</option>'+
     members.map(x=>'<option value="integrante:'+x.id+'" '+(current==="integrante:"+x.id?"selected":"")+'>Usar foto de '+esc(x.nome)+'</option>').join("");
   const form='<form id="group-photo-form" class="modal-main">'+
@@ -387,16 +389,17 @@ function editVariationGroupPhoto(name){
     '<div id="group-photo-preview" class="media-preview group-photo-preview"></div>'+
     '<div class="field" id="group-photo-upload-row" hidden><label for="group-photo-upload">Enviar foto (PNG, JPG ou WebP)</label><input type="file" id="group-photo-upload" accept="image/png,image/jpeg,image/webp"><small class="hint">Você poderá ajustar o enquadramento antes de salvar.</small></div>'+
     '<div class="modal-footer"><button type="button" class="secondary-button" id="group-photo-cancel">Cancelar</button><button type="submit" class="primary-button" id="group-photo-save">Salvar imagem</button></div></form>';
-  openModal("Editar imagem: "+group.nome,"Escolha uma capa própria ou a foto de um integrante.",form,{size:"wide"});
-  let own=group.imagem||"";
+  openModal("Editar imagem: "+group.nome,"Escolha a ilustração padrão, uma foto própria ou a foto de um integrante.",form,{size:"wide"});
+  let own=group.imagem&&group.imagem!==PET_GROUP_DEFAULT_COVER?group.imagem:"";
   const choice=$("#group-photo-source"),preview=$("#group-photo-preview");
-  const validSource=current==="propria"||current==="nenhuma"||members.some(x=>current==="integrante:"+x.id);
+  const validSource=current==="propria"||current==="nenhuma"||current==="padrao"||members.some(x=>current==="integrante:"+x.id);
   choice.value=validSource?current:"nenhuma";
   const redraw=()=>{
     const selected=choice.value;
     $("#group-photo-upload-row").hidden=selected!=="propria";
     const member=selected.startsWith("integrante:")?members.find(x=>x.id===Number(selected.slice("integrante:".length))):null;
-    const image=selected==="propria"?own:member?itemImage(member):"";
+    const image=selected==="padrao"?componentArt(group.nome):
+      selected==="propria"?own:member?itemImage(member):"";
     preview.innerHTML=image?'<img alt="Prévia da imagem do vínculo" src="'+attr(image)+'">':'<p class="hint">Sem foto do vínculo</p>';
   };
   choice.onchange=redraw;
@@ -414,7 +417,8 @@ function editVariationGroupPhoto(name){
     const selected=choice.value;
     if(selected==="propria"&&!own){toast("Selecione uma foto para o vínculo.",true);return;}
     const btn=$("#group-photo-save");btn.disabled=true;btn.textContent="Salvando…";
-    const data=selected==="propria"?{modo:"propria",imagem:own}:selected.startsWith("integrante:")?
+    const data=selected==="padrao"?{modo:"padrao"}:
+      selected==="propria"?{modo:"propria",imagem:own}:selected.startsWith("integrante:")?
       {modo:"integrante",componente_id:Number(selected.slice("integrante:".length))}:{modo:"nenhuma"};
     try{
       await api("/api/admin/variation-groups","POST",{acao:"imagem",nome:group.nome,responsavel:state.actor||"Admin",...data});

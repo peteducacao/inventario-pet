@@ -96,6 +96,8 @@ function pageButtons(info,which){
   return html;
 }
 // Ilustrações locais restauradas; sem URLs de fotos genéricas de terceiros.
+// Valor reservado exclusivamente às capas automáticas de vínculos.
+const PET_GROUP_DEFAULT_COVER="__PET_GROUP_DEFAULT__";
 function defaultImage(name){return componentArt(name);}
 function itemImage(x){return imageForPETItem(x);}
 function thumb(x,clazz="material-thumb"){
@@ -179,7 +181,10 @@ function finalCard(original,siblings=[]){
   // Sem capa configurada o grupo fica intencionalmente sem foto, mesmo após escolher modelo.
   const groupCover=grouped?(state.data.grupos_variacoes||[]).find(g=>String(g.nome||"").trim().toLocaleLowerCase("pt-BR")===groupKey):null;
   const coverMember=grouped&&groupCover?.imagem_componente_id?siblings.find(v=>Number(v.id)===Number(groupCover.imagem_componente_id)):null;
-  const img=grouped?(groupCover?.imagem||(coverMember?itemImage(coverMember):"")):itemImage(x);
+  const img=grouped?
+    (groupCover?.imagem===PET_GROUP_DEFAULT_COVER?componentArt(familyName):
+      (groupCover?.imagem||(coverMember?itemImage(coverMember):""))):
+    itemImage(x);
   const canWithdraw=identityIsMember(),loanOK=typeof borrowableItem==="function"?borrowableItem(x):true;
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
