@@ -118,6 +118,28 @@ assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver",r
 assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(rId).status,"devolvida");
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,0,"Estoque liberado só na confirmação.");
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver"})).status,409,"Bloquear confirmação dupla.");
+// Registrar a recusa sempre pela identidade real da sessão pessoal, nunca
+// usando um nome escolhido no navegador. Só Admin => "Administração do PET".
+const claimantId=sqlite.prepare("SELECT usuario_id FROM reservas WHERE id=?").get(rId).usuario_id;
+const pendingRefusal=()=>Number(sqlite.prepare("INSERT INTO reservas(componente_id,nome_solicitante,email,quantidade,data_inicio,data_devolucao,status,usuario_id,tipo) VALUES (?,'Visitante recusa','visitante-test@example.com',1,?,?,'pendente',?,'reserva')")
+  .run(blue.componente_id,today,end,claimantId).lastInsertRowid);
+const fallbackId=pendingRefusal();
+const adminRefusal=await postAdmin("/api/admin/reservation",{id:fallbackId,acao:"recusar",responsavel:"Nome falso",observacao:"Material reservado para outra oficina"});
+assert.equal(adminRefusal.status,200);
+assert.equal(sqlite.prepare("SELECT responsavel_admin FROM reservas WHERE id=?").get(fallbackId).responsavel_admin,"Administração do PET",
+  "Sem login pessoal, a assinatura é Administração do PET e ignora payload forjado.");
+const adminNotice=sqlite.prepare("SELECT mensagem FROM notificacoes WHERE reserva_id=? ORDER BY id DESC LIMIT 1").get(fallbackId);
+assert.match(adminNotice.mensagem,/recusada por Administração do PET/);
+assert.match(adminNotice.mensagem,/Material reservado para outra oficina/);
+const loggedId=pendingRefusal();
+const loggedRefusal=await req("/api/admin/reservation","POST",{id:loggedId,acao:"recusar",responsavel:"Nome falso da requisição"},admin+"; "+member);
+assert.equal(loggedRefusal.status,200,"Admin com login pessoal pode decidir sem digitar o nome.");
+assert.equal(sqlite.prepare("SELECT responsavel_admin FROM reservas WHERE id=?").get(loggedId).responsavel_admin,"Pessoa PETiane",
+  "A conta pessoal autenticada determina o responsável.");
+assert.match(sqlite.prepare("SELECT mensagem FROM notificacoes WHERE reserva_id=? ORDER BY id DESC LIMIT 1").get(loggedId).mensagem,/recusada por Pessoa PETiane/);
+assert.equal((await postAdmin("/api/admin/reservation",{id:loggedId,acao:"recusar"})).status,409,
+  "Recusa duplicada não pode gerar outra decisão.");
+
 const direct=await req("/api/member/withdraw","POST",{componente_id:blue.componente_id,quantidade:1,data_devolucao:""},member);
 assert.equal(direct.status,201,JSON.stringify(direct.body));
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,1);
