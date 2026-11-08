@@ -609,10 +609,8 @@ function paintReservations(){
 }
 function confirmReservationRefusal(reservation){
   return new Promise(resolve=>{
-    const userName=state.identity?.nome||"";
     const body='<form class="modal-main" id="admin-refusal-form">'+
-      '<p class="notice">A pessoa receberá uma notificação informando a recusa e quem tomou a decisão, se a solicitação estiver vinculada à conta dela.</p>'+
-      '<div class="field"><label for="admin-refusal-actor">Nome de quem recusou *</label><input id="admin-refusal-actor" required maxlength="80" autocomplete="name" placeholder="Nome do(a) responsável" value="'+attr(userName)+'"></div>'+
+      '<p class="notice">A pessoa receberá uma notificação da recusa, se a reserva estiver vinculada à conta dela. O responsável será identificado automaticamente pela conta pessoal conectada ou como Administração do PET.</p>'+
       '<div class="field"><label for="admin-refusal-reason">Motivo da recusa (opcional)</label><textarea id="admin-refusal-reason" maxlength="500" rows="3" placeholder="Ex.: material indisponível para o período"></textarea></div>'+
       '<div class="modal-footer" style="border:0;padding:14px 0 0;display:flex;gap:8px;flex-wrap:wrap">'+
       '<button type="button" class="outline-button" id="admin-refusal-cancel">Cancelar</button>'+
@@ -623,11 +621,8 @@ function confirmReservationRefusal(reservation){
     const x=$("#modal-root [data-close]");if(x)x.onclick=()=>finish(null);
     $("#admin-refusal-form").onsubmit=e=>{
       e.preventDefault();
-      const actor=$("#admin-refusal-actor").value.trim();
-      if(actor.length<2){$("#admin-refusal-actor").setCustomValidity("Informe o nome de quem tomou a decisão.");$("#admin-refusal-actor").reportValidity();return;}
-      finish({responsavel:actor,observacao:$("#admin-refusal-reason").value.trim()});
+      finish({observacao:$("#admin-refusal-reason").value.trim()});
     };
-    $("#admin-refusal-actor").oninput=e=>e.target.setCustomValidity("");
   });
 }
 async function adminReservationAction(id,action){
@@ -683,7 +678,7 @@ async function adminReservationAction(id,action){
     if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar"))return;
   }
   try{
-    const response=await api("/api/admin/reservation","POST",{id,acao:action,responsavel:decision?.responsavel||"Administração",...(decision?{observacao:decision.observacao}:{})});
+    const response=await api("/api/admin/reservation","POST",{id,acao:action,...(action==="recusar"?{}:{responsavel:"Administração"}),...(decision?{observacao:decision.observacao}:{})});
     await adminReload();adminBuild();
     if(action==="recusar"&&response.notificacao_registrada===false){
       toast("Reserva recusada, mas esta solicitação não está vinculada a uma conta: notificação não enviada.",true);
