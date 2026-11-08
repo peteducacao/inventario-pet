@@ -145,16 +145,27 @@ function finalCard(original,siblings=[]){
   const grouped=Boolean(familyName)&&siblings.length>0;
   const x=selection||original;
   if(x._filament){
-    const free=Math.max(0,Number(x.quantidade)-Number(x.em_uso||0));
+    const quantity=Number(x.quantidade)||0,used=Number(x.em_uso)||0;
+    const free=Math.max(0,quantity-used);
     const member=identityIsMember();
     const enabled=Number(x.componente_id)>0&&Number(member?x.permitir_petianos:x.permitir_visitantes)===1&&Number(member?x.categoria_petianos:x.categoria_visitantes)===1;
+    const type=free===0?"empty":used>free?"busy":"";
+    const status=free===0?"Sem estoque":used>free?"Em uso":"Disponível";
+    const mark=type==="empty"?"×":type==="busy"?"◉":"✓";
+    // Todos os cards usam título, categoria, indicadores e botão na mesma ordem;
+    // o filamento diferencia-se apenas pela ilustração da bobina colorida.
     return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
-      '<div class="filament-art" style="--filament-color:'+attr(x.hexadecimal)+'"><div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div></div>'+
-      '<div class="catalog-body"><span class="catalog-category">Filamentos</span><h3>'+esc(x.cor)+'</h3>'+
-      '<div class="filament-quantity"><span>Quantidade <strong>'+Number(x.quantidade)+'</strong></span><span>Em uso <strong>'+Number(x.em_uso||0)+'</strong></span></div>'+
-      '<div class="filament-quantity"><span>Disponíveis</span><strong>'+free+'</strong></div>'+
-      '<button type="button" class="primary-button '+(member?"withdraw-button":"reserve-card-button")+'"'+(enabled&&free?' data-reserve-item="'+Number(x.componente_id)+'"':' disabled')+'>'+
-      (member?"Retirar":"Reservar")+'</button></div></article>';
+      '<div class="catalog-photo filament-art" style="--filament-color:'+attr(x.hexadecimal)+'">'+
+      '<div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div>'+
+      '<span class="status-dot '+type+'"><span aria-hidden="true">'+mark+'</span> '+status+'</span></div>'+
+      '<div class="catalog-body"><h3>'+esc(x.cor)+'</h3>'+
+      '<span class="catalog-category">'+iconSvg("box",13)+' Filamentos</span>'+
+      '<div class="catalog-numbers"><div><span>Quantidade</span><strong>'+quantity+'</strong></div>'+
+      '<div><span>Em uso</span><strong>'+used+'</strong></div>'+
+      '<div><span>Disponível</span><strong>'+free+'</strong></div></div>'+
+      '<button type="button" class="primary-button '+(member?"withdraw-button":"reserve-card-button")+'"'+
+      (enabled&&free?' data-reserve-item="'+Number(x.componente_id)+'"':' disabled')+'>'+
+      iconSvg(member?"logout":"calendar",16)+' '+(member?"Retirar":"Reservar")+'</button></div></article>';
   }
   const showGroupTotals=grouped&&!selection;
   // Antes de escolher o modelo, mostrar a soma da família sem confundir
