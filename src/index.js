@@ -163,7 +163,7 @@ async function safeRate(db, req, prefix, max, hours = 1) {
   await db.prepare("INSERT INTO reserva_limites(hash,criado_em) VALUES(?,?)").bind(hash, now()).run();
   return true;
 }
-async function processRequest(req, env) {
+async function processRequest(req, env, ctx) {
   const url = new URL(req.url), path = url.pathname, method = req.method, db = env.DB;
   if (!db) return bad("O banco de dados não está configurado.", 503);
   if (!["GET", "HEAD"].includes(method)) {
@@ -237,7 +237,7 @@ async function processRequest(req, env) {
     if (token) await db.prepare("DELETE FROM admin_sessions WHERE hash=?").bind(await toHash(token)).run();
     return j({ ok:true },200,{ "set-cookie":"__Host_pet_session=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0" });
   }
-  const identityResponse=await identityAPI(req,env,()=>auth(req,db));
+  const identityResponse=await identityAPI(req,env,()=>auth(req,db),ctx);
   if(identityResponse)return identityResponse;
   if (!path.startsWith("/api/admin/")) return bad("Endereço não encontrado.",404);
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
@@ -853,10 +853,10 @@ async function cleanup(db) {
   return removed;
 }
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const path = new URL(req.url).pathname;
     if (!path.startsWith("/api/")) return env.ASSETS.fetch(req);
-    try { return await processRequest(req,env); }
+    try { return await processRequest(req,env,ctx); }
     catch (error) {
       console.error("Inventario API:", error?.message || error);
       const msg = String(error?.message || "");
