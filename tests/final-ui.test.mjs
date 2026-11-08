@@ -284,8 +284,10 @@ assert.equal(d.querySelectorAll(".variant-picker-option").length,2,"O toque no c
 assert.match(d.querySelector("#modal-root").textContent,/Resistor 220Ω/);
 await click('[data-pick-variant="2"]');
 assert.equal(d.querySelector(".variant-picker-option"),null,"A seleção deve fechar a janela.");
-assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector(".variant-selected").textContent,/220/);
-assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector(".catalog-numbers").textContent,/9/);
+const resistorCard=d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card");
+assert.equal(resistorCard.querySelector(".variant-selected"),null,"O card não deve mostrar Modelo escolhido.");
+assert.equal(resistorCard.querySelectorAll(".catalog-numbers strong")[0].textContent,"24","A quantidade agrupada permanece somada após a escolha.");
+assert.equal(resistorCard.querySelectorAll(".catalog-numbers strong")[2].textContent,"24","O disponível do grupo permanece somado após a escolha.");
 assert.equal(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").querySelector(".variant-main-button").textContent.trim(),"Reservar","O botão permanece Reservar após escolher o modelo.");
 await click('.variant-main-button[data-open-variants="resistores"]');
 assert.equal(d.querySelectorAll(".variant-picker-option").length,2,"O botão Reservar abre a lista de modelos.");
@@ -305,9 +307,10 @@ assert.match(d.querySelector("#modal-root").textContent,/Alcalina 1.5V Pilha Pal
 assert.match(d.querySelector("#modal-root").textContent,/Alcalina 9V/);
 await click('[data-pick-variant="6"]');
 const alkalineCard=d.querySelector('.catalog-photo[data-open-variants="alcalina"]').closest(".catalog-card");
-assert.match(alkalineCard.querySelector(".variant-selected").textContent,/Pilha Palito/);
+assert.equal(alkalineCard.querySelector(".variant-selected"),null,"Pilha Alcalina não deve mostrar Modelo escolhido.");
 assert.equal(alkalineCard.querySelector(".variant-main-button").textContent.trim(),"Reservar");
-assert.match(alkalineCard.querySelector(".catalog-numbers").textContent,/4/);
+assert.equal(alkalineCard.querySelectorAll(".catalog-numbers strong")[0].textContent,"60","O grupo continua mostrando a soma depois de escolher um modelo.");
+assert.equal(alkalineCard.querySelectorAll(".catalog-numbers strong")[2].textContent,"60","O disponível não pode mudar sem um rótulo de modelo.");
 await click('.variant-main-button[data-open-variants="alcalina"]');
 assert.equal(d.querySelectorAll(".variant-picker-option").length,3,"Reservar reabre a seleção, mesmo após escolher outro modelo.");
 await click('[data-pick-variant="6"]');
@@ -315,6 +318,7 @@ assert.ok(d.querySelector("#reservation-form"),"Reservar precisa continuar a par
 assert.equal(d.querySelector("#r-item").value,"6","O formulário usa o modelo de Pilha Palito selecionado.");
 await click("#modal-root [data-close]");
 assert.equal(d.querySelectorAll(".variant-open").length,0,"Nenhum card deve renderizar Ver variações.");
+assert.equal(d.querySelectorAll(".grouped-card .variant-selected").length,0,"Os grupos não mostram rótulo de modelo escolhido, nem reservam espaço.");
 assert.ok(Array.from(d.querySelectorAll(".catalog-photo img")).every(img=>!img.getAttribute("src").includes("commons.wikimedia")),"Nenhuma foto deve usar Wikimedia; grupos sem capa não possuem tag img.");
 assert.ok(d.querySelector("#public-sidebar [data-public-action='admin']"),"Entrada Admin não apareceu.");
 assert.equal(d.querySelector("#public-sidebar [data-public-action='admin']").tagName,"A","Admin deve ser um link real para abrir em nova guia.");

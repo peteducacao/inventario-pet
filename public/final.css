@@ -287,7 +287,6 @@ body:not(.admin-mode) .inventory-section .catalog-photo{height:129px}
 body:not(.admin-mode) .inventory-section .catalog-body{padding:7px 11px 10px}
 body:not(.admin-mode) .inventory-section .catalog-body h3{min-height:23px;line-height:1.2;margin-bottom:5px}
 body:not(.admin-mode) .inventory-section .catalog-numbers{margin:8px 0 9px}
-.variant-selected{display:block;font-size:11px;font-weight:750;color:#477082;margin:6px 0 4px;line-height:1.25}
 .variant-choices{display:flex;gap:5px;overflow-x:auto;scrollbar-width:thin;padding:2px 0 6px;margin:0 0 5px;max-width:100%;align-items:center}
 .variant-chip{border:1px solid #d4e8e3;background:#f4faf8;color:#295e55;border-radius:18px;padding:6px 9px;font-size:10px;font-weight:700;white-space:nowrap;flex-shrink:0;cursor:pointer}
 .variant-chip.active{background:#098b73;border-color:#098b73;color:#fff}
@@ -348,7 +347,6 @@ body:not(.admin-mode) .inventory-section .catalog-numbers{margin:8px 0 9px}
 /* Famílias de componentes: escolher modelo ao abrir o card, sem cards duplicados. */
 .grouped-card .catalog-photo{cursor:pointer}
 .grouped-card .catalog-body h3{margin-bottom:5px}
-.grouped-card .variant-selected{font-size:10px;color:#466678;margin:5px 0 1px}
 .grouped-card .variant-main-button{background:linear-gradient(130deg,#158b83,#08757b)!important;color:#fff!important}
 .variant-picker{display:flex;flex-direction:column;gap:10px}
 .variant-picker-option{display:flex;align-items:center;gap:13px;width:100%;min-height:87px;
@@ -364,7 +362,6 @@ body:not(.admin-mode) .inventory-section .catalog-numbers{margin:8px 0 9px}
 .variant-picker-details small{font-size:11px;line-height:1.4;color:#617b86}
 .variant-picker-arrow{font-size:25px;color:#158c7c}
 @media(max-width:720px){
- .grouped-card .variant-selected{font-size:9.5px}
  .variant-picker-option{gap:10px;padding:9px}
  .variant-picker-photo{width:66px;height:62px;flex-basis:66px}
  .variant-picker-details strong{font-size:12px}

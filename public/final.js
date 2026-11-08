@@ -141,9 +141,9 @@ function orderedCatalogGroups(groups,sort){
 function finalCard(original,siblings=[]){
   const familyName=String(original.grupo_variacoes||"").trim();
   const groupKey=familyName.toLocaleLowerCase("pt-BR");
-  const selection=siblings.find(a=>a.id===UI.variantChoice[groupKey]);
   const grouped=Boolean(familyName)&&siblings.length>0;
-  const x=selection||original;
+  // O card representa o grupo; a escolha do modelo aparece só ao reservar/retirar.
+  const x=original;
   if(x._filament){
     const quantity=Number(x.quantidade)||0,used=Number(x.em_uso)||0;
     const free=Math.max(0,quantity-used);
@@ -167,9 +167,9 @@ function finalCard(original,siblings=[]){
       (enabled&&free?' data-reserve-item="'+Number(x.componente_id)+'"':' disabled')+'>'+
       iconSvg(member?"logout":"calendar",16)+' '+(member?"Retirar":"Reservar")+'</button></div></article>';
   }
-  const showGroupTotals=grouped&&!selection;
-  // Antes de escolher o modelo, mostrar a soma da família sem confundir
-  // com o estoque de uma variação específica.
+  // Os indicadores do card agrupado permanecem totais, mesmo depois da
+  // seleção: sem o rótulo de modelo não podem passar a ser números individuais.
+  const showGroupTotals=grouped;
   const total=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.quantidade)||0),0):Number(x.quantidade)||0;
   const used=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.em_uso)||0),0):Number(x.em_uso)||0;
   const free=showGroupTotals?siblings.reduce((n,v)=>n+stock(v),0):stock(x);
@@ -197,8 +197,6 @@ function finalCard(original,siblings=[]){
       '<span class="group-no-photo" aria-label="Vínculo sem foto">Sem foto do vínculo</span>')+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
     '<div class="catalog-body"><h3>'+esc(familyName||x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
-    (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':""):
-      (familyName?'<span class="variant-selected">Modelo: '+esc(x.nome)+'</span>':""))+
     (asset&&!showGroupTotals?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':"")+
     '<div class="catalog-numbers"><div><span>Quantidade</span><strong>'+total+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Disponível</span><strong>'+free+'</strong></div></div>'+
     action+'</div></article>';
