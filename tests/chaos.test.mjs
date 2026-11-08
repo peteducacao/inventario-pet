@@ -17,6 +17,8 @@ for(const filename of [
   "0020_central_vinculos.sql","0021_estoque_sem_defeitos.sql",
   "0022_seguranca_contas_email_recuperacao.sql","0023_devolucoes_visitantes_pendentes.sql"
 ])sqlite.exec(readFileSync("migrations/"+filename,"utf8"));
+// Coluna futura simulando dado que nunca deve aparecer no catálogo público.
+sqlite.exec("ALTER TABLE componentes ADD COLUMN segredo_privado_admin TEXT DEFAULT 'SENTINELA_PRIVADA_NAO_EXIBIR'");
 class Prepared {
   constructor(sql){this.sql=sql;this.values=[];}
   bind(...values){this.values=values;return this;}
@@ -77,6 +79,7 @@ assert.equal(catalogRaw.headers.get("x-frame-options"),"SAMEORIGIN");
 assert.equal(catalogRaw.headers.get("referrer-policy"),"no-referrer");
 const publicPayload=await catalogRaw.json();
 assert.doesNotMatch(JSON.stringify(publicPayload),/password_hash|password_salt|recovery_hash|admin_sessions|token_reserva|identity_mail_queue|__Host_pet/,"Catálogo público não pode vazar credenciais ou hashes.");
+assert.doesNotMatch(JSON.stringify(publicPayload),/segredo_privado_admin|SENTINELA_PRIVADA_NAO_EXIBIR/,"Novas colunas sensíveis do banco nunca podem vazar via SELECT * público.");
 cases+=4;
 const r=await post("/api/login",{senha:env.ADMIN_PASSWORD});
 status(200,r,"Login Admin");const admin=r.cookie;
