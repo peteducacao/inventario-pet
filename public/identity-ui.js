@@ -338,22 +338,29 @@ async function memberHistoryModal(){
 }
 function memberReturnModal(loan){
   if(!loan)return memberHistoryModal();
-  const body='<form id="member-return-form" class="modal-main"><p>Confirmar a devolução de <strong>'+loan.quantidade+' unidade(s) de '+esc(loan.componente_nome)+'</strong>?</p>'+
-    '<div class="field"><label for="member-discard">Unidades descartadas (opcional)</label><div class="stepper"><button type="button" class="step" data-target="member-discard" data-delta="-1">−</button><input id="member-discard" type="number" min="0" max="'+loan.quantidade+'" value="0" required><button type="button" class="step" data-target="member-discard" data-delta="1">+</button></div><small>Unidades descartadas saem da quantidade total; as demais ficam disponíveis.</small></div>'+
+  const visitor=state.identity?.tag!=="petiano";
+  if(visitor&&loan.devolucao_solicitada_em){toast("Esta devolução já aguarda confirmação da administração.");return;}
+  const body='<form id="member-return-form" class="modal-main">'+
+    '<p>'+(visitor?'Solicitar devolução de ':'Confirmar a devolução de ')+'<strong>'+loan.quantidade+' unidade(s) de '+esc(loan.componente_nome)+'</strong>?</p>'+
+    (visitor?'<p class="notice">Sua solicitação será enviada ao Admin. O material continuará em uso e só ficará disponível após a confirmação do recebimento.</p>':
+    '<div class="field"><label for="member-discard">Unidades descartadas (opcional)</label><div class="stepper"><button type="button" class="step" data-target="member-discard" data-delta="-1">−</button><input id="member-discard" type="number" min="0" max="'+loan.quantidade+'" value="0" required><button type="button" class="step" data-target="member-discard" data-delta="1">+</button></div><small>Unidades descartadas saem da quantidade total; as demais ficam disponíveis.</small></div>')+
     '<div class="field"><label for="member-return-note">Observações (opcional)</label><textarea id="member-return-note" maxlength="500" placeholder="Condição do material"></textarea></div>'+
-    '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">Confirmar devolução</button></div></form>';
-  openModal("Devolver material","Seu estoque será atualizado imediatamente.",body);
-  $("#member-return-cancel").onclick=()=>{
-    closeModal();openMyLoans();
-  };
-  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
+    '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">'+(visitor?'Solicitar devolução':'Confirmar devolução')+'</button></div></form>';
+  openModal(visitor?"Solicitar devolução":"Devolver material",visitor?"Aguardando conferência da administração.":"Seu estoque será atualizado imediatamente.",body);
+  $("#member-return-cancel").onclick=()=>{closeModal();openMyLoans();};
+  if(!visitor)$$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
   $("#member-return-form").onsubmit=async e=>{
-    e.preventDefault();const btn=$("#member-return-submit");btn.disabled=true;
+    e.preventDefault();
+    const btn=$("#member-return-submit");btn.disabled=true;
     try{
-      await api("/api/my/return","POST",{id:loan.id,descartados:Number($("#member-discard").value),observacao:$("#member-return-note").value});
-      await publicReload();toast("Devolução registrada!");
-      if(document.body.dataset.loansRoute==="true"){closeModal();await openMyLoans();}
-      else {closeModal();await openMyLoans();}
+      const result=await api("/api/my/return","POST",{
+        id:loan.id,
+        ...(visitor?{}:{descartados:Number($("#member-discard").value)}),
+        observacao:$("#member-return-note").value
+      });
+      await publicReload();
+      toast(result.aguardando_confirmacao?"Solicitação enviada! Aguarde a confirmação do Admin.":"Devolução registrada!");
+      closeModal();await openMyLoans();
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }
