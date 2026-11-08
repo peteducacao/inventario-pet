@@ -559,6 +559,19 @@ function adminReservations(root){
   $("#admin-res-pages").onclick=e=>{const b=e.target.closest("[data-page]");if(!b)return;UI.reservationPage=Number(b.dataset.page);paintReservations();};
   paintReservations();
 }
+function reservationThumbnail(r,x){
+  if(x)return thumb(x,"reservation-thumb");
+  // Espelhos de filamentos não vêm no array de componentes do Admin.
+  // Encontrar a cor original evita a miniatura branca dos registros.
+  const filament=(state.admin.filamentos||[]).find(f=>Number(f.componente_id)===Number(r.componente_id));
+  if(filament){
+    const color=/^#[0-9a-fA-F]{6}$/.test(String(filament.hexadecimal||""))?filament.hexadecimal:"#dde5ec";
+    return '<div class="reservation-thumb reservation-filament-thumb" role="img" aria-label="Filamento '+attr(filament.cor)+'" style="--filament-color:'+color+'">'+
+      '<span class="reservation-filament-reel"><span class="reservation-filament-core"></span></span></div>';
+  }
+  // Reservas antigas com componente inexistente recebem ilustração local.
+  return thumb({nome:r.componente_nome||"Material"},"reservation-thumb");
+}
 function reservationRow(r){
   const x=state.admin.componentes.find(z=>z.id===r.componente_id);
   const group=reservationGroup(r),tag={pendente:"Pendente",devolucoes:"Aguardando conferência",ativas:r.status==="aprovada"?"Aprovada":"Retirado",atrasadas:"Atrasada",concluidas:r.status==="devolvida"?"Devolvido":"Encerrada"}[group];
@@ -571,7 +584,7 @@ function reservationRow(r){
   const returnNote=r.devolucao_solicitada_observacao?'<div class="reservation-note reservation-return-note"><span>Observação da devolução</span><p>'+esc(r.devolucao_solicitada_observacao)+'</p></div>':"";
   const returnReport=r.devolucao_solicitada_em?'<div class="reservation-return-report"><span>Devolução informada em</span><strong>'+esc(fmt(r.devolucao_solicitada_em))+'</strong></div>':"";
   return '<article class="reservation-row reservation-card reservation-card-'+group+'">'+
-    '<div class="reservation-card-top">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb" aria-hidden="true"></div>')+
+    '<div class="reservation-card-top">'+reservationThumbnail(r,x)+
     '<div class="reservation-summary"><h3>#'+esc(r.id)+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3>'+
     '<p class="reservation-person">'+esc(r.nome_solicitante)+' <span>· '+esc(r.quantidade)+' un.'+(r.tipo==="retirada_direta"?' · PETiane':'')+'</span></p>'+
     (r.contato?'<p class="reservation-contact"><strong>Contato:</strong> '+esc(r.contato)+'</p>':"")+'</div>'+
@@ -629,8 +642,12 @@ async function adminReservationAction(id,action){
     return;
   }
   if(action==="cancelar_solicitacao_devolucao"){
-    if(!await niceModalConfirm("Material não recebido?","A entrega informada pelo visitante será marcada como não recebida, e o empréstimo continuará em uso. Confirme apenas se o material não foi recebido.","Não recebido",true))return;
-    try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:"Administração"});await adminReload();adminBuild();toast("Entrega não confirmada. O visitante poderá informar a devolução novamente.");}
+    if(!await niceModalConfirm("Material não recebido?","A entrega será marcada como não recebida, e o empréstimo continuará em uso. A pessoa será avisada na conta e, se autorizado nas configurações, por e-mail.","Não recebido",true))return;
+    try{
+      const result=await api("/api/admin/reservation","POST",{id,acao:action,responsavel:"Administração"});
+      await adminReload();adminBuild();
+      toast("Entrega não confirmada; material continua em uso. "+(result.email_nao_recebido_enfileirado?"E-mail de aviso colocado na fila do Gmail.":"Nenhum e-mail enfileirado: confira as permissões e o endereço da conta."));
+    }
     catch(e){toast(e.message,true);}
     return;
   }
@@ -1318,7 +1335,7 @@ function adminSettings(root){
     '<p class="mail-template-help">Use <code>{nome}</code>, <code>{material}</code>, <code>{quantidade}</code>, <code>{prazo}</code>, <code>{registro}</code> e <code>{link}</code> nos textos.</p>'+
     '<div class="mail-template-preview"><strong>Prévia com dados fictícios</strong><p id="mail-template-preview-subject"></p><pre id="mail-template-preview-body"></pre></div>'+
     '<div class="mail-template-actions"><button type="button" class="primary-button" id="mail-template-save">Salvar texto deste modelo</button></div></section>';
-  const mailEvents=[["antes","1 dia antes da devolução"],["hoje","No dia da devolução"],["atraso2","2 dias de atraso"],["atraso7","7 dias de atraso"],["manual","Cobrança manual"]];
+  const mailEvents=[["antes","1 dia antes da devolução"],["hoje","No dia da devolução"],["atraso2","2 dias de atraso"],["atraso7","7 dias de atraso"],["manual","Cobrança manual"],["nao_recebido","Entrega não confirmada"]];
   const scheduleEditor='<section class="admin-panel mail-schedule-panel"><div class="admin-section-head"><div><h2>Quando enviar e-mails?</h2>'+
     '<p>Escolha os tipos de mensagem de cada cargo. PETianes e Visitantes têm controles separados. A opção geral do cargo, acima, também precisa estar ativada.</p></div></div>'+
     '<form id="mail-event-form"><div class="mail-schedule-grid">'+
@@ -1326,7 +1343,7 @@ function adminSettings(root){
       '<div class="mail-schedule-card"><h3>'+label+'</h3><p>'+description+'</p>'+
       mailEvents.map(([key,label])=>settingsToggle("mail-event-"+tag+"-"+key,label,"",true)).join("")+
       '</div>').join("")+'</div>'+
-    '<p class="hint">Avisos automáticos só são gerados após a retirada real e na data correspondente. A cobrança manual depende de uma retirada ativa com prazo.</p>'+
+    '<p class="hint">Os lembretes seguem o prazo registrado. O aviso Entrega não confirmada é preparado ao marcar Não recebido e pode ser desativado por cargo neste painel. O texto é editável abaixo.</p>'+
     '<div class="mail-template-actions"><button type="submit" class="primary-button" id="mail-event-save" disabled>Salvar regras por cargo</button></div></form></section>';
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Configurações</h2></div></div>'+
     '<form id="admin-settings-form" class="settings-grid">'+
@@ -1338,7 +1355,7 @@ function adminSettings(root){
     '<div class="settings-block settings-gmail-block"><strong>Notificações por Gmail</strong><p>Controle quem recebe cobranças. Os PETianes ficam desativados por padrão.</p>'+
     '<div class="settings-toggle-grid">'+settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
     settingsToggle("v2-mail-pet","Notificar PETianes","Somente com prazo e permissão habilitada.",cfg.notificacoes_petianos==="sim")+
-    settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
+    settingsToggle("v2-mail-visitor","Notificar visitantes","Inclui avisos de não recebimento, quando habilitados abaixo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
     '<div class="mail-template-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'+
       '<button class="outline-button" type="button" id="v2-mail-prepare">Preparar lembretes agora</button>'+
       '<button class="outline-button" type="button" id="v2-mail-history">Ver fila e histórico de e-mails</button></div>'+
