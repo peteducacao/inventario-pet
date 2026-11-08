@@ -3,7 +3,8 @@ const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["f
 function adminCounts(){
   const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
   const reservations=state.admin?.reservas||[];
-  return {items:items.length,used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
+  return {items:items.length,total:items.reduce((n,x)=>n+(Number(x.quantidade)||0),0),
+    used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
     available:items.reduce((n,x)=>n+stock(x),0),
     pending:reservations.filter(x=>x.status==="pendente"||(x.status==="retirada"&&x.devolucao_solicitada_em)).length};
 }
@@ -151,7 +152,7 @@ function dashboardOpenEvent(log){
 function adminDashboard(root){
   const c=adminCounts();
   root.innerHTML='<section class="admin-panel"><h2>Visão geral</h2><p>Resumo do acervo e últimas movimentações.</p>'+
-    '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div>'+
+    '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.total+'</strong><span>Quantidade total</span><small>'+c.items+' tipos de materiais cadastrados</small></div>'+
     '<div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div>'+
     '<div class="admin-stat"><strong>'+c.available+'</strong><span>Disponíveis</span></div></div>'+
     '<div class="dashboard-changes-head"><h3>Últimas alterações</h3><button type="button" class="outline-button small-button" id="dashboard-log-all">Ver histórico</button></div>'+
