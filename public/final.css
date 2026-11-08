@@ -1052,3 +1052,20 @@ body:not(.admin-mode) .inventory-section .filament-public-card .catalog-numbers{
   .admin-reservations-panel .reservation-return-report{grid-column:1/-1;border-left:0;border-top:1px solid #f0e6cf;padding:10px 0 0;min-width:0}
   .admin-reservations-panel .reservation-actions button{flex:1 1 auto}
 }
+
+
+/* Nas reservas, filamentos têm uma miniatura da bobina com sua cor cadastrada. */
+.admin-reservations-panel .reservation-filament-thumb{
+  display:grid;place-items:center;
+  background:radial-gradient(circle at 50% 35%,#fff,#edf3f7);
+}
+.reservation-filament-reel{
+  display:grid;place-items:center;width:43px;height:43px;flex:none;border-radius:50%;
+  border:5px solid #294456;
+  background:repeating-radial-gradient(circle,var(--filament-color) 0 4px,#00000018 4px 5px,var(--filament-color) 5px 9px);
+  box-shadow:0 3px 8px #122c3c1c;
+}
+.reservation-filament-core{width:15px;height:15px;border-radius:50%;background:#f2f6f8;border:4px solid #294456}
+@media(max-width:650px){
+  .admin-reservations-panel .reservation-filament-reel{width:39px;height:39px}
+}
