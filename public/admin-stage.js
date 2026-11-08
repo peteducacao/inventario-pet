@@ -514,7 +514,7 @@ function reservationRow(r){
     '<div><h3>#'+r.id+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3><small>'+esc(r.nome_solicitante)+' · '+r.quantidade+' un.'+(r.tipo==="retirada_direta"?" · PETiano":"")+'</small>'+
     (r.contato?'<small style="display:block">'+esc(r.contato)+'</small>':"")+
     (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+
-    (r.devolucao_solicitada_em?'<small style="display:block;color:#936000">Devolução solicitada em '+esc(fmt(r.devolucao_solicitada_em))+(r.devolucao_solicitada_observacao?' · '+esc(r.devolucao_solicitada_observacao):"")+'</small>':"")+'</div>'+
+    (r.devolucao_solicitada_em?'<small style="display:block;color:#936000">Devolução informada em '+esc(fmt(r.devolucao_solicitada_em))+(r.devolucao_solicitada_observacao?' · '+esc(r.devolucao_solicitada_observacao):"")+'</small>':"")+'</div>'+
     '<div class="reservation-date"><small>Retirada</small><strong>'+esc(formatDay(r.data_inicio))+'</strong></div>'+
     '<div class="reservation-date"><small>Devolução</small><strong>'+(r.sem_prazo?'Sem prazo':esc(formatDay(r.data_devolucao)))+'</strong></div>'+
     '<span class="tag '+cls+'">'+tag+'</span><div class="reservation-actions">'+actions+mailAction+'</div></div>';
@@ -558,8 +558,8 @@ async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
   if(action==="devolver")return returnModal(r);
   if(action==="cancelar_solicitacao_devolucao"){
-    if(!await niceModalConfirm("Material não recebido?","A solicitação de devolução será devolvida ao visitante, e o empréstimo continuará em uso. Confirme apenas se o material não foi recebido.","Não recebido",true))return;
-    try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:"Administração"});await adminReload();adminBuild();toast("Solicitação devolvida ao visitante.");}
+    if(!await niceModalConfirm("Material não recebido?","A entrega informada pelo visitante será marcada como não recebida, e o empréstimo continuará em uso. Confirme apenas se o material não foi recebido.","Não recebido",true))return;
+    try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:"Administração"});await adminReload();adminBuild();toast("Entrega não confirmada. O visitante poderá informar a devolução novamente.");}
     catch(e){toast(e.message,true);}
     return;
   }
@@ -1270,10 +1270,7 @@ function adminSettings(root){
     '<div class="mail-template-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'+
       '<button class="outline-button" type="button" id="v2-mail-prepare">Preparar lembretes agora</button>'+
       '<button class="outline-button" type="button" id="v2-mail-history">Ver fila e histórico de e-mails</button></div>'+
-      '<div class="field"><label for="v2-mail-test-email">Teste de envio para seu e-mail</label>'+
-      '<div style="display:flex;gap:8px;flex-wrap:wrap"><input style="flex:1;min-width:180px" id="v2-mail-test-email" type="email" autocomplete="email" placeholder="seuemail@exemplo.com" maxlength="180">'+
-      '<button class="primary-button" type="button" id="v2-mail-test-send">Enviar e-mail de teste</button></div>'+
-      '<small>O teste entra na fila Gmail e aparece no histórico. Limite: três testes por hora.</small></div></div>'+
+    '</div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
     scheduleEditor+emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
@@ -1359,16 +1356,6 @@ function adminSettings(root){
       const r=await api("/api/admin/mail/prepare","POST",{});
       toast("Lembretes verificados: "+r.verificados+". Novos e-mails na fila: "+r.enfileirados+".");
     }catch(e){toast("Falha ao preparar lembretes: "+e.message,true);}
-  };
-  $("#v2-mail-test-send").onclick=async()=>{
-    const email=$("#v2-mail-test-email").value.trim();
-    if(!email||!$("#v2-mail-test-email").checkValidity()){toast("Digite um e-mail válido para testar.",true);return;}
-    const btn=$("#v2-mail-test-send");btn.disabled=true;
-    try{
-      const result=await api("/api/admin/mail/test","POST",{email});
-      toast(result.mensagem||"Teste colocado na fila do Gmail.");
-    }catch(error){toast(error.message,true);}
-    finally{btn.disabled=false;}
   };
   $("#v2-mail-history").onclick=async()=>{
     try{
