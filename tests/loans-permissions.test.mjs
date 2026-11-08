@@ -86,7 +86,7 @@ assert.equal((await req("/api/my/loans","GET",undefined,visitor)).body.emprestim
 assert.equal((await req("/api/my/return","POST",{id:rId,defeituosos:0},member)).status,404,"Outro titular não pode devolver empréstimo alheio.");
 assert.equal((await req("/api/my/return","POST",{id:rId,descartados:1},visitor)).status,403,"Visitante não pode informar descarte.");
 const requested=await req("/api/my/return","POST",{id:rId,observacao:"Entreguei na recepção"},visitor);
-assert.equal(requested.status,200,"Visitante deve solicitar devolução.");
+assert.equal(requested.status,200,"Visitante deve informar que devolveu, aguardando veredito do Admin.");
 assert.equal(requested.body.aguardando_confirmacao,true);
 assert.equal((await req("/api/my/return","POST",{id:rId},visitor)).status,409,"Solicitação repetida deve ser bloqueada.");
 assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(rId).status,"retirada","Visitante não pode concluir empréstimo.");
@@ -94,7 +94,7 @@ assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blu
 assert.equal((await req("/api/my/loans","GET",undefined,visitor)).body.emprestimos.find(x=>x.id===rId).devolucao_solicitada_observacao,"Entreguei na recepção");
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"cancelar_solicitacao_devolucao",responsavel:"Responsável PET"})).status,200);
 assert.equal(sqlite.prepare("SELECT devolucao_solicitada_em FROM reservas WHERE id=?").get(rId).devolucao_solicitada_em,null);
-assert.equal((await req("/api/my/return","POST",{id:rId},visitor)).status,200,"Após recusa o visitante pode solicitar novamente.");
+assert.equal((await req("/api/my/return","POST",{id:rId},visitor)).status,200,"Após não recebimento, visitante pode informar a entrega novamente.");
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver",responsavel:"Responsável PET",descartados:0})).status,200,"O Admin confirma a devolução.");
 assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(rId).status,"devolvida");
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,0,"Estoque liberado só na confirmação.");
