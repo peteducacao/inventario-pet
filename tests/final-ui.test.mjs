@@ -56,7 +56,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
   let adminAuthenticated=alreadyAdmin;
   let profile={...identity};
-  const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[];
+  const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[],filamentWrites=[];
   const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
   let noticeRequestCount=0,backupReadCount=0;
   const deletedMaterials=[];
@@ -112,6 +112,10 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
       }
       body={ok:true};
     }
+    else if(path==="/api/admin/filaments"){
+      if(init.method==="POST")filamentWrites.push(JSON.parse(init.body||"{}"));
+      body={ok:true};
+    }
     else if(path==="/api/admin/export")body=fullAdmin;
     else if(path==="/api/admin/backup"){
       backupReadCount++;
@@ -154,7 +158,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,backupReadCount:()=>backupReadCount,deletedMaterials,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests,setRole:role=>{profile={...profile,tag:role};}};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,backupReadCount:()=>backupReadCount,deletedMaterials,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests,filamentWrites,setRole:role=>{profile={...profile,tag:role};}};
 }
 
 const publicUI=build(false);
@@ -461,7 +465,18 @@ assert.match(ad.querySelector("#admin-content").textContent,/Preto/,"Admin não 
 assert.equal(ad.querySelectorAll('[data-loan-audience="filament"]').length,2,"Cada cor deve ter um seletor compacto de público.");
 assert.equal(ad.querySelector('[data-loan-audience="filament"][data-loan-id="20"]').value,"petianos");
 await adminClick('[data-filament-edit="21"]');
-assert.equal(ad.querySelector("#filament-public").checked,false,"Filamento restrito ficou público.");
+assert.equal(ad.querySelector("#filament-public"),null,"Filamentos não devem exigir controle duplicado de exibição.");
+const filAudience=ad.querySelector('[data-loan-audience="filament-form"]');
+assert.equal(filAudience.value,"petianos","Cor restrita deve iniciar com PETianes.");
+filAudience.value="visitantes";
+ad.querySelector("#filament-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(120);
+assert.equal(adminUI.filamentWrites.at(-1).acao,"editar");
+assert.equal(adminUI.filamentWrites.at(-1).permitir_visitantes,true,"Visitantes devem habilitar a exibição junto com o empréstimo.");
+assert.equal("visivel_visitante" in adminUI.filamentWrites.at(-1),false,"O formulário não deve enviar duas decisões contraditórias.");
+await adminClick("#filament-add");
+assert.equal(ad.querySelector("#filament-public"),null,"Novo filamento também não deve mostrar checkbox redundante.");
+assert.equal(ad.querySelector('[data-loan-audience="filament-form"]').value,"visitantes","Nova cor deve iniciar liberada para visitantes.");
 await adminClick("#filament-cancel");
 await adminClick('[data-admin-tab="categorias"]');
 assert.match(ad.querySelector("#admin-content").textContent,/Só PETianes/);
