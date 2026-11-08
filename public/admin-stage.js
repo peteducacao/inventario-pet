@@ -395,7 +395,7 @@ function editVariationGroupPhoto(name){
   const redraw=()=>{
     const selected=choice.value;
     $("#group-photo-upload-row").hidden=selected!=="propria";
-    const member=selected.startsWith("integrante:")?members.find(x=>x.id===Number(selected.slice(10))):null;
+    const member=selected.startsWith("integrante:")?members.find(x=>x.id===Number(selected.slice("integrante:".length))):null;
     const image=selected==="propria"?own:member?itemImage(member):"";
     preview.innerHTML=image?'<img alt="Prévia da imagem do vínculo" src="'+attr(image)+'">':'<p class="hint">Sem foto do vínculo</p>';
   };
@@ -415,7 +415,7 @@ function editVariationGroupPhoto(name){
     if(selected==="propria"&&!own){toast("Selecione uma foto para o vínculo.",true);return;}
     const btn=$("#group-photo-save");btn.disabled=true;btn.textContent="Salvando…";
     const data=selected==="propria"?{modo:"propria",imagem:own}:selected.startsWith("integrante:")?
-      {modo:"integrante",componente_id:Number(selected.slice(10))}:{modo:"nenhuma"};
+      {modo:"integrante",componente_id:Number(selected.slice("integrante:".length))}:{modo:"nenhuma"};
     try{
       await api("/api/admin/variation-groups","POST",{acao:"imagem",nome:group.nome,responsavel:state.actor||"Admin",...data});
       await adminReload();adminBuild();openLinksHub();toast("Imagem do vínculo atualizada sem alterar os integrantes.");
