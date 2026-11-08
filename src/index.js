@@ -660,7 +660,7 @@ async function processRequest(req, env, ctx) {
       }
       else if(action==="retirar"){titulo="Retirada registrada";mensagem="A retirada da "+subject+" foi registrada por "+actorName+".";tipo="retirada";}
       else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução da "+subject+" foi confirmada por "+actorName+".";tipo="devolucao";}
-      else if(action==="cancelar_solicitacao_devolucao"){titulo="Solicitação de devolução não confirmada";mensagem="A solicitação de devolução da "+subject+" não foi confirmada por "+actorName+". O material continua em uso; solicite novamente quando realizar a entrega.";tipo="devolucao";}
+      else if(action==="cancelar_solicitacao_devolucao"){titulo="Entrega não confirmada";mensagem="A entrega de "+subject+" informada por você não foi confirmada por "+actorName+". O material continua em uso; marque Devolvido novamente após a entrega.";tipo="devolucao";}
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
     await auditLog(db,action==="aprovar"?"Aprovou e entregou":action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
