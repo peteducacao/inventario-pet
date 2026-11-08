@@ -238,7 +238,7 @@ async function rename(req,env,user){
   return respond({ok:true,usuario:{...publicUser(user),nome:name}});
 }
 async function listMine(db,user){
-  const list=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.sem_prazo,r.status,r.observacao,r.solicitado_em,r.retirado_em,r.devolvido_em,r.tipo,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 300",[user.id]);
+  const list=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.sem_prazo,r.status,r.observacao,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.tipo,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 300",[user.id]);
   return respond({ok:true,retiradas:list});
 }
 async function withdraw(req,env,user){
@@ -271,6 +271,17 @@ async function memberReturn(req,env,user){
   if(!Number.isSafeInteger(id)||id<1||!Number.isSafeInteger(discarded)||discarded<0)return error("Identificação ou quantidade inválida.");
   const r=await env.DB.prepare("SELECT * FROM reservas WHERE id=? AND usuario_id=? AND status='retirada'").bind(id,user.id).first();
   if(!r)return error("Retirada não encontrada ou já devolvida.",404);
+  if(user.papel!=="petiano"){
+    // Visitantes registram apenas um pedido. O estoque e a retirada continuam ativos.
+    if(discarded!==0)return error("Somente o Admin pode informar descartes na devolução de visitantes.",403);
+    if(r.devolucao_solicitada_em)return error("A devolução já foi solicitada e aguarda o Admin.",409);
+    const stamp=now(),actor=user.nome+" ("+user.public_id+")";
+    const pending=await env.DB.prepare("UPDATE reservas SET devolucao_solicitada_em=?,devolucao_solicitada_observacao=? WHERE id=? AND usuario_id=? AND status='retirada' AND devolucao_solicitada_em IS NULL")
+      .bind(stamp,note,id,user.id).run();
+    if(pending.meta?.changes!==1)return error("Não foi possível solicitar a devolução. Atualize a página.",409);
+    await identityAudit(env.DB,"Solicitou devolução","reserva",id,"Aguardando confirmação do Admin · "+r.quantidade+" unidade(s)",actor);
+    return respond({ok:true,aguardando_confirmacao:true,mensagem:"Solicitação enviada. O Admin confirmará quando receber o material."});
+  }
   if(discarded>r.quantidade)return error("O descarte não pode ultrapassar a quantidade retirada.");
   const component=await env.DB.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").bind(r.componente_id).first();
   if(!component||component.em_uso<r.quantidade||component.quantidade<discarded)return error("Estoque em uso inconsistente. Procure o administrador.",409);
@@ -283,12 +294,7 @@ async function memberReturn(req,env,user){
     env.DB.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND usuario_id=? AND status='retirada'").bind(stamp,actor,note||r.observacao,id,user.id)
   ]);
   if(done[0].meta?.changes!==1||done[2].meta?.changes!==1)return error("Não foi possível registrar a devolução.",409);
-  // O PETiane já confirmou a própria devolução: não gerar aviso redundante.
-  // Para visitantes, a notificação interna de confirmação permanece.
-  if(user.papel!=="petiano"){
-    await env.DB.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)")
-      .bind(user.id,id,"Devolução registrada","A devolução de seu material foi registrada.","devolucao").run();
-  }
+  // PETiane confirmou a devolução: não criar notificação redundante no próprio sino.
   await identityAudit(env.DB,"Devolução pelo titular","material",r.componente_id,"Reserva #"+id+" · "+r.quantidade+" unidade(s)"+(discarded?" · "+discarded+" descartada(s)":""),actor);
   return respond({ok:true});
 }
@@ -389,7 +395,7 @@ export async function identityAPI(req,env,adminAuth){
   const u=await loggedIn(req,db);
   if(path==="/api/my/loans"&&method==="GET"){
     if(!u)return error("Entre em sua conta para consultar os empréstimos.",401);
-    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.responsavel_admin,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 250",[u.id]);
+    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.responsavel_admin,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 250",[u.id]);
     return respond({ok:true,emprestimos:loanRows});
   }
   if(path==="/api/notifications"&&method==="GET"){
