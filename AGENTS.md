@@ -1,6 +1,6 @@
 # AGENTS.md — Instruções para IAs e mantenedores
 
-> Leia este arquivo antes de editar o projeto. Revisão: 07/11/2026.
+> Leia este arquivo antes de editar o projeto. Revisão: 08/11/2026.
 > Manual completo: [docs/GUIA_TECNICO.md](docs/GUIA_TECNICO.md). Ajuda para pessoas usuárias: [public/ajuda/index.html](public/ajuda/index.html).
 
 ## Projeto e localização
@@ -40,7 +40,7 @@
 ## Como modificar com segurança
 1. Consulte `AGENTS.md`, `docs/GUIA_TECNICO.md`, o código do recurso, migrações e testes antes de editar.
 2. Crie branch e PR; prefira mudanças pequenas. Execute os testes automáticos locais e o workflow de verificação (sem publicar). Depois integre à `main`.
-3. Testes principais: `tests/loans-permissions.test.mjs`, `tests/access.test.mjs`, `tests/identity.test.mjs`, `tests/gmail.test.mjs`, `tests/final-ui.test.mjs`, `tests/backup-v2.test.mjs`, `tests/help.test.mjs`.
+3. Testes principais: `tests/loans-permissions.test.mjs`, `tests/access.test.mjs`, `tests/identity.test.mjs`, `tests/gmail.test.mjs`, `tests/final-ui.test.mjs`, `tests/backup-v2.test.mjs`, `tests/help.test.mjs`, `tests/chaos.test.mjs` (CRUD destrutivo e tentativas de injeção somente no banco isolado).
 4. Em alterações do schema, adicione migration incremental em `migrations/`; nunca edite retrospectivamente uma migration já aplicada.
 5. Nunca coloque segredos no Git: `ADMIN_PASSWORD`, `MAIL_BRIDGE_TOKEN`, `PET_MAIL_TOKEN`, tokens Cloudflare e cookies. Não inclua dados de usuários ou backups em logs, screenshots ou PDFs públicos.
 6. Para testes de e-mail, use mocks, nunca dispare e-mails reais desnecessários. Para testes ao vivo, use dados temporários e verifique que foram eliminados, inclusive reservas.
@@ -48,7 +48,7 @@
 8. Instruções existentes no código podem ficar obsoletas; quando houver conflito entre texto/documentação e API atual, inspecione a implementação e avise o responsável antes de mudar uma regra.
 
 ## Matriz mínima de regressão
-- Visitante: conta → reservar → pendente → aprovar/recusar no Admin → retirada → solicitar devolução no perfil → confirmar recebimento pelo Admin → liberar estoque.
+- Visitante: conta → reservar → pendente → aprovar/recusar no Admin → retirada → sinalizar “Devolvido” no perfil → Admin confirma “Recebido” ou “Não recebido” (apenas “Recebido” libera estoque) → liberar estoque.
 - PETiane: cargo Admin → retirada direta → devolução no perfil sem Admin.
 - Filamento: categoria e cor habilitadas → reservar/retirar → atualizar rolos corretamente.
 - Gmail: evento e permissões → fila → Apps Script → ACK → e-mail enviado some dos pendentes, sem apagar registro.
