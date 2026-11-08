@@ -390,7 +390,8 @@ function editVariationGroupPhoto(name){
   openModal("Editar imagem: "+group.nome,"Escolha uma capa própria ou a foto de um integrante.",form,{size:"wide"});
   let own=group.imagem||"";
   const choice=$("#group-photo-source"),preview=$("#group-photo-preview");
-  choice.value=members.some(x=>current==="integrante:"+x.id)||current!=="integrante:"+group.imagem_componente_id?current:"nenhuma";
+  const validSource=current==="propria"||current==="nenhuma"||members.some(x=>current==="integrante:"+x.id);
+  choice.value=validSource?current:"nenhuma";
   const redraw=()=>{
     const selected=choice.value;
     $("#group-photo-upload-row").hidden=selected!=="propria";
@@ -1118,7 +1119,7 @@ function openBulkVisibility(currentId){
   $("#bulk-only-members").onclick=()=>save(false);
   draw();
 }
-/* Vínculos não editam nenhum campo do material: só associam IDs existentes. */
+/* Vínculos associam materiais e possuem uma capa própria; não alteram fotos individuais. */
 function openVariantLinker(currentId,groupName=""){
   const name=String(groupName||"").trim();
   if(!name){openLinksHub();return;}
@@ -1464,18 +1465,16 @@ function adminSettings(root){
       '<form id="reset-reservations-form" class="modal-main">'+
       '<p class="notice warning"><strong>Atenção:</strong> todos os registros de reservas, inclusive pendentes e concluídos, serão apagados. As cobranças pendentes relacionadas serão canceladas. O inventário, os usuários e o histórico administrativo serão preservados.</p>'+
       deletionBackupChoice("reset-reservations-backup")+
-      '<div class="field"><label for="reset-reservations-confirm">Digite APAGAR TODAS AS RESERVAS para confirmar</label><input id="reset-reservations-confirm" required autocomplete="off" placeholder="APAGAR TODAS AS RESERVAS"></div>'+
       '<div class="modal-footer"><button type="button" class="outline-button" id="reset-reservations-cancel">Cancelar</button><button class="danger-button" type="submit" id="reset-reservations-submit">Apagar registros</button></div></form>');
     $("#reset-reservations-cancel").onclick=closeModal;
     $("#reset-reservations-form").onsubmit=async e=>{
       e.preventDefault();
-      if($("#reset-reservations-confirm").value.trim()!=="APAGAR TODAS AS RESERVAS"){toast("Digite a confirmação exatamente como indicada.",true);return;}
       const btn=$("#reset-reservations-submit"),download=$("#reset-reservations-backup").checked;
       btn.disabled=true;btn.textContent=download?"Preparando backup…":"Excluindo registros…";
       try{
         const exported=await optionalBackupBeforeDeletion(download,"backup-antes-de-limpar-reservas");
         btn.textContent="Excluindo registros…";
-        const result=await api("/api/admin/reservations/reset","POST",{confirmar:"APAGAR TODAS AS RESERVAS"});
+        const result=await api("/api/admin/reservations/reset","POST",{confirmar:true});
         await adminReload();closeModal();adminBuild();toast(result.removidos+" registro(s) de reserva apagado(s)."+(exported?" Backup baixado.":""));
       }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Apagar registros";}
     };
