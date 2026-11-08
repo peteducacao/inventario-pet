@@ -779,7 +779,7 @@ async function processRequest(req, env, ctx) {
       // cortá-los em 100 durante a restauração destrói silenciosamente modelos.
       const max=/^mail_template_(antes|hoje|atraso2|atraso7|manual)_body$/.test(key)?5000:
         /^mail_template_(antes|hoje|atraso2|atraso7|manual)_subject$/.test(key)?180:100;
-      ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,max)));
+      ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,String(value??"").slice(0,max)));
     }
     if (!cfg.limpeza_reservas)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
     if (!cfg.limpeza_historico)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_historico','nunca')"));
