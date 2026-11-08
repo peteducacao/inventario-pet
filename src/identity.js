@@ -277,15 +277,15 @@ async function memberReturn(req,env,user){
   const r=await env.DB.prepare("SELECT * FROM reservas WHERE id=? AND usuario_id=? AND status='retirada'").bind(id,user.id).first();
   if(!r)return error("Retirada não encontrada ou já devolvida.",404);
   if(user.papel!=="petiano"){
-    // Visitantes registram apenas um pedido. O estoque e a retirada continuam ativos.
+    // Visitantes informam que entregaram o material; o estoque e a retirada só são liberados após conferência do Admin.
     if(discarded!==0)return error("Somente o Admin pode informar descartes na devolução de visitantes.",403);
-    if(r.devolucao_solicitada_em)return error("A devolução já foi solicitada e aguarda o Admin.",409);
+    if(r.devolucao_solicitada_em)return error("A entrega já foi informada e aguarda a confirmação do Admin.",409);
     const stamp=now(),actor=user.nome+" ("+user.public_id+")";
     const pending=await env.DB.prepare("UPDATE reservas SET devolucao_solicitada_em=?,devolucao_solicitada_observacao=? WHERE id=? AND usuario_id=? AND status='retirada' AND devolucao_solicitada_em IS NULL")
       .bind(stamp,note,id,user.id).run();
-    if(pending.meta?.changes!==1)return error("Não foi possível solicitar a devolução. Atualize a página.",409);
-    await identityAudit(env.DB,"Solicitou devolução","reserva",id,"Aguardando confirmação do Admin · "+r.quantidade+" unidade(s)",actor);
-    return respond({ok:true,aguardando_confirmacao:true,mensagem:"Solicitação enviada. O Admin confirmará quando receber o material."});
+    if(pending.meta?.changes!==1)return error("Não foi possível informar a devolução. Atualize a página.",409);
+    await identityAudit(env.DB,"Informou devolução","reserva",id,"Aguardando confirmação do Admin · "+r.quantidade+" unidade(s)",actor);
+    return respond({ok:true,aguardando_confirmacao:true,mensagem:"Entrega informada. O Admin confirmará o recebimento antes de liberar o estoque."});
   }
   if(discarded>r.quantidade)return error("O descarte não pode ultrapassar a quantidade retirada.");
   const component=await env.DB.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").bind(r.componente_id).first();
