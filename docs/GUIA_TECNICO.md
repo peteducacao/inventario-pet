@@ -1,5 +1,5 @@
 # Guia técnico e operacional — Inventário PET Educação
-**Revisão:** 07/11/2026  
+**Revisão:** 08/11/2026  
 **Destinatários:** gestão do PET Educação, colaboradores, desenvolvedores e agentes de IA  
 **Produção:** https://inventario-pet.pet-educacao.workers.dev  
 **Código:** https://github.com/peteducacao/inventario-pet
@@ -82,7 +82,7 @@ docs/GUIA_TECNICO.md               Este guia
 
 **Filamentos:** cada `filamentos.id` aponta para `filamentos.componente_id`, cujo registro `componentes.import_key` é `FILAMENTO-<id>`. Isso permite que todas as rotas de empréstimo e devolução operem sobre um único estoque por cor. Preserve o material espelho e não o duplique pelo editor comum.
 
-**Arquivo/exclusão:** arquivar um material não apaga seu histórico. Excluir categoria tem confirmação textual, gera backup no navegador e remove seus materiais conforme lógica administrativa. Não suponha que deletar uma categoria possa ser desfeito sem o JSON guardado.
+**Arquivo/exclusão:** arquivar um material não apaga seu histórico. Excluir categoria tem confirmação textual e opção de baixar um backup no navegador (inicialmente desmarcada); a exclusão remove seus materiais conforme a lógica administrativa. Não suponha que deletar uma categoria possa ser desfeito sem o JSON guardado.
 
 ### Reorganização do catálogo (07/11/2026)
 A migration `migrations/0018_reorganizar_robotica_equipamentos.sql` renomeia **Eletrônica** para **Robótica** e transfere os notebooks e tablets (incluindo os registros originalmente nas categorias **Tablets** e **Notebooks**) para a categoria **Equipamentos**, já existente. A migração conserva o identificador dos materiais, patrimônio, identificações, quantidade total, em uso, defeitos, reservas e permissões individuais. As categorias que ficaram vazias são **arquivadas**, não excluídas, e a ação é registrada no histórico administrativo. Não criar uma nova categoria Eletrônica nem duplicar tablets/notebooks. O catálogo também restaura o filtro “Todos” quando um filtro persistido se referir a uma categoria que deixou de aparecer.
@@ -208,7 +208,7 @@ A implantação serve arquivos estáticos diretamente pelo Cloudflare Workers As
 
 `Referrer-Policy: no-referrer` reduz informações sobre a origem enviadas a outros sites; `nosniff` evita interpretação indevida de tipos MIME; `Permissions-Policy` bloqueia APIs do navegador desnecessárias. Toda API com dados de conta tem `Cache-Control: no-store` e verifica autenticação no servidor. O catálogo público `GET /api/catalog` consulta somente colunas explicitamente permitidas, em vez de `SELECT *`: adicionar uma coluna confidencial ao D1 não pode publicá-la automaticamente. O teste insere uma coluna confidencial fictícia e verifica que ela não aparece no JSON. Nomes, patrimônio, observações, notificações e campos editáveis são escapados ao entrar em HTML; nunca montar `innerHTML` com dados não escapados. O domínio pode ter código JS público e qualquer pessoa consegue observar **suas próprias** requisições no DevTools — esconder rotas no navegador não é proteção. Senhas trafegam via HTTPS no login, não são devolvidas no JSON e não devem ser registradas em logs/client storage; tokens de sessão ficam em cookies `HttpOnly; Secure; SameSite=Strict`.
 
-**Teste adversarial:** `tests/chaos.test.mjs` cria, edita e exclui dados fictícios num SQLite isolado, verifica respostas 4xx a requisições forjadas, acesso negado ao Admin sem sessão, cabeçalhos HTML/API e ausência de segredos em respostas públicas. `tests/final-ui.test.mjs` insere textos com tags `img onerror` e `svg onload` nos materiais, categorias, contas, reservas e notificações e rejeita qualquer criação de evento/script executável. Os testes de CI e deploy não devem realizar exclusões reais em produção.
+**Teste adversarial:** `tests/chaos.test.mjs` executa 114 verificações de criação, edição, exclusão e permissões usando dados fictícios em SQLite isolado, verifica respostas 4xx a requisições forjadas, acesso negado ao Admin sem sessão, cabeçalhos HTML/API e ausência de segredos em respostas públicas. `tests/final-ui.test.mjs` insere textos com tags `img onerror` e `svg onload` nos materiais, categorias, contas, reservas e notificações e rejeita qualquer criação de evento/script executável. Os testes de CI e deploy não devem realizar exclusões reais em produção.
 
 ### Segredos e dados pessoais
 - Credenciais e tokens ficam nos Secrets do Cloudflare, propriedades privadas do Apps Script e Secrets do GitHub Actions quando aplicável.
