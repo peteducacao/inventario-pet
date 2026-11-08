@@ -39,6 +39,7 @@ const fullAdmin={categorias:categories,componentes:[one,two,three,alkalineNormal
   filamentos:colors,reservas:[{id:9,componente_id:1,componente_nome:"Resistor 100Ω",
     nome_solicitante:"Teste",quantidade:1,status:"pendente",data_inicio:"2026-12-01",data_devolucao:"2026-12-03"}],
   configuracoes:{modo_demo:"nao",limpeza_reservas:"nunca",limpeza_historico:"nunca"}};
+visitorCatalog.grupos_variacoes=fullAdmin.grupos_variacoes;
 const identity={id:"PET-AABBCCDDEEFF",nome:"Pessoa teste",email:"pessoa@example.com",tag:"visitante",login:"teste01",
   ativo:true,trocar_senha:false,precisa_criar_login:false};
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -56,7 +57,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
   w.addEventListener("unhandledrejection",e=>errors.push(String(e.reason)));
   let adminAuthenticated=alreadyAdmin;
   let profile={...identity};
-  const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[],filamentWrites=[];
+  const pendingNotices=[],adminReservationRequests=[],templateSaves=[],mailEventSaves=[],variationRenameRequests=[],filamentWrites=[],groupImageWrites=[];
   const eventOptions=Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
   let noticeRequestCount=0,backupReadCount=0;
   const deletedMaterials=[];
@@ -100,7 +101,15 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     else if(path==="/api/my/loans")body={emprestimos:[]};
     else if(path==="/api/admin/variation-groups"){
       const payload=JSON.parse(init.body||"{}");
-      if(payload.acao==="criar")fullAdmin.grupos_variacoes.push({nome:payload.nome});
+      if(payload.acao==="criar")fullAdmin.grupos_variacoes.push({nome:payload.nome,imagem:"",imagem_componente_id:null});
+      if(payload.acao==="imagem"){
+        groupImageWrites.push(payload);
+        const entry=fullAdmin.grupos_variacoes.find(x=>x.nome===payload.nome);
+        if(entry){
+          entry.imagem=payload.modo==="propria"?payload.imagem:"";
+          entry.imagem_componente_id=payload.modo==="integrante"?payload.componente_id:null;
+        }
+      }
       if(payload.acao==="renomear"){
         variationRenameRequests.push(payload);
         for(const item of fullAdmin.componentes)if(item.grupo_variacoes===payload.nome)item.grupo_variacoes=payload.novo_nome;
@@ -158,7 +167,7 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
     assert.ok(el,"Controle ausente: "+sel);
     el.click();await wait(55);
   };
-  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,backupReadCount:()=>backupReadCount,deletedMaterials,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests,filamentWrites,setRole:role=>{profile={...profile,tag:role};}};
+  return {dom,w,d,errors,click,addNotice:x=>pendingNotices.unshift(x),noticeRequestCount:()=>noticeRequestCount,backupReadCount:()=>backupReadCount,deletedMaterials,adminReservationRequests,templateSaves,mailEventSaves,variationRenameRequests,filamentWrites,groupImageWrites,setRole:role=>{profile={...profile,tag:role};}};
 }
 
 const publicUI=build(false);
@@ -233,6 +242,8 @@ assert.equal(d.querySelectorAll(".grouped-card").length,3,"Card agrupado aparece
 const arduinoSingle=Array.from(d.querySelectorAll(".catalog-card")).find(x=>x.querySelector("h3")?.textContent==="Arduino");
 assert.ok(arduinoSingle,"Mesmo com um único vínculo, o catálogo deve exibir o nome salvo do grupo Arduino.");
 assert.ok(arduinoSingle.querySelector('[data-open-variants="arduino"]'),"Grupo único abre Ver variações.");
+assert.equal(arduinoSingle.querySelector(".catalog-photo img"),null,"Grupo Arduino não pode herdar foto do Uno sem capa definida.");
+assert.ok(arduinoSingle.querySelector(".group-no-photo"),"Grupo sem capa deve ficar vazio com texto explicativo.");
 await click('.catalog-photo[data-open-variants="arduino"]');
 assert.equal(d.querySelectorAll(".variant-picker-option").length,1);
 await click("#modal-root [data-close]");
@@ -244,6 +255,18 @@ assert.equal(d.querySelector(".catalog-card h3")?.textContent,"Arduino","A busca
 w.__adminTestState.query="";w.__finalRender();
 assert.equal(d.querySelectorAll(".catalog-card").length,4,"Estoque agrupado não deveria gerar cards repetidos.");
 assert.equal(d.querySelectorAll(".filament-public-card").length,1,"Filamentos devem continuar na grade do catálogo.");
+const spoolCard=d.querySelector(".filament-public-card");
+const ordinaryCard=d.querySelector(".catalog-card:not(.filament-public-card)");
+assert.ok(spoolCard?.querySelector(".status-dot"),"Filamento precisa ter o mesmo selo de disponibilidade dos materiais.");
+assert.equal(spoolCard.querySelectorAll(".catalog-numbers>div").length,3,"Filamento deve mostrar Quantidade, Em uso e Disponível na mesma linha.");
+assert.deepEqual(Array.from(spoolCard.querySelectorAll(".catalog-numbers span"),span=>span.textContent),["Quantidade","Em uso","Disponível"]);
+assert.deepEqual(Array.from(ordinaryCard.querySelectorAll(".catalog-numbers span"),span=>span.textContent),["Quantidade","Em uso","Disponível"]);
+assert.equal(spoolCard.querySelectorAll(".filament-quantity").length,0,"Não renderizar os dois blocos cinza antigos.");
+assert.equal(spoolCard.querySelector(".catalog-body")?.firstElementChild?.tagName,"H3","Filamentos devem começar pelo nome, como demais materiais.");
+assert.ok(spoolCard.querySelector(".filament-reel"),"Ilustração colorida da bobina deve continuar.");
+assert.match(visualCss,/\.inventory-section \.card-grid\s*\{[^}]*align-items:start/s,"Cards precisam ter altura própria, sem esticar junto a vizinhos maiores.");
+assert.match(visualCss,/\.inventory-section \.catalog-card\s*\{[^}]*height:auto/s,"Sem forçar altura de card completo para a maior linha.");
+assert.match(visualCss,/\.inventory-section \.catalog-body \.primary-button\s*\{[^}]*margin-top:11px/s,"Botões não podem flutuar após um espaço branco gigante.");
 assert.match(d.querySelector(".filament-public-card").textContent,/Reservar/,"Card de visitante deve exibir sempre a ação Reservar, mesmo quando o Admin a desativou.");
 assert.equal(d.querySelector(".filament-public-card [data-reserve-item]"),null,"Filamento bloqueado não pode ter reserva ativa.");
 assert.match(d.querySelector('[data-open-variants="resistores"]').closest(".grouped-card").textContent,/Resistores/);
@@ -277,7 +300,7 @@ assert.match(alkalineCard.querySelector(".catalog-numbers").textContent,/4/);
 await click('.variant-open[data-open-variants="alcalina"]');
 assert.equal(d.querySelectorAll(".variant-picker-option").length,3,"Trocar modelo deve reabrir a seleção.");
 await click("#modal-root [data-close]");
-assert.equal(d.querySelector(".catalog-photo img").getAttribute("src").includes("commons.wikimedia"),false);
+assert.ok(Array.from(d.querySelectorAll(".catalog-photo img")).every(img=>!img.getAttribute("src").includes("commons.wikimedia")),"Nenhuma foto deve usar Wikimedia; grupos sem capa não possuem tag img.");
 assert.ok(d.querySelector("#public-sidebar [data-public-action='admin']"),"Entrada Admin não apareceu.");
 assert.equal(d.querySelector("#public-sidebar [data-public-action='admin']").tagName,"A","Admin deve ser um link real para abrir em nova guia.");
 assert.equal(d.querySelector("#public-sidebar [data-public-action='admin']").getAttribute("href"),"/admin/");
@@ -376,6 +399,13 @@ await wait(180);
 assert.ok(ad.querySelector(".admin-layout"),"Admin separado não abriu.");
 assert.equal(aw.sessionStorage.getItem("pet_check_identity_after_admin"),"1","Ao entrar no Admin marcar checagem de identidade pessoal no retorno.");
 assert.equal(ad.querySelector(".admin-overview.three")?.children.length,3,"Painel precisa ter três indicadores.");
+const countPanels=Array.from(ad.querySelectorAll(".admin-overview.three .admin-stat"));
+const allRegistered=fullAdmin.componentes.filter(x=>!x.arquivado);
+const sumQuantity=allRegistered.reduce((total,x)=>total+Number(x.quantidade||0),0);
+assert.equal(Number(countPanels[0].querySelector("strong").textContent),sumQuantity,"Primeiro KPI deve contar unidades totais, não tipos de materiais.");
+assert.match(countPanels[0].textContent,new RegExp(allRegistered.length+" tipos de materiais"));
+assert.equal(Number(countPanels[1].querySelector("strong").textContent)+Number(countPanels[2].querySelector("strong").textContent),sumQuantity,
+  "Quantidade = Em uso + Disponíveis: as três caixas precisam fechar a conta.");
 await adminClick('[data-admin-tab="reservas"]');
 assert.ok(ad.querySelector('[data-res-do="recusar"]'),"A reserva pendente deve permitir recusa.");
 assert.match(ad.querySelector('[data-res-do="aprovar"]').textContent,/Aprovar e entregar/);
@@ -552,6 +582,24 @@ assert.match(ad.querySelector("#bulk-selected-count").textContent,/0 materiais s
 await adminClick("#modal-root [data-close]");
 await adminClick("#admin-links-hub");
 assert.ok(ad.querySelector('[data-link-open="Alcalina"]'));
+assert.ok(ad.querySelector('[data-link-photo="Arduino"]'),"Vínculo deve oferecer editor próprio de imagem.");
+const arduinoPhotoBefore=three.imagem;
+await adminClick('[data-link-photo="Arduino"]');
+assert.equal(ad.querySelector("#group-photo-source").value,"nenhuma","Grupo começa sem imagem.");
+assert.ok(Array.from(ad.querySelector("#group-photo-source").options).some(x=>x.textContent==="Usar foto de Arduino Uno"),"Seletor deve oferecer a foto do integrante.");
+ad.querySelector("#group-photo-source").value="integrante:3";
+ad.querySelector("#group-photo-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(120);
+assert.equal(adminUI.groupImageWrites.at(-1).componente_id,3);
+assert.equal(three.imagem,arduinoPhotoBefore,"A foto individual não pode ser modificada pela edição do grupo.");
+await adminClick('[data-link-photo="Arduino"]');
+assert.equal(ad.querySelector("#group-photo-source").value,"integrante:3","A escolha do integrante deve persistir.");
+ad.querySelector("#group-photo-source").value="nenhuma";
+ad.querySelector("#group-photo-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(110);
+assert.equal(adminUI.groupImageWrites.at(-1).modo,"nenhuma","Poder limpar capa sem apagar o vínculo.");
+assert.equal(three.imagem,arduinoPhotoBefore);
+
 await adminClick('[data-link-rename="Alcalina"]');
 assert.equal(ad.querySelector("#rename-group-name").value,"Alcalina");
 ad.querySelector("#rename-group-name").value="Pilhas";
@@ -597,6 +645,9 @@ assert.ok(ad.querySelector('#admin-material-list [data-item-edit="2"]'));
 await adminClick('#admin-material-list [data-item-edit="1"]');
 assert.ok(ad.querySelector("#i-name"));
 assert.ok(ad.querySelector("#i-quantity"));
+assert.equal(ad.querySelector("#i-id"),null,"Modelo/referência foi retirado do editor.");
+assert.equal(ad.querySelector("#i-note"),null,"Observações redundantes foram retiradas.");
+assert.match(ad.querySelector("#item-editor-identification").textContent,/Patrimônio e unidade/);
 assert.ok(ad.querySelector("#i-available"),"Disponível precisa aparecer calculado no editor.");
 assert.equal(ad.querySelector("#i-broken"),null,"Não mostrar mais campo de defeitos.");
 assert.equal(ad.querySelectorAll("#i-loan-audience option").length,2,"Apenas PETianes e Visitantes.");
@@ -650,6 +701,8 @@ await adminClick("#cat-delete-cancel");
 await adminClick('[data-admin-tab="configuracoes"]');
 await adminClick("#v2-reset-reservations");
 assert.equal(ad.querySelector("#reset-reservations-backup").checked,false);
+assert.equal(ad.querySelector("#reset-reservations-confirm"),null,"Não exigir digitar frase para excluir reservas.");
+assert.ok(ad.querySelector("#reset-reservations-submit"),"Botão de exclusão direta deve existir.");
 await adminClick("#reset-reservations-cancel");
 assert.deepEqual(adminUI.errors,[],"Erros da página Admin.");
 assert.equal(ad.querySelector("#admin-back").tagName,"A","Voltar ao catálogo deve ser link real.");

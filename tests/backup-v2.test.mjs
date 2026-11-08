@@ -7,7 +7,7 @@ const db=new DatabaseSync(":memory:");db.exec("PRAGMA foreign_keys=ON");
 const files=["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql",
 "0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql",
 "0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql",
-"0010_historico_visibilidade.sql","0011_conciliar_experimentos.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql","0023_devolucoes_visitantes_pendentes.sql"];
+"0010_historico_visibilidade.sql","0011_conciliar_experimentos.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql","0020_central_vinculos.sql","0023_devolucoes_visitantes_pendentes.sql","0024_imagem_independente_vinculos.sql"];
 for(const file of files)db.exec(readFileSync("migrations/"+file,"utf8"));
 class P{
  constructor(sql){this.sql=sql;this.a=[];}
@@ -34,6 +34,9 @@ assert.equal(login.code,200);const cookie=login.cookie;
 const one=db.prepare("SELECT id,quantidade,em_uso,import_key FROM componentes WHERE nome='Mini Motor' AND arquivado=0").get();
 const cat=db.prepare("SELECT id FROM categorias WHERE nome='Eletrônica'").get();
 db.prepare("UPDATE componentes SET grupo_variacoes='Motores',visivel_visitante=0 WHERE id=?").run(one.id);
+const cover="data:image/png;base64,aGVsbG8=";
+db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES('Motores')").run();
+db.prepare("UPDATE grupos_variacoes SET imagem=?,imagem_componente_id=NULL WHERE nome='Motores'").run(cover);
 db.prepare("UPDATE categorias SET visivel_visitante=0 WHERE id=?").run(cat.id);
 db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,visivel_visitante) VALUES('Turquesa','#22AACC',4,40,0)").run();
 db.prepare("INSERT INTO usuarios(public_id,nome,papel,ativo,recovery_hash,criado_em,atualizado_em) VALUES('PET-TESTE-BACKUP','Usuário teste','petiano',1,'HASH','2026-01-01','2026-01-01')").run();
@@ -61,6 +64,7 @@ assert.ok(saved.historico.length>0);
 assert.equal(saved.categorias.find(x=>x.id===cat.id).visivel_visitante,0);
 assert.equal(saved.filamentos.find(x=>x.cor==="Turquesa").visivel_visitante,0);
 assert.equal(saved.componentes.find(x=>x.id===one.id).grupo_variacoes,"Motores");
+assert.equal(saved.grupos_variacoes.find(x=>x.nome==="Motores")?.imagem,cover,"O JSON de backup deve guardar a foto exclusiva do grupo.");
 assert.equal(saved.reservas.find(x=>x.id===loan).tipo,"retirada_direta");
 assert.equal(saved.reservas.filter(x=>x.status==="devolvida").length,originalClosed,"Backup deve incluir TODAS as 1.510 devoluções, não apenas o limite de 1.500 do Admin.");
 assert.equal(saved.configuracoes.mail_template_hoje_body,mailBody,"Modelo completo precisa constar no backup.");
@@ -74,6 +78,8 @@ const material=db.prepare("SELECT * FROM componentes WHERE id=?").get(one.id);
 assert.equal(material.quantidade,one.quantidade);
 assert.equal(material.em_uso,one.em_uso+1);
 assert.equal(material.grupo_variacoes,"Motores");
+assert.equal(db.prepare("SELECT imagem FROM grupos_variacoes WHERE nome='Motores'").get().imagem,cover,
+  "A restauração deve manter a imagem independente do vínculo.");
 assert.equal(material.visivel_visitante,0);
 assert.equal(material.import_key,one.import_key);
 assert.equal(db.prepare("SELECT visivel_visitante FROM categorias WHERE id=?").get(cat.id).visivel_visitante,0);

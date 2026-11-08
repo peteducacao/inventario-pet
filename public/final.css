@@ -950,3 +950,50 @@ background:#fff;border:1px dashed #acc5c9;border-radius:12px}
 .password-strength[data-strength="fraca"] .password-strength-label{color:#b42318}
 .password-strength[data-strength="média"] .password-strength-label{color:#936000}
 .password-strength[data-strength="forte"] .password-strength-label{color:#167245}
+
+/* Capa independente dos vínculos. Nunca herdar foto do primeiro integrante. */
+.group-no-photo{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:18px;text-align:center;color:#7894a0;font-size:12px;font-weight:700;letter-spacing:.02em;background:linear-gradient(145deg,#f4f9fa,#eaf2f4)}
+.group-photo-preview{min-height:140px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:#f4f9fa;border-radius:13px}
+.group-photo-preview img{max-height:230px;max-width:100%;object-fit:contain}
+.group-photo-preview .hint{padding:30px 10px;text-align:center}
+
+
+/* Catálogo PET — cards compactos com indicadores uniformes, sem áreas vazias forçadas. */
+/* Cada card tem a altura do próprio conteúdo. Antes a linha inteira era esticada
+   até a altura do card de filamento, deixando enormes vazios brancos nos vizinhos. */
+body:not(.admin-mode) .inventory-section .card-grid{
+  align-items:start;
+}
+body:not(.admin-mode) .inventory-section .catalog-card{
+  height:auto;
+  align-self:start;
+}
+body:not(.admin-mode) .inventory-section .catalog-body{
+  flex:0 0 auto;
+  min-height:0;
+  overflow:visible;
+}
+body:not(.admin-mode) .inventory-section .catalog-body .primary-button{
+  margin-top:11px;
+}
+/* Filamento mantém somente a ilustração de bobina; demais elementos usam
+   o MESMO status, categoria, quadro 3 colunas e botão dos materiais. */
+body:not(.admin-mode) .inventory-section .catalog-photo.filament-art{
+  height:129px;
+  flex:0 0 auto;
+  border:0;
+  background:linear-gradient(165deg,#fff 0%,#fafdfe 100%);
+}
+body:not(.admin-mode) .inventory-section .filament-public-card .catalog-body h3{
+  min-height:23px;
+  margin-bottom:5px;
+}
+body:not(.admin-mode) .inventory-section .filament-public-card .catalog-numbers{
+  margin:8px 0 9px;
+  background:transparent;
+}
+@media(max-width:720px){
+  body:not(.admin-mode) .inventory-section .catalog-photo.filament-art{
+    height:117px;
+  }
+}

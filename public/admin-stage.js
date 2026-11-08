@@ -3,7 +3,8 @@ const ADMIN_TABS=[["painel","grid","Painel"],["materiais","box","Materiais"],["f
 function adminCounts(){
   const items=state.admin?.componentes?.filter(x=>!isArchived(x))||[];
   const reservations=state.admin?.reservas||[];
-  return {items:items.length,used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
+  return {items:items.length,total:items.reduce((n,x)=>n+(Number(x.quantidade)||0),0),
+    used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
     available:items.reduce((n,x)=>n+stock(x),0),
     pending:reservations.filter(x=>x.status==="pendente"||(x.status==="retirada"&&x.devolucao_solicitada_em)).length};
 }
@@ -151,7 +152,7 @@ function dashboardOpenEvent(log){
 function adminDashboard(root){
   const c=adminCounts();
   root.innerHTML='<section class="admin-panel"><h2>Visão geral</h2><p>Resumo do acervo e últimas movimentações.</p>'+
-    '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.items+'</strong><span>Itens cadastrados</span></div>'+
+    '<div class="admin-overview three" style="margin-top:15px"><div class="admin-stat"><strong>'+c.total+'</strong><span>Quantidade total</span><small>'+c.items+' tipos de materiais cadastrados</small></div>'+
     '<div class="admin-stat"><strong>'+c.used+'</strong><span>Em uso</span></div>'+
     '<div class="admin-stat"><strong>'+c.available+'</strong><span>Disponíveis</span></div></div>'+
     '<div class="dashboard-changes-head"><h3>Últimas alterações</h3><button type="button" class="outline-button small-button" id="dashboard-log-all">Ver histórico</button></div>'+
@@ -326,10 +327,12 @@ function openLinksHub(){
         '<small>'+count+' '+(count===1?'material vinculado':'materiais vinculados')+'</small></div>'+
         '<div class="links-hub-actions">'+
         '<button type="button" class="primary-button small-button" data-link-open="'+attr(name)+'">Organizar</button>'+
+        '<button type="button" class="outline-button small-button" data-link-photo="'+attr(name)+'">Editar imagem</button>'+
         '<button type="button" class="outline-button small-button" data-link-rename="'+attr(name)+'">Renomear</button>'+
         '<button type="button" class="danger-button small-button" data-link-delete="'+attr(name)+'">Excluir</button></div></div>';
     }).join(""):'<div class="variant-manager-empty">Nenhum vínculo encontrado.</div>';
     $$("[data-link-open]",list).forEach(btn=>btn.onclick=()=>openVariantLinker(null,btn.dataset.linkOpen));
+    $$("[data-link-photo]",list).forEach(btn=>btn.onclick=()=>editVariationGroupPhoto(btn.dataset.linkPhoto));
     $$("[data-link-rename]",list).forEach(btn=>btn.onclick=()=>adminRenameVariationGroup(btn.dataset.linkRename));
     $$("[data-link-delete]",list).forEach(btn=>btn.onclick=async()=>{
       if(busy)return;
@@ -366,6 +369,59 @@ function openLinksHub(){
     finally{busy=false;}
   };
   draw();
+}
+// A foto de capa do VÍNCULO não modifica foto, estoque ou cadastro dos integrantes.
+function editVariationGroupPhoto(name){
+  const key=String(name||"").trim().toLocaleLowerCase("pt-BR");
+  const group=(state.admin?.grupos_variacoes||[]).find(g=>String(g.nome||"").toLocaleLowerCase("pt-BR")===key);
+  if(!group){toast("Vínculo não encontrado.",true);return;}
+  const members=(state.admin?.componentes||[]).filter(x=>!isArchived(x)&&String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===key)
+    .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+  const current=group.imagem?"propria":group.imagem_componente_id?"integrante:"+group.imagem_componente_id:"nenhuma";
+  const options='<option value="nenhuma">Sem foto do vínculo</option>'+
+    '<option value="propria" '+(current==="propria"?"selected":"")+'>Enviar foto própria</option>'+
+    members.map(x=>'<option value="integrante:'+x.id+'" '+(current==="integrante:"+x.id?"selected":"")+'>Usar foto de '+esc(x.nome)+'</option>').join("");
+  const form='<form id="group-photo-form" class="modal-main">'+
+    '<p class="hint">Esta é a imagem do card '+esc(group.nome)+'. As fotos de '+(members.length===1?"seu integrante":"seus integrantes")+' não serão modificadas.</p>'+
+    '<div class="field"><label for="group-photo-source">Imagem do vínculo</label><select id="group-photo-source">'+options+'</select></div>'+
+    '<div id="group-photo-preview" class="media-preview group-photo-preview"></div>'+
+    '<div class="field" id="group-photo-upload-row" hidden><label for="group-photo-upload">Enviar foto (PNG, JPG ou WebP)</label><input type="file" id="group-photo-upload" accept="image/png,image/jpeg,image/webp"><small class="hint">Você poderá ajustar o enquadramento antes de salvar.</small></div>'+
+    '<div class="modal-footer"><button type="button" class="secondary-button" id="group-photo-cancel">Cancelar</button><button type="submit" class="primary-button" id="group-photo-save">Salvar imagem</button></div></form>';
+  openModal("Editar imagem: "+group.nome,"Escolha uma capa própria ou a foto de um integrante.",form,{size:"wide"});
+  let own=group.imagem||"";
+  const choice=$("#group-photo-source"),preview=$("#group-photo-preview");
+  const validSource=current==="propria"||current==="nenhuma"||members.some(x=>current==="integrante:"+x.id);
+  choice.value=validSource?current:"nenhuma";
+  const redraw=()=>{
+    const selected=choice.value;
+    $("#group-photo-upload-row").hidden=selected!=="propria";
+    const member=selected.startsWith("integrante:")?members.find(x=>x.id===Number(selected.slice("integrante:".length))):null;
+    const image=selected==="propria"?own:member?itemImage(member):"";
+    preview.innerHTML=image?'<img alt="Prévia da imagem do vínculo" src="'+attr(image)+'">':'<p class="hint">Sem foto do vínculo</p>';
+  };
+  choice.onchange=redraw;
+  $("#group-photo-upload").onchange=async e=>{
+    const file=e.target.files?.[0];if(!file)return;
+    try{
+      const result=await editPETCatalogPhoto(file);
+      if(result){own=result;choice.value="propria";redraw();}
+    }catch(error){toast(error.message,true);}
+    e.target.value="";
+  };
+  $("#group-photo-cancel").onclick=openLinksHub;
+  $("#group-photo-form").onsubmit=async e=>{
+    e.preventDefault();
+    const selected=choice.value;
+    if(selected==="propria"&&!own){toast("Selecione uma foto para o vínculo.",true);return;}
+    const btn=$("#group-photo-save");btn.disabled=true;btn.textContent="Salvando…";
+    const data=selected==="propria"?{modo:"propria",imagem:own}:selected.startsWith("integrante:")?
+      {modo:"integrante",componente_id:Number(selected.slice("integrante:".length))}:{modo:"nenhuma"};
+    try{
+      await api("/api/admin/variation-groups","POST",{acao:"imagem",nome:group.nome,responsavel:state.actor||"Admin",...data});
+      await adminReload();adminBuild();openLinksHub();toast("Imagem do vínculo atualizada sem alterar os integrantes.");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar imagem";}
+  };
+  redraw();
 }
 function adminViewMaterial(id){
   const x=state.admin.componentes.find(z=>z.id===id);if(!x)return;
@@ -1063,7 +1119,7 @@ function openBulkVisibility(currentId){
   $("#bulk-only-members").onclick=()=>save(false);
   draw();
 }
-/* Vínculos não editam nenhum campo do material: só associam IDs existentes. */
+/* Vínculos associam materiais e possuem uma capa própria; não alteram fotos individuais. */
 function openVariantLinker(currentId,groupName=""){
   const name=String(groupName||"").trim();
   if(!name){openLinksHub();return;}
@@ -1409,18 +1465,16 @@ function adminSettings(root){
       '<form id="reset-reservations-form" class="modal-main">'+
       '<p class="notice warning"><strong>Atenção:</strong> todos os registros de reservas, inclusive pendentes e concluídos, serão apagados. As cobranças pendentes relacionadas serão canceladas. O inventário, os usuários e o histórico administrativo serão preservados.</p>'+
       deletionBackupChoice("reset-reservations-backup")+
-      '<div class="field"><label for="reset-reservations-confirm">Digite APAGAR TODAS AS RESERVAS para confirmar</label><input id="reset-reservations-confirm" required autocomplete="off" placeholder="APAGAR TODAS AS RESERVAS"></div>'+
       '<div class="modal-footer"><button type="button" class="outline-button" id="reset-reservations-cancel">Cancelar</button><button class="danger-button" type="submit" id="reset-reservations-submit">Apagar registros</button></div></form>');
     $("#reset-reservations-cancel").onclick=closeModal;
     $("#reset-reservations-form").onsubmit=async e=>{
       e.preventDefault();
-      if($("#reset-reservations-confirm").value.trim()!=="APAGAR TODAS AS RESERVAS"){toast("Digite a confirmação exatamente como indicada.",true);return;}
       const btn=$("#reset-reservations-submit"),download=$("#reset-reservations-backup").checked;
       btn.disabled=true;btn.textContent=download?"Preparando backup…":"Excluindo registros…";
       try{
         const exported=await optionalBackupBeforeDeletion(download,"backup-antes-de-limpar-reservas");
         btn.textContent="Excluindo registros…";
-        const result=await api("/api/admin/reservations/reset","POST",{confirmar:"APAGAR TODAS AS RESERVAS"});
+        const result=await api("/api/admin/reservations/reset","POST",{confirmar:true});
         await adminReload();closeModal();adminBuild();toast(result.removidos+" registro(s) de reserva apagado(s)."+(exported?" Backup baixado.":""));
       }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Apagar registros";}
     };

@@ -259,10 +259,9 @@ function itemEditor(id){
       '<select id="i-loan-audience">'+
       '<option value="petianos" '+(x&&Number(x.permitir_visitantes)!==1?'selected':'')+'>PETianes</option>'+
       '<option value="visitantes" '+(!x||Number(x.permitir_visitantes)===1?'selected':'')+'>Visitantes (inclui PETianes)</option></select></div>'+
-    '<details class="item-editor-section" id="item-editor-identification"><summary>Identificação e observações <small>Modelo, patrimônio, unidade e anotações</small></summary>'+
+    '<details class="item-editor-section" id="item-editor-identification"><summary>Patrimônio e unidade <small>Identificação patrimonial e medida de estoque</small></summary>'+
       '<div class="item-editor-extra">'+
-      '<div class="field-grid">'+inputField("i-id","Modelo / referência (opcional)",x?.identificacao||"",{max:120})+
-        inputField("i-patrimony","Número de patrimônio (opcional)",x?.patrimonio||"",{max:160})+'</div>'+
+      inputField("i-patrimony","Número de patrimônio (opcional)",x?.patrimonio||"",{max:160})+
       '<div class="field"><label for="i-unit">Unidade de medida</label><select id="i-unit">'+
         (()=>{
           const options=["unidades","kits","pares","conjuntos","rolos","metros","gramas","litros","pacotes","caixas","frascos"];
@@ -271,8 +270,7 @@ function itemEditor(id){
           return options.map(unit=>'<option value="'+attr(unit)+'" '+(unit===current?'selected':'')+'>'+esc(unit[0].toUpperCase()+unit.slice(1))+'</option>').join("");
         })()+
         '<option value="__outro__">Outro…</option></select><input id="i-unit-other" maxlength="40" placeholder="Informe a unidade" hidden style="margin-top:8px"></div>'+
-      '<div class="field"><label for="i-note">Observações (opcional)</label><textarea id="i-note" maxlength="1200">'+esc(x?.observacoes||"")+'</textarea></div>'+
-
+      
       (x?.ultima_alteracao?'<div class="audit"><strong>Última alteração salva</strong><span>'+esc(x.ultimo_responsavel||"PETiane")+' · '+esc(fmt(x.ultima_alteracao))+'</span><p>'+esc(x.detalhes_alteracao||"Registro atualizado")+'</p></div>':"")+
       '</div></details>'+
     '<details class="item-editor-section" id="item-editor-media"><summary>Foto e exibição <small>Imagem e opções de visualização</small></summary>'+
@@ -320,11 +318,11 @@ function itemEditor(id){
   $("#item-form").onsubmit=async e=>{
     e.preventDefault();const submit=$("#i-save");submit.disabled=true;submit.textContent="Salvando…";
     const body={id:x?.id||null,responsavel:state.actor||"PETiane",categoria_id:Number($("#i-category").value),
-      nome:$("#i-name").value,identificacao:$("#i-id").value,patrimonio:$("#i-patrimony").value,
+      nome:$("#i-name").value,identificacao:x?.identificacao||"",patrimonio:$("#i-patrimony").value,
       imagem:image,quantidade:Number($("#i-quantity").value),em_uso:Number($("#i-used").value),
       com_defeito:0,mostrar_quantidade:true,mostrar_em_uso:true,mostrar_defeito:false,
       visivel_visitante:$("#i-public").checked,permitir_petianos:true,permitir_visitantes:$("#i-loan-audience").value==="visitantes",grupo_variacoes:family,
-      descricao_defeito:"",observacoes:$("#i-note").value,unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
+      descricao_defeito:"",observacoes:x?.observacoes||"",unidade:$("#i-unit").value==="__outro__"?$("#i-unit-other").value:$("#i-unit").value};
     try{
       await api("/api/admin/item","POST",body);
       $("#item-form")?.dispatchEvent(new Event("pet:item-saved"));
