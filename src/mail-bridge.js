@@ -204,6 +204,14 @@ export async function mailAdminAPI(req,env){
     const result=await generateDailyEmails(env);
     return reply(result,result.ok?200:409);
   }
+  if(path==="/api/admin/mail/retry"&&req.method==="POST"){
+    let data;try{data=await req.json();}catch{return fail("Dados inválidos.");}
+    const id=Number(data?.id);
+    if(!Number.isSafeInteger(id)||id<1)return fail("E-mail inválido.");
+    const pending=await db.prepare("UPDATE mail_queue SET situacao='pendente',processado_em=NULL,token_reserva=NULL,ultimo_erro=NULL,tentativa=0 WHERE id=? AND situacao='erro'").bind(id).run();
+    if(pending.meta?.changes!==1)return fail("Este e-mail não está com erro ou já foi reenviado.",409);
+    return reply({ok:true,mensagem:"Reenvio colocado na fila. Confira o histórico."});
+  }
   if(path==="/api/admin/mail/test"&&req.method==="POST"){
     let data;try{data=await req.json();}catch{return fail("Dados inválidos.");}
     const email=clean(data?.email,180).toLowerCase();
