@@ -1267,7 +1267,13 @@ function adminSettings(root){
     '<div class="settings-toggle-grid">'+settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
     settingsToggle("v2-mail-pet","Notificar PETianes","Somente com prazo e permissão habilitada.",cfg.notificacoes_petianos==="sim")+
     settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
-    '<button class="outline-button" type="button" id="v2-mail-history">Ver e-mails pendentes</button></div>'+
+    '<div class="mail-template-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'+
+      '<button class="outline-button" type="button" id="v2-mail-prepare">Preparar lembretes agora</button>'+
+      '<button class="outline-button" type="button" id="v2-mail-history">Ver fila e histórico de e-mails</button></div>'+
+      '<div class="field"><label for="v2-mail-test-email">Teste de envio para seu e-mail</label>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><input style="flex:1;min-width:180px" id="v2-mail-test-email" type="email" autocomplete="email" placeholder="seuemail@exemplo.com" maxlength="180">'+
+      '<button class="primary-button" type="button" id="v2-mail-test-send">Enviar e-mail de teste</button></div>'+
+      '<small>O teste entra na fila Gmail e aparece no histórico. Limite: três testes por hora.</small></div></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
     scheduleEditor+emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
@@ -1348,12 +1354,33 @@ function adminSettings(root){
     typeSelect.innerHTML=mailTemplates.map(x=>'<option value="'+attr(x.evento)+'">'+esc(x.nome)+'</option>').join("");
     if(mailTemplates.length)loadTemplate(mailTemplates[0].evento);
   }).catch(error=>{if(document.contains(root))typeSelect.innerHTML='<option value="">'+esc(error.message)+'</option>';toast("Não foi possível carregar os modelos de e-mail.",true);});
+  $("#v2-mail-prepare").onclick=async()=>{
+    try{
+      const r=await api("/api/admin/mail/prepare","POST",{});
+      toast("Lembretes verificados: "+r.verificados+". Novos e-mails na fila: "+r.enfileirados+".");
+    }catch(e){toast("Falha ao preparar lembretes: "+e.message,true);}
+  };
+  $("#v2-mail-test-send").onclick=async()=>{
+    const email=$("#v2-mail-test-email").value.trim();
+    if(!email||!$("#v2-mail-test-email").checkValidity()){toast("Digite um e-mail válido para testar.",true);return;}
+    const btn=$("#v2-mail-test-send");btn.disabled=true;
+    try{
+      const result=await api("/api/admin/mail/test","POST",{email});
+      toast(result.mensagem||"Teste colocado na fila do Gmail.");
+    }catch(error){toast(error.message,true);}
+    finally{btn.disabled=false;}
+  };
   $("#v2-mail-history").onclick=async()=>{
     try{
-      const result=await api("/api/admin/mail/log");
-      const items=(result.items||[]).filter(x=>x.situacao==="pendente"||x.situacao==="processando");
-      const body='<div class="modal-main"><p class="notice">Conexão com o Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'</p><div class="admin-list">'+(items.length?items.map(x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.criado_em))+(x.ultimo_erro?" · "+esc(x.ultimo_erro):"")+'</small></div></div>').join(""):'<div class="empty-state">Nenhum e-mail pendente de envio.</div>')+'</div></div>';
-      openModal("E-mails pendentes","Cobranças aguardando envio pelo Gmail.",body);
+      const result=await api("/api/admin/mail/log?historico=1");
+      const items=result.items||[];
+      const active=items.filter(x=>x.situacao==="pendente"||x.situacao==="processando");
+      const past=items.filter(x=>!["pendente","processando"].includes(x.situacao));
+      const record=x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.enviado_em||x.criado_em))+(x.ultimo_erro?' · Erro: '+esc(x.ultimo_erro):"")+'</small></div></div>';
+      const body='<div class="modal-main"><p class="notice">Integração Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'. Um teste enviado aparece no histórico; a entrega à caixa de entrada depende do Gmail.</p>'+
+        '<h3>Fila atual ('+active.length+')</h3><div class="admin-list">'+(active.length?active.map(record).join(""):'<div class="empty-state">Nenhum e-mail aguardando envio.</div>')+'</div>'+
+        '<h3>Histórico recente ('+past.length+')</h3><div class="admin-list">'+(past.length?past.map(record).join(""):'<div class="empty-state">Nenhum envio finalizado ou com erro no histórico recente.</div>')+'</div></div>';
+      openModal("Fila e histórico do Gmail","Inclui mensagens enviadas, canceladas e com falhas.",body,{size:"wide"});
     }catch(e){toast(e.message,true);}
   };
   $("#v2-backup-download").onclick=async()=>{try{const result=await api("/api/admin/backup");saveDownload("backup-inventario-pet-"+localDate()+".json",JSON.stringify(result,null,2));toast("Backup preparado.");}catch(e){toast(e.message,true);}};
