@@ -1381,7 +1381,7 @@ function adminSettings(root){
         '<h3>Fila atual ('+active.length+')</h3><div class="admin-list">'+(active.length?active.map(record).join(""):'<div class="empty-state">Nenhum e-mail aguardando envio.</div>')+'</div>'+
         '<h3>Histórico recente ('+past.length+')</h3><div class="admin-list">'+(past.length?past.map(record).join(""):'<div class="empty-state">Nenhum envio finalizado ou com erro no histórico recente.</div>')+'</div></div>';
       openModal("Fila e histórico do Gmail","Inclui mensagens enviadas, canceladas e com falhas.",body,{size:"wide"});
-      $("[data-mail-retry]").forEach(button=>button.onclick=async()=>{
+      document.querySelectorAll("[data-mail-retry]").forEach(button=>button.onclick=async()=>{
         button.disabled=true;
         try{
           await api("/api/admin/mail/retry","POST",{id:Number(button.dataset.mailRetry)});
