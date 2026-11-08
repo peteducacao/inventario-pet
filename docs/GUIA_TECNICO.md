@@ -118,12 +118,12 @@ O catálogo público (`public/final.js`) agrupa os materiais por `grupo_variacoe
 3. `reservas.status = pendente`, aguardando intervenção administrativa.
 4. Admin usa `POST /api/admin/reservation` `acao=aprovar` ou `acao=recusar`.
 5. **Aprovar e entregar** converte direto para `retirada`, registra datas, responsável e aumenta `componentes.em_uso`. É proibido forçar uma segunda operação de retirada em reservas novas.
-6. A própria conta pode devolver pelo `POST /api/my/return`; Admin também pode devolver. Descartar unidades na devolução (campo opcional `descartados`) reduz `quantidade` e `em_uso`, sem criar estoque defeituoso. `com_defeito` permanece coluna técnica legada zerada.
+6. Visitantes solicitam devolução pelo `POST /api/my/return`; o empréstimo e o estoque permanecem ativos até o Admin confirmar pela rota `/api/admin/reservation` (`acao=devolver`). O Admin também pode indicar não recebimento (`acao=cancelar_solicitacao_devolucao`) para permitir nova solicitação. Descartar unidades na devolução (campo opcional `descartados`) reduz `quantidade` e `em_uso`, sem criar estoque defeituoso. `com_defeito` permanece coluna técnica legada zerada.
 
 ### PETiane
 1. Cargo `petiano` é atribuído pelo Admin em `Usuários`. Sessão pessoal e e-mail devem estar válidos.
 2. `POST /api/member/withdraw` registra `tipo=retirada_direta` e status `retirada` imediatamente, sem aprovação.
-3. `POST /api/my/return` ou `/api/member/return` registra devolução do titular, sem segunda aprovação.
+3. PETianes usam `POST /api/my/return` ou `/api/member/return` para concluir a própria devolução diretamente, sem segunda aprovação.
 
 ### Estados e abas
 - `pendente` → Pendentes.
@@ -169,7 +169,7 @@ Cloudflare cron de avisos → src/mail-bridge.js (validação)
 
 **Modelos editáveis:** `GET/POST /api/admin/mail/templates`; variáveis `{nome}`, `{material}`, `{quantidade}`, `{prazo}`, `{registro}`, `{link}`. A prévia `GET /api/admin/mail/preview?id=<id>` não envia nada. O admin edita o texto de cobrança antes de `POST /api/admin/mail/queue`; há controle de duplicidade diária.
 
-**Fila de pendentes:** `GET /api/admin/mail/log` retorna somente status `pendente` e `processando` para a janela, embora os enviados permaneçam em `mail_queue` no D1. O Apps Script consulta `/api/mail/next` e confirma com `/api/mail/ack`; mensagens deixam de ser válidas se o empréstimo já foi devolvido, mudou a data ou perdeu autorização. Mensagens concluídas continuam no banco para rastreabilidade.
+**Fila e histórico:** `GET /api/admin/mail/log` mantém a resposta padrão só para `pendente`/`processando`; `GET /api/admin/mail/log?historico=1` inclui os mais recentes `enviado`, `erro`, `cancelado` para diagnóstico. `POST /api/admin/mail/test` enfileira um aviso fixo de teste para o endereço informado no Admin, limitado a 3 por hora; `POST /api/admin/mail/prepare` prepara lembretes ao comando do administrador. O Apps Script consulta `/api/mail/next` e confirma com `/api/mail/ack`; mensagens deixam de ser válidas se o empréstimo já foi devolvido, mudou a data ou perdeu autorização. Mensagens concluídas continuam no banco para rastreabilidade.
 
 **Notificações internas:** aprovação, recusa e devolução administrativas podem criar avisos para a conta vinculada. **Exceção:** a devolução realizada pelo próprio PETiane em `/api/my/return` ou `/api/member/return` não cria notificação de confirmação, pois a ação já foi confirmada na interface. O endpoint `/api/notifications` também oculta de contas PETianes as antigas mensagens de auto-devolução com o título e texto originais, sem excluir registros do banco ou esconder mensagens de administração. O Gmail, no código atual, **não** envia automaticamente confirmações transacionais de reserva, aprovação, recusa ou devolução.
 
@@ -199,6 +199,12 @@ Cloudflare cron de avisos → src/mail-bridge.js (validação)
 - Nunca publique backup de produção: pode conter nomes, e-mails de reservas e observações.
 - Não execute comandos de limpeza/destruição em D1 remoto sem pedido explícito, backup confirmado e plano de recuperação.
 - Para interagir com sistemas externos, respeite permissões e necessidade de confirmação do responsável.
+
+**Gatilho imediato de recuperação:** ao solicitar senha, a API sempre enfileira o link com validade de 30 minutos. Se o segredo opcional `PET_MAIL_WEBHOOK_URL` apontar para o URL `/exec` do Google Apps Script publicado como Aplicativo da Web, o Worker aciona `doPost` em segundo plano autenticado com `MAIL_BRIDGE_TOKEN`; o script lê exclusivamente a fila de recuperação e confirma o envio com o ACK padrão. É necessário atualizar o código do Apps Script, publicar uma implantação acessível por HTTPS e cadastrar `PET_MAIL_WEBHOOK_URL` como segredo no Cloudflare. Sem isso, ou se houver falha, a recuperação permanece na fila que o gatilho periódico do Apps Script consulta a cada 5 minutos. Não confundir resposta de solicitação recebida com e-mail efetivamente entregue.
+
+**Agendamento de lembretes:** com `avisos_email=sim`, o Worker prepara eventos em um cron a cada 15 minutos (além do cron diário de manutenção) e na aprovação/retirada realizada na data relevante. O evento do dia só existe para empréstimo já em `retirada`, com e-mail e permissões habilitadas; reservar algo para hoje sem aprovação não gera e-mail. Novas tentativas do mesmo evento usam a chave única e não duplicam a fila. Visitas com devolução solicitada, mas ainda não confirmada, permanecem com estoque em uso e não recebem cobrança automática até a decisão administrativa.
+
+**Migração 0023:** acrescenta `devolucao_solicitada_em` e `devolucao_solicitada_observacao` a `reservas`, sem alterar status de empréstimos ativos nem reclassificar devoluções históricas. O backup v2 salva/restaura esses dois campos nos registros abertos. O Admin apresenta filtro separado **Devoluções a confirmar**, sem confundi-lo com reservas ainda não aprovadas.
 
 ## 8. Testes e manutenção
 
