@@ -621,9 +621,15 @@ await wait(120);
 assert.equal(adminUI.groupImageWrites.at(-1).modo,"padrao","O modo padrão deve ser salvo sem upload.");
 assert.equal(fullAdmin.grupos_variacoes.find(g=>g.nome==="Arduino").imagem,"__PET_GROUP_DEFAULT__","A escolha padrão persiste como modo independente.");
 assert.equal(three.imagem,arduinoPhotoBefore,"A foto do integrante não pode mudar ao usar imagem padrão.");
-w.__finalRender();
-assert.equal(d.querySelector('.catalog-photo[data-open-variants="arduino"] img')?.getAttribute("src"),w.componentArt("Arduino"),
+// O primeiro navegador público já foi encerrado neste teste; validar a nova
+// arte em uma sessão de catálogo isolada, como um visitante real.
+const defaultCoverCatalog=build(false);
+await wait(300);
+defaultCoverCatalog.w.__finalRender();
+assert.equal(defaultCoverCatalog.d.querySelector('.catalog-photo[data-open-variants="arduino"] img')?.getAttribute("src"),
+  defaultCoverCatalog.w.componentArt("Arduino"),
   "O catálogo deve mostrar a arte padrão do vínculo, mesmo sem upload.");
+defaultCoverCatalog.dom.window.close();
 await adminClick('[data-link-photo="Arduino"]');
 assert.equal(ad.querySelector("#group-photo-source").value,"padrao","O seletor deve reconhecer a opção salva.");
 ad.querySelector("#group-photo-source").value="integrante:3";
