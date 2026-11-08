@@ -107,7 +107,8 @@ function build(isAdmin,alreadyAdmin=false,identityLoggedIn=true,returningFromAdm
         groupImageWrites.push(payload);
         const entry=fullAdmin.grupos_variacoes.find(x=>x.nome===payload.nome);
         if(entry){
-          entry.imagem=payload.modo==="propria"?payload.imagem:"";
+          entry.imagem=payload.modo==="padrao"?"__PET_GROUP_DEFAULT__":
+            payload.modo==="propria"?payload.imagem:"";
           entry.imagem_componente_id=payload.modo==="integrante"?payload.componente_id:null;
         }
       }
@@ -610,6 +611,21 @@ const arduinoPhotoBefore=three.imagem;
 await adminClick('[data-link-photo="Arduino"]');
 assert.equal(ad.querySelector("#group-photo-source").value,"nenhuma","Grupo começa sem imagem.");
 assert.ok(Array.from(ad.querySelector("#group-photo-source").options).some(x=>x.textContent==="Usar foto de Arduino Uno"),"Seletor deve oferecer a foto do integrante.");
+const coverChoices=Array.from(ad.querySelector("#group-photo-source").options,x=>x.value);
+assert.ok(coverChoices.includes("padrao"),"O vínculo deve oferecer Usar imagem padrão.");
+ad.querySelector("#group-photo-source").value="padrao";
+ad.querySelector("#group-photo-source").dispatchEvent(new aw.Event("change",{bubbles:true}));
+assert.equal(ad.querySelector("#group-photo-preview img")?.getAttribute("src"),aw.componentArt("Arduino"),"Prévia da imagem padrão deve ser a arte local do grupo.");
+ad.querySelector("#group-photo-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
+await wait(120);
+assert.equal(adminUI.groupImageWrites.at(-1).modo,"padrao","O modo padrão deve ser salvo sem upload.");
+assert.equal(fullAdmin.grupos_variacoes.find(g=>g.nome==="Arduino").imagem,"__PET_GROUP_DEFAULT__","A escolha padrão persiste como modo independente.");
+assert.equal(three.imagem,arduinoPhotoBefore,"A foto do integrante não pode mudar ao usar imagem padrão.");
+w.__finalRender();
+assert.equal(d.querySelector('.catalog-photo[data-open-variants="arduino"] img')?.getAttribute("src"),w.componentArt("Arduino"),
+  "O catálogo deve mostrar a arte padrão do vínculo, mesmo sem upload.");
+await adminClick('[data-link-photo="Arduino"]');
+assert.equal(ad.querySelector("#group-photo-source").value,"padrao","O seletor deve reconhecer a opção salva.");
 ad.querySelector("#group-photo-source").value="integrante:3";
 ad.querySelector("#group-photo-form").dispatchEvent(new aw.Event("submit",{bubbles:true,cancelable:true}));
 await wait(120);
