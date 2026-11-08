@@ -37,6 +37,14 @@ db.prepare("UPDATE componentes SET grupo_variacoes='Motores',visivel_visitante=0
 const cover="data:image/png;base64,aGVsbG8=";
 db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES('Motores')").run();
 db.prepare("UPDATE grupos_variacoes SET imagem=?,imagem_componente_id=NULL WHERE nome='Motores'").run(cover);
+const createdDefault=await request("/api/admin/variation-groups","POST",{acao:"criar",nome:"Grupo Padrão"},cookie);
+assert.equal(createdDefault.code,200);
+const defaultCover=await request("/api/admin/variation-groups","POST",{acao:"imagem",nome:"Grupo Padrão",modo:"padrao"},cookie);
+assert.equal(defaultCover.code,200,"O Admin pode selecionar a imagem padrão sem enviar foto.");
+assert.equal(db.prepare("SELECT imagem,imagem_componente_id FROM grupos_variacoes WHERE nome='Grupo Padrão'").get().imagem,"__PET_GROUP_DEFAULT__");
+assert.equal(db.prepare("SELECT imagem_componente_id FROM grupos_variacoes WHERE nome='Grupo Padrão'").get().imagem_componente_id,null);
+assert.equal((await request("/api/admin/variation-groups","POST",{acao:"imagem",nome:"Grupo Padrão",modo:"propria",imagem:"__PET_GROUP_DEFAULT__"},cookie)).code,400,
+  "A foto própria não pode aceitar um marcador em vez de um arquivo válido.");
 db.prepare("UPDATE categorias SET visivel_visitante=0 WHERE id=?").run(cat.id);
 db.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,visivel_visitante) VALUES('Turquesa','#22AACC',4,40,0)").run();
 db.prepare("INSERT INTO usuarios(public_id,nome,papel,ativo,recovery_hash,criado_em,atualizado_em) VALUES('PET-TESTE-BACKUP','Usuário teste','petiano',1,'HASH','2026-01-01','2026-01-01')").run();
@@ -65,6 +73,8 @@ assert.equal(saved.categorias.find(x=>x.id===cat.id).visivel_visitante,0);
 assert.equal(saved.filamentos.find(x=>x.cor==="Turquesa").visivel_visitante,0);
 assert.equal(saved.componentes.find(x=>x.id===one.id).grupo_variacoes,"Motores");
 assert.equal(saved.grupos_variacoes.find(x=>x.nome==="Motores")?.imagem,cover,"O JSON de backup deve guardar a foto exclusiva do grupo.");
+assert.equal(saved.grupos_variacoes.find(x=>x.nome==="Grupo Padrão")?.imagem,"__PET_GROUP_DEFAULT__",
+  "O backup deve guardar a escolha de imagem padrão do vínculo.");
 assert.equal(saved.reservas.find(x=>x.id===loan).tipo,"retirada_direta");
 assert.equal(saved.reservas.filter(x=>x.status==="devolvida").length,originalClosed,"Backup deve incluir TODAS as 1.510 devoluções, não apenas o limite de 1.500 do Admin.");
 assert.equal(saved.configuracoes.mail_template_hoje_body,mailBody,"Modelo completo precisa constar no backup.");
@@ -72,6 +82,7 @@ assert.ok(saved.conciliacao_experimentos_backup.length>0);
 db.prepare("UPDATE componentes SET quantidade=quantidade+10 WHERE id=?").run(one.id);
 db.prepare("UPDATE categorias SET visivel_visitante=1 WHERE id=?").run(cat.id);
 db.prepare("DELETE FROM filamentos WHERE cor='Turquesa'").run();
+db.prepare("UPDATE grupos_variacoes SET imagem='' WHERE nome='Grupo Padrão'").run();
 const restore=await request("/api/admin/restore","POST",saved,cookie);
 assert.equal(restore.code,200,JSON.stringify(restore.data).slice(0,250));
 const material=db.prepare("SELECT * FROM componentes WHERE id=?").get(one.id);
@@ -80,6 +91,8 @@ assert.equal(material.em_uso,one.em_uso+1);
 assert.equal(material.grupo_variacoes,"Motores");
 assert.equal(db.prepare("SELECT imagem FROM grupos_variacoes WHERE nome='Motores'").get().imagem,cover,
   "A restauração deve manter a imagem independente do vínculo.");
+assert.equal(db.prepare("SELECT imagem FROM grupos_variacoes WHERE nome='Grupo Padrão'").get().imagem,"__PET_GROUP_DEFAULT__",
+  "A restauração deve reativar o modo de imagem padrão.");
 assert.equal(material.visivel_visitante,0);
 assert.equal(material.import_key,one.import_key);
 assert.equal(db.prepare("SELECT visivel_visitante FROM categorias WHERE id=?").get(cat.id).visivel_visitante,0);
