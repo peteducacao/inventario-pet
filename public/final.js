@@ -164,7 +164,12 @@ function finalCard(original,siblings=[]){
   const free=showGroupTotals?siblings.reduce((n,v)=>n+stock(v),0):stock(x);
   const status=free===0?"Sem estoque":used>free?"Em uso":"Disponível";
   const type=free===0?"empty":used>free?"busy":"";
-  const img=itemImage(x),canWithdraw=identityIsMember(),loanOK=typeof borrowableItem==="function"?borrowableItem(x):true;
+  // A capa do vínculo é independente da foto de Arduino Uno/Nano etc.
+  // Sem capa configurada o grupo fica intencionalmente sem foto, mesmo após escolher modelo.
+  const groupCover=grouped?(state.data.grupos_variacoes||[]).find(g=>String(g.nome||"").trim().toLocaleLowerCase("pt-BR")===groupKey):null;
+  const coverMember=grouped&&groupCover?.imagem_componente_id?siblings.find(v=>Number(v.id)===Number(groupCover.imagem_componente_id)):null;
+  const img=grouped?(groupCover?.imagem||(coverMember?itemImage(coverMember):"")):itemImage(x);
+  const canWithdraw=identityIsMember(),loanOK=typeof borrowableItem==="function"?borrowableItem(x):true;
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
@@ -178,7 +183,8 @@ function finalCard(original,siblings=[]){
     '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0||!loanOK?"disabled":"")+'>'+
     iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>';
   return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" '+imageAction+' aria-label="'+attr(photoLabel)+'">'+
-    '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" data-pet-board-fallback>'+
+    (img?'<img src="'+attr(img)+'" alt="'+attr(grouped?familyName:x.nome)+'" loading="lazy" data-pet-board-fallback>':
+      '<span class="group-no-photo" aria-label="Vínculo sem foto">Sem foto do vínculo</span>')+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
     '<div class="catalog-body"><h3>'+esc(familyName||x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
     (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':"")+openModel:
