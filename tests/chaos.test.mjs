@@ -52,6 +52,32 @@ const count=(sql,...args)=>Number(q(sql,...args).n||0);
 const today=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Sao_Paulo",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
 const plus=n=>{const x=new Date(today+"T12:00:00Z");x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10);};
 const now=()=>new Date().toISOString();
+// Política do navegador: bloquear scripts injetados, carregamento de terceiros
+// como script, iframes de sites falsos e envio de referrer sensível.
+const assetEnv={...env,ASSETS:{fetch:async()=>new Response("<!doctype html><title>Inventário</title>",{status:200,headers:{"content-type":"text/html; charset=utf-8"}})}};
+const htmlHeaders=await worker.fetch(new Request(domain+"/"),assetEnv);
+assert.equal(htmlHeaders.status,200);
+const csp=htmlHeaders.headers.get("content-security-policy")||"";
+assert.match(csp,/script-src 'self'/);
+assert.match(csp,/script-src-attr 'none'/);
+assert.match(csp,/frame-ancestors 'self'/);
+assert.match(csp,/frame-src 'self'/,"Ajuda embutida na mesma origem precisa permanecer disponível.");
+assert.match(csp,/object-src 'none'/);
+assert.match(csp,/connect-src 'self'/);
+assert.match(csp,/base-uri 'self'/);
+assert.doesNotMatch(csp,/script-src [^;]*'unsafe-inline'/);
+assert.equal(htmlHeaders.headers.get("x-frame-options"),"SAMEORIGIN");
+assert.equal(htmlHeaders.headers.get("referrer-policy"),"no-referrer");
+assert.equal(htmlHeaders.headers.get("x-content-type-options"),"nosniff");
+assert.match(htmlHeaders.headers.get("permissions-policy"),/camera=\(\)/);
+cases+=12;
+const catalogRaw=await worker.fetch(new Request(domain+"/api/catalog"),env);
+assert.equal(catalogRaw.headers.get("cache-control"),"no-store","Catálogo JSON não deve ser cacheável.");
+assert.equal(catalogRaw.headers.get("x-frame-options"),"SAMEORIGIN");
+assert.equal(catalogRaw.headers.get("referrer-policy"),"no-referrer");
+const publicPayload=await catalogRaw.json();
+assert.doesNotMatch(JSON.stringify(publicPayload),/password_hash|password_salt|recovery_hash|admin_sessions|token_reserva|identity_mail_queue|__Host_pet/,"Catálogo público não pode vazar credenciais ou hashes.");
+cases+=4;
 const r=await post("/api/login",{senha:env.ADMIN_PASSWORD});
 status(200,r,"Login Admin");const admin=r.cookie;
 const auth=(path,body)=>post(path,body,admin);
@@ -65,6 +91,15 @@ status(409,await post("/api/identity/register",{nome:"Outro",login:"outrochaos",
 status(200,await auth("/api/admin/users",{id:memberId,tag:"petiano"}),"Elevar cargo só pelo Admin");
 const member=await post("/api/identity/login",{login:"chaospetiane",senha:"1234"});
 status(200,member,"Login PETiane");const memberCookie=member.cookie;
+// Inspecionar o próprio tráfego ou mudar a rota não deve oferecer acesso Admin.
+for(const secretPath of ["/api/admin/state","/api/admin/backup","/api/admin/export","/api/admin/users","/api/admin/mail/log?historico=1"]){
+  for(const cookie of ["",visitorCookie,memberCookie]){
+    status(401,await request(secretPath,"GET",undefined,cookie),"Endpoint privado sem autenticação Admin "+secretPath);
+  }
+}
+status(401,await auth("/api/admin/state",{}).then(x=>request("/api/admin/state","GET",undefined,visitorCookie)),"Sessão visitante continua sem privilégios");
+status(401,await post("/api/admin/restore",{formato:"inventario-pet-v2",categorias:[],componentes:[],reservas:[],filamentos:[]},visitorCookie),"Backup forjado não substitui inventário");
+status(403,await post("/api/admin/category",{acao:"criar",nome:"Tentativa CSRF"},admin,{"origin":"https://evil.example"}),"Origin cruzada deve ser rejeitada mesmo com cookie Admin");
 status(401,await post("/api/admin/category",{acao:"criar",nome:"Sem autorização"}),"Visitante não cria categoria");
 status(401,await post("/api/admin/category",{acao:"criar",nome:"Sem autorização"},visitorCookie),"Cookie pessoal não é Admin");
 status(403,await post("/api/admin/category",{acao:"criar",nome:"Origem falsa"},admin,{"origin":"https://site-malicioso.example"}),"Bloquear Origin de outro domínio");
