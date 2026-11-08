@@ -161,6 +161,24 @@ assert.equal(deleted.body.excluidos,1);
 assert.equal(db.prepare("SELECT COUNT(*) AS n FROM categorias WHERE id=?").get(catId).n,0,"Categoria deve ser realmente excluída.");
 assert.equal(db.prepare("SELECT COUNT(*) AS n FROM componentes WHERE categoria_id=?").get(catId).n,0,"Material da categoria deve ser excluído.");
 assert.ok(!(await call("/api/catalog")).body.categorias.some(x=>x.id===catId));
+// Auditoria de estoque: editar o material não pode apagar unidades ainda emprestadas.
+const auditCategory=category.id;
+const auditPayload={categoria_id:auditCategory,nome:"Auditoria de saldo com empréstimo ativo",
+  quantidade:4,em_uso:0,imagem:"",patrimonio:"",identificacao:"",observacoes:"",
+  unidade:"unidades",permitir_petianos:true,permitir_visitantes:true,visivel_visitante:true};
+const auditCreate=await postAdmin("/api/admin/item",auditPayload);
+assert.equal(auditCreate.status,200,JSON.stringify(auditCreate.body));
+const auditItem=db.prepare("SELECT id FROM componentes WHERE nome=?").get(auditPayload.nome);
+assert.ok(auditItem);
+const auditWithdraw=await post("/api/member/withdraw",{componente_id:auditItem.id,quantidade:2,data_devolucao:end},loginUser.cookie);
+assert.equal(auditWithdraw.status,201,JSON.stringify(auditWithdraw.body));
+const unsafeEdit=await postAdmin("/api/admin/item",{...auditPayload,id:auditItem.id,em_uso:0});
+assert.equal(unsafeEdit.status,409,"O editor não pode zerar Em uso com retirada ativa.");
+assert.equal(db.prepare("SELECT em_uso FROM componentes WHERE id=?").get(auditItem.id).em_uso,2,"Falha do editor não deve mexer no estoque real.");
+const safeEdit=await postAdmin("/api/admin/item",{...auditPayload,id:auditItem.id,em_uso:2,quantidade:5});
+assert.equal(safeEdit.status,200,"Editar a quantidade total sem prejudicar empréstimos deve ser permitido.");
+assert.equal((await post("/api/my/return",{id:auditWithdraw.body.retirada_id,descartados:0},loginUser.cookie)).status,200,"Devolução deve continuar funcionando após edição segura.");
+assert.equal((await call("/api/admin/item?id="+auditItem.id,"DELETE",null,admin)).status,200);
 const signedOut=await post("/api/logout",{},admin);
 assert.equal(signedOut.status,200);
 assert.match(signedOut.setCookie,/Max-Age=0/,"Logout explícito deve apagar imediatamente o cookie do Admin.");

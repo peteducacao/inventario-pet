@@ -242,7 +242,7 @@ async function rename(req,env,user){
   return respond({ok:true,usuario:{...publicUser(user),nome:name}});
 }
 async function listMine(db,user){
-  const list=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.sem_prazo,r.status,r.observacao,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.tipo,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 300",[user.id]);
+  const list=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.sem_prazo,r.status,r.observacao,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.tipo,c.nome AS componente_nome FROM reservas r JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? AND (r.status NOT IN ('devolvida','recusada','cancelada') OR r.id IN (SELECT id FROM reservas WHERE usuario_id=? AND status IN ('devolvida','recusada','cancelada') ORDER BY solicitado_em DESC, id DESC LIMIT 300)) ORDER BY r.solicitado_em DESC, r.id DESC",[user.id,user.id]);
   return respond({ok:true,retiradas:list});
 }
 async function withdraw(req,env,user){
@@ -360,8 +360,9 @@ async function adminList(env){
   // Contar no D1, e não apenas na página carregada, para manter totais corretos.
   const summary=await env.DB.prepare("SELECT COUNT(*) AS todos,COALESCE(SUM(CASE WHEN papel='petiano' THEN 1 ELSE 0 END),0) AS petiano,COALESCE(SUM(CASE WHEN papel='visitante' THEN 1 ELSE 0 END),0) AS visitante FROM usuarios").first();
   const list=await rows(env.DB,"SELECT public_id AS id,nome,email,login,must_change_password,papel AS tag,ativo,notificar_email,criado_em,ultimo_acesso FROM usuarios ORDER BY criado_em DESC LIMIT 1500");
-  const loans=await rows(env.DB,"SELECT usuario_id,COUNT(*) AS n FROM reservas WHERE tipo='retirada_direta' AND status='retirada' AND usuario_id IS NOT NULL GROUP BY usuario_id");
-  const usersIds=await rows(env.DB,"SELECT id,public_id FROM usuarios WHERE id IN (SELECT DISTINCT usuario_id FROM reservas WHERE tipo='retirada_direta' AND status='retirada')");
+  // Contar TODAS as retiradas em uso: PETianes diretos e reservas de visitantes aprovadas.
+  const loans=await rows(env.DB,"SELECT usuario_id,COUNT(*) AS n FROM reservas WHERE status='retirada' AND usuario_id IS NOT NULL GROUP BY usuario_id");
+  const usersIds=await rows(env.DB,"SELECT id,public_id FROM usuarios WHERE id IN (SELECT DISTINCT usuario_id FROM reservas WHERE status='retirada' AND usuario_id IS NOT NULL)");
   const map=new Map(usersIds.map(x=>[x.id,x.public_id])),counts=new Map(loans.map(x=>[map.get(x.usuario_id),x.n]));
   return respond({ok:true,usuarios:list.map(x=>({...x,retiradas_ativas:counts.get(x.id)||0})),
     totais:{todos:Number(summary?.todos)||0,petiano:Number(summary?.petiano)||0,visitante:Number(summary?.visitante)||0}});
@@ -400,7 +401,8 @@ export async function identityAPI(req,env,adminAuth,ctx){
   const u=await loggedIn(req,db);
   if(path==="/api/my/loans"&&method==="GET"){
     if(!u)return error("Entre em sua conta para consultar os empréstimos.",401);
-    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.responsavel_admin,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? ORDER BY r.solicitado_em DESC LIMIT 250",[u.id]);
+    // Manter todas as reservas abertas/retiradas visíveis, mesmo depois de 250 conclusões.
+    const loanRows=await rows(db,"SELECT r.id,r.componente_id,r.quantidade,r.data_inicio,r.data_devolucao,r.status,r.solicitado_em,r.retirado_em,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.responsavel_admin,r.tipo,c.nome AS componente_nome,c.imagem AS componente_imagem FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id WHERE r.usuario_id=? AND (r.status NOT IN ('devolvida','recusada','cancelada') OR r.id IN (SELECT id FROM reservas WHERE usuario_id=? AND status IN ('devolvida','recusada','cancelada') ORDER BY solicitado_em DESC, id DESC LIMIT 250)) ORDER BY r.solicitado_em DESC, r.id DESC",[u.id,u.id]);
     return respond({ok:true,emprestimos:loanRows});
   }
   if(path==="/api/notifications"&&method==="GET"){
@@ -425,8 +427,10 @@ export async function identityAPI(req,env,adminAuth,ctx){
     }
     return respond({ok:true});
   }
-  if(path==="/api/identity/name"&&method==="POST")return rename(req,env,u);
-  if(path==="/api/identity/name"&&method==="POST"&&(u?.must_change_password||!u?.login))return error("Configure sua senha antes de continuar.",403);
+  if(path==="/api/identity/name"&&method==="POST"){
+    if(u&&(u.must_change_password||!u.login))return error("Crie sua senha definitiva antes de editar seu perfil.",403);
+    return rename(req,env,u);
+  }
   if(path.startsWith("/api/member/")&&u&&(u.must_change_password||!u.login))return error("Crie sua senha definitiva antes de usar as retiradas.",403);
   if(path==="/api/member/withdraw"&&method==="POST")return withdraw(req,env,u);
   if((path==="/api/member/return"||path==="/api/my/return")&&method==="POST")return memberReturn(req,env,u);

@@ -115,7 +115,9 @@ async function listVariationGroups(db) {
 }
 async function state(db) {
   const data = await catalog(db, true);
-  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id ORDER BY r.solicitado_em DESC LIMIT 1500");
+  // Histórico concluído limitado para a tela, mas reservas e empréstimos abertos
+  // nunca podem desaparecer atrás de milhares de registros antigos.
+  data.reservas = await results(db, "SELECT r.*, c.nome AS componente_nome, u.email AS email_conta FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id LEFT JOIN usuarios u ON u.id=r.usuario_id WHERE r.status NOT IN ('devolvida','recusada','cancelada') OR r.id IN (SELECT id FROM reservas WHERE status IN ('devolvida','recusada','cancelada') ORDER BY solicitado_em DESC, id DESC LIMIT 1500) ORDER BY r.solicitado_em DESC, r.id DESC");
   data.filamentos = await results(db,"SELECT f.*,c.em_uso,c.com_defeito FROM filamentos f LEFT JOIN componentes c ON c.id=f.componente_id ORDER BY f.ordem,f.cor COLLATE NOCASE");
   // Inclui grupos vazios, que não existem em componentes e nunca entram no catálogo.
   data.grupos_variacoes = await listVariationGroups(db);
@@ -453,7 +455,14 @@ async function processRequest(req, env, ctx) {
     item.grupo_variacoes=old?.grupo_variacoes||"";
     if(isFilamentMirror(old))return bad("Edite esta cor pela aba Filamentos.",409);
     const available = baseAvailable(item);
-    if (id && (await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(id).first()).n > available) return bad("As quantidades não cobrem as reservas já aprovadas.",409);
+    if (id) {
+      // O editor não pode reduzir "Em uso" abaixo de empréstimos ainda ativos.
+      // Caso contrário, uma devolução posterior não consegue dar baixa no estoque.
+      const active=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='retirada'").bind(id).first();
+      if(Number(active?.n||0)>item.em_uso)return bad("Em uso não pode ser menor que as unidades de empréstimos ativos. Confirme as devoluções primeiro.",409);
+      const approved=await db.prepare("SELECT COALESCE(SUM(quantidade),0) AS n FROM reservas WHERE componente_id=? AND status='aprovada'").bind(id).first();
+      if(Number(approved?.n||0)>available)return bad("As quantidades não cobrem as reservas já aprovadas.",409);
+    }
     const actor = str(body.responsavel,100) || "PETiane";
     const audit = [now(),actor,changes(old,item)];
     const vals = fields.map(k => item[k]);

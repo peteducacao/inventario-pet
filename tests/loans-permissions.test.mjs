@@ -81,6 +81,9 @@ assert.ok(sqlite.prepare("SELECT retirado_em FROM reservas WHERE id=?").get(rId)
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"retirar"})).status,409,"Não exigir nem permitir uma segunda retirada.");
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"aprovar"})).status,409,"Não aprovar duas vezes.");
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,2);
+const panelUsers=(await req("/api/admin/users","GET",undefined,admin)).body.usuarios;
+assert.equal(panelUsers.find(x=>x.id===user.body.usuario.id).retiradas_ativas,1,"Painel de Usuários deve contar a retirada ativa de visitante aprovada pelo Admin.");
+assert.equal(panelUsers.find(x=>x.id===memberUser.body.usuario.id).retiradas_ativas,0,"Conta PETiane ainda sem retirada não deve contar.");
 assert.equal((await req("/api/filaments")).body.filamentos.find(x=>x.id===blue.id).em_uso,2);
 assert.equal((await req("/api/my/loans","GET",undefined,visitor)).body.emprestimos.find(r=>r.id===rId).status,"retirada");
 assert.equal((await req("/api/my/return","POST",{id:rId,defeituosos:0},member)).status,404,"Outro titular não pode devolver empréstimo alheio.");
@@ -102,6 +105,8 @@ assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver"})
 const direct=await req("/api/member/withdraw","POST",{componente_id:blue.componente_id,quantidade:1,data_devolucao:""},member);
 assert.equal(direct.status,201,JSON.stringify(direct.body));
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,1);
+const directUsers=(await req("/api/admin/users","GET",undefined,admin)).body.usuarios;
+assert.equal(directUsers.find(x=>x.id===memberUser.body.usuario.id).retiradas_ativas,1,"Painel de Usuários deve contar também as retiradas diretas de PETianes.");
 assert.equal((await req("/api/my/return","POST",{id:direct.body.retirada_id,defeituosos:0},member)).status,200);
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,0);
 let individual=await postAdmin("/api/admin/filaments",{acao:"emprestimos",id:blue.id,permitir_emprestimos:false});
@@ -174,5 +179,28 @@ assert.equal(availableFour.status,200,JSON.stringify(availableFour.body));
 assert.equal(availableFour.body.disponiveis,4);
 const excess=await req("/api/reservations","POST",{componente_id:constrained.id,quantidade:5,data_inicio:today,data_devolucao:end},visitor);
 assert.equal(excess.status,409,"Jamais aceitar reserva de cinco unidades se só há quatro disponíveis.");
-console.log("EMPRÉSTIMOS OK: categoria, material, filamentos, reserva, retirada, devolução, bloqueio, estoque e restauração.");
+
+// Escala do histórico: 1.510 registros encerrados não podem ocultar uma retirada antiga ativa.
+const live=await req("/api/member/withdraw","POST",{componente_id:constrained.id,quantidade:1,data_devolucao:end},member);
+assert.equal(live.status,201,JSON.stringify(live.body));
+const memberRow=sqlite.prepare("SELECT id FROM usuarios WHERE public_id=?").get(memberUser.body.usuario.id);
+const archived=sqlite.prepare("INSERT INTO reservas(componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,usuario_id,tipo) VALUES (?,'Arquivo','', '',1,?,?,'devolvida','',?,?,'reserva')");
+sqlite.exec("BEGIN IMMEDIATE");
+try{
+  for(let i=0;i<1510;i++)archived.run(constrained.id,today,end,new Date(Date.now()+(i+1)*60000).toISOString(),memberRow.id);
+  sqlite.exec("COMMIT");
+}catch(e){sqlite.exec("ROLLBACK");throw e;}
+const profileHistory=await req("/api/my/loans","GET",undefined,member);
+assert.equal(profileHistory.status,200);
+assert.ok(profileHistory.body.emprestimos.some(x=>x.id===live.body.retirada_id),"Meus empréstimos precisa manter uma retirada ativa anterior a 250 registros concluídos.");
+assert.ok(profileHistory.body.emprestimos.filter(x=>x.status==="devolvida").length<=250,"Limitar apenas o histórico concluído da pessoa.");
+const directHistory=await req("/api/member/history","GET",undefined,member);
+assert.equal(directHistory.status,200);
+assert.ok(directHistory.body.retiradas.some(x=>x.id===live.body.retirada_id),"Minhas retiradas precisa manter o ativo anterior a 300 conclusões.");
+const adminHistory=await req("/api/admin/state","GET",undefined,admin);
+assert.equal(adminHistory.status,200);
+assert.ok(adminHistory.body.reservas.some(x=>x.id===live.body.retirada_id),"Admin precisa manter o empréstimo ativo anterior a 1.500 conclusões.");
+assert.ok(adminHistory.body.reservas.filter(x=>x.status==="devolvida").length<=1500,"Admin deve limitar apenas o histórico concluído.");
+assert.equal((await req("/api/my/return","POST",{id:live.body.retirada_id,descartados:0},member)).status,200,"Mesmo com histórico volumoso, a devolução deve continuar acessível.");
+console.log("EMPRÉSTIMOS OK: permissões, reservas, estoque, visitantes/PETianes, devolução e histórico volumoso.");
 sqlite.close();
