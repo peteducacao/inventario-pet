@@ -28,7 +28,9 @@ const formatDateValid = x => {
 async function bodyJson(req,max=6000){
   if(!req.headers.get("content-type")?.toLowerCase().includes("application/json"))throw Error("Use o formato JSON.");
   const raw=await req.text();if(raw.length>max)throw Error("Dados muito grandes.");
-  const data=JSON.parse(raw);if(!data||typeof data!=="object"||Array.isArray(data))throw Error("Dados inválidos.");
+  let data;
+  try{data=JSON.parse(raw);}catch{throw Error("Dados inválidos.");}
+  if(!data||typeof data!=="object"||Array.isArray(data))throw Error("Dados inválidos.");
   return data;
 }
 const rows = async(db,sql,args=[]) => (await db.prepare(sql).bind(...args).all()).results||[];
