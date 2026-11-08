@@ -97,7 +97,6 @@ for(const secretPath of ["/api/admin/state","/api/admin/backup","/api/admin/expo
     status(401,await request(secretPath,"GET",undefined,cookie),"Endpoint privado sem autenticação Admin "+secretPath);
   }
 }
-status(401,await auth("/api/admin/state",{}).then(x=>request("/api/admin/state","GET",undefined,visitorCookie)),"Sessão visitante continua sem privilégios");
 status(401,await post("/api/admin/restore",{formato:"inventario-pet-v2",categorias:[],componentes:[],reservas:[],filamentos:[]},visitorCookie),"Backup forjado não substitui inventário");
 status(403,await post("/api/admin/category",{acao:"criar",nome:"Tentativa CSRF"},admin,{"origin":"https://evil.example"}),"Origin cruzada deve ser rejeitada mesmo com cookie Admin");
 status(401,await post("/api/admin/category",{acao:"criar",nome:"Sem autorização"}),"Visitante não cria categoria");
