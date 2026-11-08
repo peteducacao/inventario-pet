@@ -15,7 +15,7 @@
 - Ajuda: `/ajuda/`, fonte `public/ajuda/index.html` e `public/ajuda/ajuda.css`. O Admin oferece acesso direto e impressão/PDF.
 
 ## REGRAS INEGOCIÁVEIS DO PRODUTO
-1. **Consultar não é emprestar.** A visibilidade do catálogo (`visivel_visitante`) é distinta da autorização de empréstimo. Bloquear empréstimos NÃO deve esconder automaticamente itens da consulta.
+1. **Consultar não é emprestar.** Para materiais e categorias, a visibilidade do catálogo (`visivel_visitante`) é distinta da autorização de empréstimo. Bloquear empréstimos NÃO deve esconder automaticamente itens da consulta. **Exceção expressa para a aba Filamentos:** a visibilidade de cada cor acompanha o único seletor “Habilitar empréstimo para”: Visitantes = visível a todos; PETianes = restrito aos PETianes. Não recriar o checkbox “Exibir para todos” em filamentos. A categoria Filamentos continua com suas próprias permissões de visibilidade e empréstimo. O backend sincroniza `filamentos` e seu espelho `componentes` tanto no formulário quanto no seletor rápido.
 2. O catálogo mantém a ação **Reservar** para Visitantes e **Retirar** para PETianes; a API deve negar uma ação não autorizada. Os seletores exibem somente **PETianes** (restrito aos integrantes) e **Visitantes** (todos, inclusive PETianes); jamais oferecer Todos ou Ninguém.
 3. A permissão efetiva do perfil depende da **categoria E do item**, campos `permitir_petianos`/`permitir_visitantes`.
 4. Visitantes fazem reserva `pendente`; o Admin aprova/recusa. **Aprovar = entregar:** transição direta `pendente -> retirada` e incremento de `em_uso`; nunca exija segunda aprovação/retirada para pedidos novos.
