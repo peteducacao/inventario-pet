@@ -385,17 +385,23 @@ async function doReserveAction(id,action){
   catch(error){toast(error.message,true);}
 }
 function returnModal(r){
-  openModal("Registrar devolução","Reserva #"+r.id+" · "+(r.componente_nome||"Material"),'<form class="modal-main" id="return-form"><p>Confirme a devolução de <strong>'+moneyless(r.quantidade)+' unidade(s)</strong> por <strong>'+esc(r.nome_solicitante)+'</strong>.</p>'+
-    stepInput("return-discard","Unidades descartadas (opcional)",0)+
-    '<div class="field"><label for="return-note">Observações (opcional)</label><textarea maxlength="500" id="return-note" placeholder="Condição do material ou outras observações"></textarea></div>'+
-    '<p class="notice">As unidades devolvidas voltam ao disponível. As descartadas saem do total. A reserva será concluída.</p>'+
-    '<div class="modal-footer" style="padding:17px 0 0;border:0"><button type="button" id="return-cancel" class="secondary-button">Cancelar</button><button type="submit" class="primary-button">Confirmar devolução</button></div></form>');
-  $("#return-cancel").onclick=adminModal;
-  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
-  $("#return-form").onsubmit=async e=>{e.preventDefault();try{
-    await api("/api/admin/reservation","POST",{id:r.id,acao:"devolver",responsavel:state.actor||"PETiane",descartados:Number($("#return-discard").value),observacao:$("#return-note").value});
-    await adminReload();adminModal();toast("Devolução registrada!");
-  }catch(error){toast(error.message,true)}};
+  // Fluxo legado: não pedir descartes, números ou observações para confirmar o recebimento.
+  openModal("Confirmar recebimento","Reserva #"+r.id+" · "+(r.componente_nome||"Material"),
+    '<div class="modal-main"><p><strong>'+esc(r.nome_solicitante)+'</strong> devolveu <strong>'+moneyless(r.quantidade)+' unidade(s)</strong>?</p>'+
+    '<div class="modal-footer" style="padding:17px 0 0;border:0">'+
+    (r.devolucao_solicitada_em?'<button type="button" id="return-not-received" class="outline-button">Não recebido</button>':'<button type="button" id="return-cancel" class="secondary-button">Cancelar</button>')+
+    '<button type="button" id="return-confirm" class="primary-button">Recebido</button></div></div>');
+  async function decide(action,button){
+    button.disabled=true;
+    try{
+      await api("/api/admin/reservation","POST",{id:r.id,acao:action,responsavel:state.actor||"Administração"});
+      await adminReload();adminModal();
+      toast(action==="devolver"?"Recebimento confirmado.":"Material não recebido; empréstimo mantido em uso.");
+    }catch(error){toast(error.message,true);button.disabled=false;}
+  }
+  $("#return-confirm").onclick=e=>decide("devolver",e.currentTarget);
+  if(r.devolucao_solicitada_em)$("#return-not-received").onclick=e=>decide("cancelar_solicitacao_devolucao",e.currentTarget);
+  else $("#return-cancel").onclick=adminModal;
 }
 function renderAdminCategories(target){
   target.innerHTML='<section class="panel-section"><div class="panel-head"><div><h3>Categorias do inventário</h3><p>Crie novas seções, reorganize ou renomeie.</p></div><button class="primary-button small-button" id="new-category">+ Categoria</button></div><div class="admin-list">'+
