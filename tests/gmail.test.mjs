@@ -149,6 +149,13 @@ assert.ok(history.items.some(item=>item.situacao==="enviado"),"O histórico admi
 const diagnostic=await adminCall("/api/admin/mail/test",{email:"teste-inventario@example.com"});
 assert.equal(diagnostic.status,200);
 assert.equal(sqlite.prepare("SELECT evento FROM mail_queue WHERE destinatario=? ORDER BY id DESC LIMIT 1").get("teste-inventario@example.com").evento,"teste");
+const failedTestId=sqlite.prepare("SELECT id FROM mail_queue WHERE destinatario=? ORDER BY id DESC LIMIT 1").get("teste-inventario@example.com").id;
+sqlite.prepare("UPDATE mail_queue SET situacao='erro',ultimo_erro='Erro simulado' WHERE id=?").run(failedTestId);
+const failedHistory=await(await adminCall("/api/admin/mail/log?historico=1")).json();
+assert.ok(failedHistory.items.some(item=>item.id===failedTestId&&item.situacao==="erro"),"Erros também devem ser visíveis no histórico.");
+assert.equal((await adminCall("/api/admin/mail/retry",{id:failedTestId})).status,200,"Admin deve poder reenviar mensagem com erro.");
+assert.equal(sqlite.prepare("SELECT situacao FROM mail_queue WHERE id=?").get(failedTestId).situacao,"pendente");
+assert.equal((await adminCall("/api/admin/mail/retry",{id:failedTestId})).status,409,"Não reencaminhar em duplicidade.");
 const prepare=await adminCall("/api/admin/mail/prepare",{});
 assert.equal(prepare.status,200,"O Admin deve poder preparar lembretes manualmente.");
 const onlyRecovery=await(await call("/api/mail/next?tipo=recuperacao")).json();
