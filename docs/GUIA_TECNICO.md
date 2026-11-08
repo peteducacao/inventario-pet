@@ -127,7 +127,7 @@ O catálogo público (`public/final.js`) agrupa os materiais por `grupo_variacoe
 1. Registra conta própria com e-mail válido, login e senha, ou entra em conta existente.
 2. Solicita em `POST /api/reservations`, que verifica identidade, disponibilidade, perfil, categoria e item.
 3. `reservas.status = pendente`, aguardando intervenção administrativa.
-4. Admin usa `POST /api/admin/reservation` `acao=aprovar` ou `acao=recusar`.
+4. Admin usa `POST /api/admin/reservation` `acao=aprovar` ou `acao=recusar`. Para `recusar`, o Worker lê o usuário pela sessão pessoal autenticada (`currentIdentity`) e, se não existir, atribui `Administração do PET`. O nome enviado pelo cliente é ignorado, garantindo responsável correto em `reservas.responsavel_admin`, notificações e auditoria. Apenas o motivo é opcional no diálogo, sem campo de nome.
 5. **Aprovar e entregar** converte direto para `retirada`, registra datas, responsável e aumenta `componentes.em_uso`. É proibido forçar uma segunda operação de retirada em reservas novas.
 6. Visitantes solicitam devolução pelo `POST /api/my/return`; o empréstimo e o estoque permanecem ativos até o Admin confirmar pela rota `/api/admin/reservation` (`acao=devolver`). O Admin também pode indicar não recebimento (`acao=cancelar_solicitacao_devolucao`) para permitir nova solicitação. Na interface de confirmação administrativa, a decisão é apenas **Recebido** ou **Não recebido**, sem campo de descarte ou observações. O POST de confirmação envia somente `acao=devolver` e usa zero descartes como padrão; a API conserva compatibilidade técnica com clientes antigos. `com_defeito` permanece coluna técnica legada zerada.
 

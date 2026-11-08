@@ -79,10 +79,10 @@ assert.equal(rejected.body.notificacao_registrada,true,"Recusa ligada à conta d
 const rejectedNotices=await call("/api/notifications","GET",null,loginUser.cookie);
 assert.equal(rejectedNotices.status,200);
 assert.equal(rejectedNotices.body.nao_lidas,1,"Recusa deve aparecer no sino da conta.");
-assert.match(rejectedNotices.body.notificacoes[0].mensagem,/recusada por Ana Maria \(PET\)/);
+assert.match(rejectedNotices.body.notificacoes[0].mensagem,/recusada por Administração do PET/,"Sem sessão pessoal a recusa deve ser atribuída ao Admin, não ao nome enviado no payload.");
 assert.match(rejectedNotices.body.notificacoes[0].mensagem,/Motivo: Material indisponível/);
 assert.equal((await call("/api/notifications")).body.notificacoes.length,0,"Notificações não podem vazar para visitantes.");
-assert.equal((await call("/api/my/loans","GET",null,loginUser.cookie)).body.emprestimos.find(r=>r.id===reservedId).responsavel_admin,"Ana Maria (PET)","Titular deve enxergar responsável pela recusa.");
+assert.equal((await call("/api/my/loans","GET",null,loginUser.cookie)).body.emprestimos.find(r=>r.id===reservedId).responsavel_admin,"Administração do PET","Titular deve enxergar o responsável real pela recusa.");
 const marked=await post("/api/notifications/read",{todos:true},loginUser.cookie);
 assert.equal(marked.status,200);
 assert.equal((await call("/api/notifications","GET",null,loginUser.cookie)).body.nao_lidas,0);
