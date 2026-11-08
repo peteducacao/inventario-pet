@@ -705,6 +705,8 @@ async function processRequest(req, env, ctx) {
       results(db,"SELECT * FROM conciliacao_experimentos_backup ORDER BY material_id")
     ]);
     return j({formato:"inventario-pet-v2",gerado_em:now(),...data,
+      // state() limita conclusões para a tela. O backup precisa de TODOS os registros.
+      reservas:await results(db,"SELECT * FROM reservas ORDER BY id"),
       componentes:await results(db,"SELECT * FROM componentes ORDER BY id"),
       historico,conciliacao_experimentos_vinculos,conciliacao_experimentos_backup},
       200,{"content-disposition":'attachment; filename="backup-inventario-pet.json"'});
@@ -771,8 +773,14 @@ async function processRequest(req, env, ctx) {
     for(const r of b.reservas)if(r.tipo==="retirada_direta")
       ops.push(db.prepare("UPDATE reservas SET tipo='retirada_direta' WHERE id=?").bind(r.id));
     const cfg=b.configuracoes&&typeof b.configuracoes==="object"?b.configuracoes:{};
-    for (const [key,value] of Object.entries(cfg))
-      if(/^[a-z_]{1,50}$/.test(key))ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,100)));
+    for (const [key,value] of Object.entries(cfg)){
+      if(!/^[a-z_0-9]{1,80}$/.test(key))continue;
+      // Textos personalizados do Gmail podem ter até 5.000 caracteres;
+      // cortá-los em 100 durante a restauração destrói silenciosamente modelos.
+      const max=/^mail_template_(antes|hoje|atraso2|atraso7|manual)_body$/.test(key)?5000:
+        /^mail_template_(antes|hoje|atraso2|atraso7|manual)_subject$/.test(key)?180:100;
+      ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES(?,?)").bind(key,str(value,max)));
+    }
     if (!cfg.limpeza_reservas)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_reservas','nunca')"));
     if (!cfg.limpeza_historico)ops.push(db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('limpeza_historico','nunca')"));
     if(v2&&Array.isArray(b.filamentos)){
