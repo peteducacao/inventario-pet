@@ -331,9 +331,9 @@ function openLinksHub(){
         '<button type="button" class="outline-button small-button" data-link-rename="'+attr(name)+'">Renomear</button>'+
         '<button type="button" class="danger-button small-button" data-link-delete="'+attr(name)+'">Excluir</button></div></div>';
     }).join(""):'<div class="variant-manager-empty">Nenhum vínculo encontrado.</div>';
-    $("[data-link-open]",list).forEach(btn=>btn.onclick=()=>openVariantLinker(null,btn.dataset.linkOpen));
-    $("[data-link-photo]",list).forEach(btn=>btn.onclick=()=>editVariationGroupPhoto(btn.dataset.linkPhoto));
-    $("[data-link-rename]",list).forEach(btn=>btn.onclick=()=>adminRenameVariationGroup(btn.dataset.linkRename));
+    $$("[data-link-open]",list).forEach(btn=>btn.onclick=()=>openVariantLinker(null,btn.dataset.linkOpen));
+    $$("[data-link-photo]",list).forEach(btn=>btn.onclick=()=>editVariationGroupPhoto(btn.dataset.linkPhoto));
+    $$("[data-link-rename]",list).forEach(btn=>btn.onclick=()=>adminRenameVariationGroup(btn.dataset.linkRename));
     $$("[data-link-delete]",list).forEach(btn=>btn.onclick=async()=>{
       if(busy)return;
       const name=btn.dataset.linkDelete;
