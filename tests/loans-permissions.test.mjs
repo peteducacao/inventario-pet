@@ -105,7 +105,13 @@ assert.equal((await req("/api/my/return","POST",{id:rId},visitor)).status,409,"S
 assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(rId).status,"retirada","Visitante não pode concluir empréstimo.");
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,2,"Estoque continua em uso até confirmação do Admin.");
 assert.equal((await req("/api/my/loans","GET",undefined,visitor)).body.emprestimos.find(x=>x.id===rId).devolucao_solicitada_observacao,"Entreguei na recepção");
-assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"cancelar_solicitacao_devolucao",responsavel:"Responsável PET"})).status,200);
+const notReceived=await postAdmin("/api/admin/reservation",{id:rId,acao:"cancelar_solicitacao_devolucao",responsavel:"Responsável PET"});
+assert.equal(notReceived.status,200);
+assert.equal(notReceived.body.email_nao_recebido_enfileirado,true,"Não recebido deve preparar aviso de e-mail permitido.");
+const nonReceivedMails=sqlite.prepare("SELECT evento,assunto,situacao FROM mail_queue WHERE reserva_id=? AND evento='nao_recebido'").all(rId);
+assert.equal(nonReceivedMails.length,1,"Uma única mensagem da tentativa deve ser criada.");
+assert.match(nonReceivedMails[0].assunto,/Entrega não confirmada/);
+assert.equal(nonReceivedMails[0].situacao,"pendente");
 assert.equal(sqlite.prepare("SELECT devolucao_solicitada_em FROM reservas WHERE id=?").get(rId).devolucao_solicitada_em,null);
 assert.equal((await req("/api/my/return","POST",{id:rId},visitor)).status,200,"Após não recebimento, visitante pode informar a entrega novamente.");
 assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver",responsavel:"Responsável PET",descartados:0})).status,200,"O Admin confirma a devolução.");
