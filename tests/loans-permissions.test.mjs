@@ -139,6 +139,11 @@ assert.equal(sqlite.prepare("SELECT responsavel_admin FROM reservas WHERE id=?")
 assert.match(sqlite.prepare("SELECT mensagem FROM notificacoes WHERE reserva_id=? ORDER BY id DESC LIMIT 1").get(loggedId).mensagem,/recusada por Pessoa PETiane/);
 assert.equal((await postAdmin("/api/admin/reservation",{id:loggedId,acao:"recusar"})).status,409,
   "Recusa duplicada não pode gerar outra decisão.");
+/* Limpar apenas os dois registros simulados, para não alterar as contagens
+   esperadas nos testes de backup/migração seguintes. */
+sqlite.prepare("DELETE FROM notificacoes WHERE reserva_id IN (?,?)").run(fallbackId,loggedId);
+sqlite.prepare("DELETE FROM historico_admin WHERE tipo='reserva' AND registro_id IN (?,?)").run(fallbackId,loggedId);
+sqlite.prepare("DELETE FROM reservas WHERE id IN (?,?)").run(fallbackId,loggedId);
 
 const direct=await req("/api/member/withdraw","POST",{componente_id:blue.componente_id,quantidade:1,data_devolucao:""},member);
 assert.equal(direct.status,201,JSON.stringify(direct.body));
