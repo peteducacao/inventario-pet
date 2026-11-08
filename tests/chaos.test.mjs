@@ -142,9 +142,31 @@ status(200,await auth("/api/admin/variation-groups",{acao:"criar",nome:"Grupo Ca
 status(409,await auth("/api/admin/variation-groups",{acao:"criar",nome:"grupo caos"}),"Vínculo não pode duplicar caixa");
 status(200,await auth("/api/admin/variations",{ids:[item.id],grupo:"Grupo Caos"}),"Vincular material");
 assert.equal(q("SELECT grupo_variacoes FROM componentes WHERE id=?",item.id).grupo_variacoes,"Grupo Caos");
+// Capas pertencem ao vínculo, não à fotografia do primeiro Arduino.
+const originalPhoto=q("SELECT imagem FROM componentes WHERE id=?",item.id).imagem;
+assert.equal(q("SELECT imagem,imagem_componente_id FROM grupos_variacoes WHERE nome='Grupo Caos'").imagem,"",
+  "Vínculo novo deve começar sem capa, mesmo com integrante cadastrado.");
+const groupPublic=(await request("/api/catalog")).body.grupos_variacoes.find(g=>g.nome==="Grupo Caos");
+assert.equal(groupPublic.imagem,"");
+assert.equal(groupPublic.imagem_componente_id,null,"Nunca herdar foto do primeiro componente.");
+status(409,await auth("/api/admin/variation-groups",{acao:"imagem",nome:"Grupo Caos",modo:"integrante",componente_id:99999}),"Bloquear capa de componente fora do vínculo");
+status(400,await auth("/api/admin/variation-groups",{acao:"imagem",nome:"Grupo Caos",modo:"propria",imagem:"<svg onload=alert(1)>"}),"Bloquear XSS na capa do vínculo");
+status(200,await auth("/api/admin/variation-groups",{acao:"imagem",nome:"Grupo Caos",modo:"integrante",componente_id:item.id}),"Escolher foto do integrante no vínculo");
+assert.equal(q("SELECT imagem_componente_id FROM grupos_variacoes WHERE nome='Grupo Caos'").imagem_componente_id,item.id);
+assert.equal(q("SELECT imagem FROM componentes WHERE id=?",item.id).imagem,originalPhoto,"Escolher imagem nunca altera foto individual.");
+const ownCover="data:image/png;base64,aGVsbG8=";
+status(200,await auth("/api/admin/variation-groups",{acao:"imagem",nome:"Grupo Caos",modo:"propria",imagem:ownCover}),"Enviar foto exclusiva do grupo");
+assert.equal(q("SELECT imagem,imagem_componente_id FROM grupos_variacoes WHERE nome='Grupo Caos'").imagem,ownCover);
+assert.equal(q("SELECT imagem FROM componentes WHERE id=?",item.id).imagem,originalPhoto);
+assert.equal((await request("/api/catalog")).body.grupos_variacoes.find(x=>x.nome==="Grupo Caos").imagem,ownCover,
+  "Capa própria deve ser disponibilizada no catálogo sem alterar os integrantes.");
 status(200,await auth("/api/admin/item",{...itemData,id:item.id,quantidade:10}),"Editor preserva vínculo");
 assert.equal(q("SELECT grupo_variacoes FROM componentes WHERE id=?",item.id).grupo_variacoes,"Grupo Caos");
 status(200,await auth("/api/admin/variation-groups",{acao:"renomear",nome:"Grupo Caos",novo_nome:"Grupo Caos Renomeado"}),"Renomear vínculo");
+assert.equal(q("SELECT imagem FROM grupos_variacoes WHERE nome='Grupo Caos Renomeado'").imagem,ownCover,
+  "Renomear vínculo preserva a capa própria.");
+status(200,await auth("/api/admin/variation-groups",{acao:"imagem",nome:"Grupo Caos Renomeado",modo:"nenhuma"}),"Remover foto do vínculo");
+assert.equal(q("SELECT imagem FROM grupos_variacoes WHERE nome='Grupo Caos Renomeado'").imagem,"");
 status(200,await auth("/api/admin/variation-groups",{acao:"excluir",nome:"Grupo Caos Renomeado"}),"Excluir vínculo preservando material");
 assert.equal(q("SELECT grupo_variacoes FROM componentes WHERE id=?",item.id).grupo_variacoes,"");
 assert.ok(q("SELECT id FROM componentes WHERE id=?",item.id));
