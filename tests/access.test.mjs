@@ -192,3 +192,4 @@ assert.match(signedOut.setCookie,/Max-Age=0/,"Logout explícito deve apagar imed
 assert.equal((await call("/api/admin/state","GET",null,admin)).status,401,"Logout revoga a sessão administrativa no banco.");
 console.log("ACESSO OK: visitante/PETiano, filamentos, categorias, variações, histórico e exclusão segura.");
 db.close();
+await import("./chaos.test.mjs");
