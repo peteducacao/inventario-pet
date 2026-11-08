@@ -621,20 +621,22 @@ async function processRequest(req, env, ctx) {
       const handoffDay=r.data_devolucao>=today?today:r.data_inicio;
       const outcome=await db.batch([
         db.prepare("UPDATE reservas SET status='retirada',aprovado_em=?,retirado_em=?,data_inicio=?,responsavel_admin=? WHERE id=? AND status='pendente' AND EXISTS(SELECT 1 FROM componentes WHERE id=? AND quantidade-em_uso>=?)").bind(current,current,handoffDay,actor,id,item.id,r.quantidade),
-        db.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada' AND retirado_em=?)").bind(r.quantidade,current,actor,"Reserva aprovada e entregue #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id,current)
+        db.prepare("UPDATE componentes SET em_uso=em_uso+?,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=? AND changes()=1 AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada' AND retirado_em=?)").bind(r.quantidade,current,actor,"Reserva aprovada e entregue #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id,current)
       ]);
       if(outcome[0].meta?.changes!==1||outcome[1].meta?.changes!==1){
         // Não permitir que duas aprovações de uma mesma solicitação contem estoque duas vezes.
         return bad("Não foi possível confirmar a entrega. Atualize o painel e confira o estoque.",409);
       }
     } else if (action === "recusar" && ["pendente","aprovada"].includes(r.status)) {
-      await db.prepare("UPDATE reservas SET status='recusada',responsavel_admin=?,observacao=? WHERE id=?").bind(actor,str(b.observacao,500),id).run();
+      const refused=await db.prepare("UPDATE reservas SET status='recusada',responsavel_admin=?,observacao=? WHERE id=? AND status IN ('pendente','aprovada')").bind(actor,str(b.observacao,500),id).run();
+      if(refused.meta?.changes!==1)return bad("Esta reserva já foi processada. Atualize a lista.",409);
     } else if (action === "retirar" && r.status === "aprovada") {
       if (baseAvailable(item) < r.quantidade) return bad("Não há estoque suficiente para registrar a retirada.",409);
-      await db.batch([
-        db.prepare("UPDATE componentes SET em_uso=em_uso+?, ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=?").bind(r.quantidade,current,actor,"Retirada da reserva #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade),
-        db.prepare("UPDATE reservas SET status='retirada',retirado_em=?,responsavel_admin=? WHERE id=? AND status='aprovada'").bind(current,actor,id)
+      const regularized=await db.batch([
+        db.prepare("UPDATE componentes SET em_uso=em_uso+?, ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='aprovada')").bind(r.quantidade,current,actor,"Retirada da reserva #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade,id),
+        db.prepare("UPDATE reservas SET status='retirada',retirado_em=?,responsavel_admin=? WHERE id=? AND status='aprovada' AND changes()=1").bind(current,actor,id)
       ]);
+      if(regularized[0].meta?.changes!==1||regularized[1].meta?.changes!==1)return bad("Esta aprovação já foi regularizada ou está sem estoque. Atualize a lista.",409);
     } else if (action === "cancelar_solicitacao_devolucao" && r.status === "retirada" && r.devolucao_solicitada_em) {
       const rejected=await db.prepare("UPDATE reservas SET devolucao_solicitada_em=NULL,devolucao_solicitada_observacao='' WHERE id=? AND status='retirada' AND devolucao_solicitada_em IS NOT NULL").bind(id).run();
       if(rejected.meta?.changes!==1)return bad("Solicitação já processada.",409);
@@ -644,14 +646,16 @@ async function processRequest(req, env, ctx) {
         return bad("Quantidade de unidades descartadas inválida.");
       if(item.em_uso<r.quantidade||item.quantidade<discarded)
         return bad("O estoque em uso está inconsistente. Verifique antes da devolução.",409);
+      // Trava no banco: não alterar outras retiradas se duas confirmações usarem o mesmo registro.
+      // changes() torna o segundo UPDATE dependente do sucesso real do primeiro dentro do batch D1.
       const result=await db.batch([
-        db.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=?")
-          .bind(r.quantidade,discarded,current,actor,"Devolução da reserva #"+id+(discarded?" • "+discarded+" unidade(s) descartada(s)":""),item.id,r.quantidade,discarded),
-        db.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=?").bind(discarded,item.id,discarded),
-        db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,devolucao_solicitada_em=NULL,devolucao_solicitada_observacao='',responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'")
-          .bind(current,actor,str(b.observacao,500),id)
+        db.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=? AND EXISTS(SELECT 1 FROM reservas WHERE id=? AND status='retirada') AND (?=0 OR NOT EXISTS(SELECT 1 FROM filamentos WHERE componente_id=?) OR EXISTS(SELECT 1 FROM filamentos WHERE componente_id=? AND quantidade>=?))")
+          .bind(r.quantidade,discarded,current,actor,"Devolução da reserva #"+id+(discarded?" • "+discarded+" unidade(s) descartada(s)":""),item.id,r.quantidade,discarded,id,discarded,item.id,item.id,discarded),
+        db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,devolucao_solicitada_em=NULL,devolucao_solicitada_observacao='',responsavel_admin=?,observacao=? WHERE id=? AND status='retirada' AND changes()=1")
+          .bind(current,actor,str(b.observacao,500),id),
+        db.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=? AND changes()=1").bind(discarded,item.id,discarded)
       ]);
-      if(result[0].meta?.changes!==1||result[2].meta?.changes!==1)
+      if(result[0].meta?.changes!==1||result[1].meta?.changes!==1)
         return bad("Não foi possível confirmar a devolução. Confira o estoque.",409);
     } else return bad("Ação não permitida para o estado atual desta reserva.",409);
     // Registrar o resultado para o titular vinculado à reserva. A senha do Admin, por si,
