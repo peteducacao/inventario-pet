@@ -1376,11 +1376,19 @@ function adminSettings(root){
       const items=result.items||[];
       const active=items.filter(x=>x.situacao==="pendente"||x.situacao==="processando");
       const past=items.filter(x=>!["pendente","processando"].includes(x.situacao));
-      const record=x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.enviado_em||x.criado_em))+(x.ultimo_erro?' · Erro: '+esc(x.ultimo_erro):"")+'</small></div></div>';
+      const record=x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.enviado_em||x.criado_em))+(x.ultimo_erro?' · Erro: '+esc(x.ultimo_erro):"")+'</small></div>'+(x.situacao==="erro"?'<button type="button" class="outline-button small-button" data-mail-retry="'+x.id+'">Reenviar</button>':"")+'</div>';
       const body='<div class="modal-main"><p class="notice">Integração Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'. Um teste enviado aparece no histórico; a entrega à caixa de entrada depende do Gmail.</p>'+
         '<h3>Fila atual ('+active.length+')</h3><div class="admin-list">'+(active.length?active.map(record).join(""):'<div class="empty-state">Nenhum e-mail aguardando envio.</div>')+'</div>'+
         '<h3>Histórico recente ('+past.length+')</h3><div class="admin-list">'+(past.length?past.map(record).join(""):'<div class="empty-state">Nenhum envio finalizado ou com erro no histórico recente.</div>')+'</div></div>';
       openModal("Fila e histórico do Gmail","Inclui mensagens enviadas, canceladas e com falhas.",body,{size:"wide"});
+      $("[data-mail-retry]").forEach(button=>button.onclick=async()=>{
+        button.disabled=true;
+        try{
+          await api("/api/admin/mail/retry","POST",{id:Number(button.dataset.mailRetry)});
+          toast("Reenvio colocado na fila.");
+          $("#v2-mail-history").click();
+        }catch(error){toast(error.message,true);button.disabled=false;}
+      });
     }catch(e){toast(e.message,true);}
   };
   $("#v2-backup-download").onclick=async()=>{try{const result=await api("/api/admin/backup");saveDownload("backup-inventario-pet-"+localDate()+".json",JSON.stringify(result,null,2));toast("Backup preparado.");}catch(e){toast(e.message,true);}};
