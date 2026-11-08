@@ -19,7 +19,11 @@ async function copyValue(value,field){
   catch{if(field){field.focus();field.select();}toast("Selecione o texto para copiar.");}
 }
 function passwordField(id,label,autocomplete="current-password"){
-  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>'+(autocomplete==="new-password"?'<div id="'+id+'-strength" class="hint" style="margin:5px 0 12px" aria-live="polite"></div>':"");
+  const meter=autocomplete==="new-password"&&!id.endsWith("-confirm");
+  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>'+
+    (meter?'<div id="'+id+'-strength" class="password-strength" data-strength="vazia" role="meter" aria-label="Força da senha" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0" aria-valuetext="Sem senha">'+
+    '<div class="password-strength-track" aria-hidden="true"><span></span><span></span><span></span></div>'+
+    '<small class="password-strength-label">A força da senha aparecerá aqui.</small></div>':"");
 }
 function passwordRating(value){
   const pass=String(value||"");
@@ -40,8 +44,10 @@ function wirePasswordStrength(){
     const box=$("#"+input.id+"-strength");if(!box)return;
     const update=()=>{
       const rating=passwordRating(input.value);
-      box.textContent=rating?"Força da senha: "+rating.toUpperCase()+(rating==="fraca"?" · Maior risco de acesso indevido.":""):"A força da sua senha aparecerá aqui.";
-      box.style.color=rating==="forte"?"#167245":rating==="média"?"#916004":rating==="fraca"?"#b42318":"";
+      box.dataset.strength=rating||"vazia";
+      box.setAttribute("aria-valuenow",String(rating==="forte"?3:rating==="média"?2:rating==="fraca"?1:0));
+      box.setAttribute("aria-valuetext",rating||"Sem senha");
+      box.querySelector(".password-strength-label").textContent=rating?"Força da senha: "+rating.toUpperCase()+(rating==="fraca"?" · Maior risco de acesso indevido.":""):"A força da senha aparecerá aqui.";
     };
     input.addEventListener("input",update);
     update();
