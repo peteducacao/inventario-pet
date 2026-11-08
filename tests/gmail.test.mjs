@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {DatabaseSync} from "node:sqlite";
-import {queueManual,generateDailyEmails,mailBridgeAPI,mailAdminAPI,queueNewLoanReminder,triggerRecoveryEmail} from "../src/mail-bridge.js";
+import {queueManual,generateDailyEmails,mailBridgeAPI,mailAdminAPI,queueNewLoanReminder,triggerRecoveryEmail,queueUnreceivedReturnEmail} from "../src/mail-bridge.js";
 const sqlite=new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0011_conciliar_experimentos.sql","0012_linkar_variacoes_iniciais.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql","0022_seguranca_contas_email_recuperacao.sql"]){
@@ -64,7 +64,8 @@ const adminCall=(path,body)=>{
   return mailAdminAPI(new Request("https://inventario-pet.pet-educacao.workers.dev"+path,opt),env);
 };
 const listed=await(await adminCall("/api/admin/mail/templates")).json();
-assert.equal(listed.templates.length,5,"Cinco modelos personalizáveis devem aparecer no painel.");
+assert.equal(listed.templates.length,6,"Seis modelos editáveis, incluindo não recebido.");
+assert.ok(listed.templates.some(x=>x.evento==="nao_recebido"),"O modelo Entrega não confirmada deve ser editável.");
 const saveModel=await adminCall("/api/admin/mail/templates",{evento:"manual",assunto:"PET: devolução de {material}",mensagem:"Olá, {nome}! A devolução de {material} está prevista para {prazo}. Registro #{registro}. {link}"});
 assert.equal(saveModel.status,200,"Administrador deve conseguir editar o modelo.");
 const stored=await(await adminCall("/api/admin/mail/templates")).json();
@@ -97,7 +98,8 @@ const originalEvents=await(await adminCall("/api/admin/mail/events")).json();
 assert.equal(originalEvents.profiles.petiano.ativado,false);
 assert.equal(originalEvents.profiles.visitante.ativado,true);
 assert.equal(originalEvents.profiles.visitante.eventos.antes,true);
-const chooseAll=()=>Object.fromEntries(["antes","hoje","atraso2","atraso7","manual"].map(event=>[event,true]));
+assert.equal(originalEvents.profiles.visitante.eventos.nao_recebido,true,"Aviso deve poder ser ativado/desativado individualmente.");
+const chooseAll=()=>Object.fromEntries(["antes","hoje","atraso2","atraso7","manual","nao_recebido"].map(event=>[event,true]));
 const visitors=chooseAll(),petianes=chooseAll();
 visitors.antes=false;petianes.atraso7=false;
 assert.equal((await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}})).status,200);
@@ -174,6 +176,36 @@ try{
   assert.equal(await triggerRecoveryEmail({...env,PET_MAIL_WEBHOOK_URL:"https://script.google.com/macros/s/teste-app/exec"}),true);
   assert.equal(triggered,true);
 }finally{globalThis.fetch=realFetch;}
+
+// "Não recebido": modelo próprio editável, interruptor independente e fila deduplicada.
+const rejectedLoan=insert("retorno@example.com",today,{sem_prazo:1});
+const editRejected=await adminCall("/api/admin/mail/templates",{
+  evento:"nao_recebido",assunto:"PET: entrega não recebida #{registro}",
+  mensagem:"Olá {nome}, o material {material} não foi recebido pela equipe. Registro #{registro}. Acesse {link} e informe novamente após a entrega."
+});
+assert.equal(editRejected.status,200,"O texto de não recebimento deve ser editável.");
+visitors.nao_recebido=false;
+assert.equal((await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}})).status,200);
+const disabledRejected=await queueUnreceivedReturnEmail(env,rejectedLoan,"primeira-tentativa");
+assert.equal(disabledRejected.queued,false,"Com a chave desativada não deve gerar e-mail.");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_id=? AND evento='nao_recebido'").get(rejectedLoan).n,0);
+visitors.nao_recebido=true;
+assert.equal((await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}})).status,200);
+const queuedRejected=await queueUnreceivedReturnEmail(env,rejectedLoan,"primeira-tentativa");
+assert.equal(queuedRejected.queued,true,"Deve enfileirar o aviso após não recebimento.");
+assert.equal((await queueUnreceivedReturnEmail(env,rejectedLoan,"primeira-tentativa")).queued,false,"Não repetir o mesmo aviso.");
+const rejectedMail=sqlite.prepare("SELECT assunto,mensagem,situacao FROM mail_queue WHERE reserva_id=? AND evento='nao_recebido'").get(rejectedLoan);
+assert.equal(rejectedMail.assunto,"PET: entrega não recebida #"+rejectedLoan);
+assert.match(rejectedMail.mensagem,/não foi recebido pela equipe/);
+assert.match(rejectedMail.mensagem,/retorno/);
+assert.equal(rejectedMail.situacao,"pendente");
+assert.equal((await queueUnreceivedReturnEmail(env,rejectedLoan,"segunda-tentativa")).queued,true,"Uma nova devolução recusada pode gerar novo aviso.");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_id=? AND evento='nao_recebido'").get(rejectedLoan).n,2);
+visitors.nao_recebido=false;
+await adminCall("/api/admin/mail/events",{profiles:{visitante:visitors,petiano:petianes}});
+sqlite.prepare("UPDATE mail_queue SET situacao='cancelado' WHERE evento!='nao_recebido' AND situacao='pendente'").run();
+await call("/api/mail/next");
+assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_id=? AND evento='nao_recebido' AND situacao='cancelado'").get(rejectedLoan).n,2,"Desativar antes do processamento impede o envio pendente.");
 
 console.log("AGENDAMENTO POR TAG OK: visitantes/PETianes, pré-vencimento e cobrança manual.");
 console.log("MODELOS GMAIL OK: salvar, prévia, validação, edição manual e não duplicação.");
