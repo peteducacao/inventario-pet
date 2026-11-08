@@ -184,15 +184,6 @@
     <footer class="help-manual-footer"><strong>Inventário PET Educação</strong><span>Manual de uso e manutenção · Revisado em 07/11/2026</span></footer>
   </main>
 </div>
-<script>
-(function(){
-  const btn=document.getElementById("help-print-button");
-  if(btn)btn.addEventListener("click",function(){window.print();});
-  if(new URLSearchParams(window.location.search).has("embed"))document.body.classList.add("help-embed");
-  if(new URLSearchParams(window.location.search).has("print")){
-    window.addEventListener("load",function(){window.setTimeout(function(){window.print();},300);});
-  }
-})();
-</script>
+<script defer src="/ajuda/ajuda.js?v=20261107-csp-v1"></script>
 </body>
 </html>
