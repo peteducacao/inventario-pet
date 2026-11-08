@@ -327,11 +327,13 @@ function openLinksHub(){
         '<small>'+count+' '+(count===1?'material vinculado':'materiais vinculados')+'</small></div>'+
         '<div class="links-hub-actions">'+
         '<button type="button" class="primary-button small-button" data-link-open="'+attr(name)+'">Organizar</button>'+
+        '<button type="button" class="outline-button small-button" data-link-photo="'+attr(name)+'">Editar imagem</button>'+
         '<button type="button" class="outline-button small-button" data-link-rename="'+attr(name)+'">Renomear</button>'+
         '<button type="button" class="danger-button small-button" data-link-delete="'+attr(name)+'">Excluir</button></div></div>';
     }).join(""):'<div class="variant-manager-empty">Nenhum vínculo encontrado.</div>';
-    $$("[data-link-open]",list).forEach(btn=>btn.onclick=()=>openVariantLinker(null,btn.dataset.linkOpen));
-    $$("[data-link-rename]",list).forEach(btn=>btn.onclick=()=>adminRenameVariationGroup(btn.dataset.linkRename));
+    $("[data-link-open]",list).forEach(btn=>btn.onclick=()=>openVariantLinker(null,btn.dataset.linkOpen));
+    $("[data-link-photo]",list).forEach(btn=>btn.onclick=()=>editVariationGroupPhoto(btn.dataset.linkPhoto));
+    $("[data-link-rename]",list).forEach(btn=>btn.onclick=()=>adminRenameVariationGroup(btn.dataset.linkRename));
     $$("[data-link-delete]",list).forEach(btn=>btn.onclick=async()=>{
       if(busy)return;
       const name=btn.dataset.linkDelete;
@@ -367,6 +369,58 @@ function openLinksHub(){
     finally{busy=false;}
   };
   draw();
+}
+// A foto de capa do VÍNCULO não modifica foto, estoque ou cadastro dos integrantes.
+function editVariationGroupPhoto(name){
+  const key=String(name||"").trim().toLocaleLowerCase("pt-BR");
+  const group=(state.admin?.grupos_variacoes||[]).find(g=>String(g.nome||"").toLocaleLowerCase("pt-BR")===key);
+  if(!group){toast("Vínculo não encontrado.",true);return;}
+  const members=(state.admin?.componentes||[]).filter(x=>!isArchived(x)&&String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===key)
+    .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+  const current=group.imagem?"propria":group.imagem_componente_id?"integrante:"+group.imagem_componente_id:"nenhuma";
+  const options='<option value="nenhuma">Sem foto do vínculo</option>'+
+    '<option value="propria" '+(current==="propria"?"selected":"")+'>Enviar foto própria</option>'+
+    members.map(x=>'<option value="integrante:'+x.id+'" '+(current==="integrante:"+x.id?"selected":"")+'>Usar foto de '+esc(x.nome)+'</option>').join("");
+  const form='<form id="group-photo-form" class="modal-main">'+
+    '<p class="hint">Esta é a imagem do card '+esc(group.nome)+'. As fotos de '+(members.length===1?"seu integrante":"seus integrantes")+' não serão modificadas.</p>'+
+    '<div class="field"><label for="group-photo-source">Imagem do vínculo</label><select id="group-photo-source">'+options+'</select></div>'+
+    '<div id="group-photo-preview" class="media-preview group-photo-preview"></div>'+
+    '<div class="field" id="group-photo-upload-row" hidden><label for="group-photo-upload">Enviar foto (PNG, JPG ou WebP)</label><input type="file" id="group-photo-upload" accept="image/png,image/jpeg,image/webp"><small class="hint">Você poderá ajustar o enquadramento antes de salvar.</small></div>'+
+    '<div class="modal-footer"><button type="button" class="secondary-button" id="group-photo-cancel">Cancelar</button><button type="submit" class="primary-button" id="group-photo-save">Salvar imagem</button></div></form>';
+  openModal("Editar imagem: "+group.nome,"Escolha uma capa própria ou a foto de um integrante.",form,{size:"wide"});
+  let own=group.imagem||"";
+  const choice=$("#group-photo-source"),preview=$("#group-photo-preview");
+  choice.value=members.some(x=>current==="integrante:"+x.id)||current!=="integrante:"+group.imagem_componente_id?current:"nenhuma";
+  const redraw=()=>{
+    const selected=choice.value;
+    $("#group-photo-upload-row").hidden=selected!=="propria";
+    const member=selected.startsWith("integrante:")?members.find(x=>x.id===Number(selected.slice(10))):null;
+    const image=selected==="propria"?own:member?itemImage(member):"";
+    preview.innerHTML=image?'<img alt="Prévia da imagem do vínculo" src="'+attr(image)+'">':'<p class="hint">Sem foto do vínculo</p>';
+  };
+  choice.onchange=redraw;
+  $("#group-photo-upload").onchange=async e=>{
+    const file=e.target.files?.[0];if(!file)return;
+    try{
+      const result=await editPETCatalogPhoto(file);
+      if(result){own=result;choice.value="propria";redraw();}
+    }catch(error){toast(error.message,true);}
+    e.target.value="";
+  };
+  $("#group-photo-cancel").onclick=openLinksHub;
+  $("#group-photo-form").onsubmit=async e=>{
+    e.preventDefault();
+    const selected=choice.value;
+    if(selected==="propria"&&!own){toast("Selecione uma foto para o vínculo.",true);return;}
+    const btn=$("#group-photo-save");btn.disabled=true;btn.textContent="Salvando…";
+    const data=selected==="propria"?{modo:"propria",imagem:own}:selected.startsWith("integrante:")?
+      {modo:"integrante",componente_id:Number(selected.slice(10))}:{modo:"nenhuma"};
+    try{
+      await api("/api/admin/variation-groups","POST",{acao:"imagem",nome:group.nome,responsavel:state.actor||"Admin",...data});
+      await adminReload();adminBuild();openLinksHub();toast("Imagem do vínculo atualizada sem alterar os integrantes.");
+    }catch(error){toast(error.message,true);btn.disabled=false;btn.textContent="Salvar imagem";}
+  };
+  redraw();
 }
 function adminViewMaterial(id){
   const x=state.admin.componentes.find(z=>z.id===id);if(!x)return;
