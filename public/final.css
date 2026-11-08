@@ -934,3 +934,19 @@ background:#fff;border:1px dashed #acc5c9;border-radius:12px}
 .delete-backup-choice small{font-size:12px;line-height:1.5;color:#637f8c}
 .delete-confirm-actions{display:flex;gap:8px}
 .delete-confirm-actions button{flex:1;min-height:44px}
+
+
+/* Força da senha: vermelho, amarelo e verde, sem bloquear senhas escolhidas livremente. */
+.password-strength{margin:0 0 14px;display:block;max-width:100%}
+.password-strength-track{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;height:9px;margin:1px 0 7px}
+.password-strength-track span{border-radius:999px;background:#d9e0e5;opacity:.85;transition:background .16s,opacity .16s}
+.password-strength[data-strength="fraca"] .password-strength-track span:nth-child(1),
+.password-strength[data-strength="média"] .password-strength-track span:nth-child(1),
+.password-strength[data-strength="forte"] .password-strength-track span:nth-child(1){background:#d92d20;opacity:1}
+.password-strength[data-strength="média"] .password-strength-track span:nth-child(2),
+.password-strength[data-strength="forte"] .password-strength-track span:nth-child(2){background:#e3ad22;opacity:1}
+.password-strength[data-strength="forte"] .password-strength-track span:nth-child(3){background:#168756;opacity:1}
+.password-strength-label{display:block;font-size:12px;line-height:1.45;color:#64748b}
+.password-strength[data-strength="fraca"] .password-strength-label{color:#b42318}
+.password-strength[data-strength="média"] .password-strength-label{color:#936000}
+.password-strength[data-strength="forte"] .password-strength-label{color:#167245}
