@@ -19,6 +19,7 @@ sqlite.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualiza
 sqlite.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualizado_em,visivel_visitante) VALUES('Vermelho teste','#CC3344',3,1,CURRENT_TIMESTAMP,1)").run();
 sqlite.exec(readFileSync("migrations/0015_autorizacao_emprestimos.sql","utf8"));
 sqlite.exec(readFileSync("migrations/0016_permissoes_por_perfil.sql","utf8"));
+sqlite.exec(readFileSync("migrations/0023_devolucoes_visitantes_pendentes.sql","utf8"));
 class Statement{
  constructor(sql){this.sql=sql;this.args=[];}
  bind(...args){this.args=args;return this;}
@@ -83,9 +84,21 @@ assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blu
 assert.equal((await req("/api/filaments")).body.filamentos.find(x=>x.id===blue.id).em_uso,2);
 assert.equal((await req("/api/my/loans","GET",undefined,visitor)).body.emprestimos.find(r=>r.id===rId).status,"retirada");
 assert.equal((await req("/api/my/return","POST",{id:rId,defeituosos:0},member)).status,404,"Outro titular não pode devolver empréstimo alheio.");
-assert.equal((await req("/api/my/return","POST",{id:rId,defeituosos:0},visitor)).status,200,"Visitante deve dar baixa pela própria conta.");
-assert.equal((await req("/api/my/return","POST",{id:rId,defeituosos:0},visitor)).status,404,"Impedir baixa duplicada.");
-assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,0);
+assert.equal((await req("/api/my/return","POST",{id:rId,descartados:1},visitor)).status,403,"Visitante não pode informar descarte.");
+const requested=await req("/api/my/return","POST",{id:rId,observacao:"Entreguei na recepção"},visitor);
+assert.equal(requested.status,200,"Visitante deve solicitar devolução.");
+assert.equal(requested.body.aguardando_confirmacao,true);
+assert.equal((await req("/api/my/return","POST",{id:rId},visitor)).status,409,"Solicitação repetida deve ser bloqueada.");
+assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(rId).status,"retirada","Visitante não pode concluir empréstimo.");
+assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,2,"Estoque continua em uso até confirmação do Admin.");
+assert.equal((await req("/api/my/loans","GET",undefined,visitor)).body.emprestimos.find(x=>x.id===rId).devolucao_solicitada_observacao,"Entreguei na recepção");
+assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"cancelar_solicitacao_devolucao",responsavel:"Responsável PET"})).status,200);
+assert.equal(sqlite.prepare("SELECT devolucao_solicitada_em FROM reservas WHERE id=?").get(rId).devolucao_solicitada_em,null);
+assert.equal((await req("/api/my/return","POST",{id:rId},visitor)).status,200,"Após recusa o visitante pode solicitar novamente.");
+assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver",responsavel:"Responsável PET",descartados:0})).status,200,"O Admin confirma a devolução.");
+assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(rId).status,"devolvida");
+assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,0,"Estoque liberado só na confirmação.");
+assert.equal((await postAdmin("/api/admin/reservation",{id:rId,acao:"devolver"})).status,409,"Bloquear confirmação dupla.");
 const direct=await req("/api/member/withdraw","POST",{componente_id:blue.componente_id,quantidade:1,data_devolucao:""},member);
 assert.equal(direct.status,201,JSON.stringify(direct.body));
 assert.equal(sqlite.prepare("SELECT em_uso FROM componentes WHERE id=?").get(blue.componente_id).em_uso,1);
