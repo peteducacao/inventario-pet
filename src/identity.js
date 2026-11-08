@@ -1,3 +1,4 @@
+import { queueNewLoanReminder, triggerRecoveryEmail } from "./mail-bridge.js";
 // Identidades independentes de nomes: ID publico + credencial privada em cookie HttpOnly.
 // O ID nao autentica. A tag PETiano so pode ser alterada pelo administrador.
 const HEADERS = {"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"};
@@ -86,7 +87,7 @@ async function enqueueIdentityNotice(db,id,email,subject,message,type="aviso",re
   await db.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,?,?,?,?,?,?)")
     .bind(id,type,recoveryHash,email,subject,message,now()).run();
 }
-async function requestPasswordRecovery(req,env){
+async function requestPasswordRecovery(req,env,ctx){
   const payload=await bodyJson(req,3000),email=clean(payload.email,180).toLowerCase();
   // Não revelar se este endereço pertence a uma conta.
   if(!validEmail(email))return respond(RECOVERY_REPLY);
@@ -105,6 +106,9 @@ async function requestPasswordRecovery(req,env){
     env.DB.prepare("INSERT INTO identity_recovery_tokens(hash,usuario_id,criado_em,expira_em) VALUES(?,?,?,?)").bind(hash,u.id,now(),expires),
     env.DB.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem,criado_em) VALUES(?,'recuperacao',?,?,?,?,?)").bind(u.id,hash,email,"Recuperar senha - Inventário PET",mail,now())
   ]);
+  // O envio rápido é opcional; falhas não invalidam o link nem expõem a conta.
+  // O gatilho periódico continua processando a mesma fila com trava contra duplicação.
+  if(ctx?.waitUntil)ctx.waitUntil(triggerRecoveryEmail(env));
   return respond(RECOVERY_REPLY);
 }
 
@@ -262,6 +266,7 @@ async function withdraw(req,env,user){
   ]);
   if(batch[0].meta?.changes!==1||batch[1].meta?.changes!==1)return error("Não foi possível registrar a retirada.",409);
   await identityAudit(env.DB,"Retirada direta","material",id,item.nome+" · "+quantity+" unidade(s)",actor);
+  await queueNewLoanReminder(env,batch[0].meta.last_row_id);
   return respond({ok:true,retirada_id:batch[0].meta.last_row_id},201);
 }
 async function memberReturn(req,env,user){
@@ -361,14 +366,14 @@ async function adminList(env){
   return respond({ok:true,usuarios:list.map(x=>({...x,retiradas_ativas:counts.get(x.id)||0})),
     totais:{todos:Number(summary?.todos)||0,petiano:Number(summary?.petiano)||0,visitante:Number(summary?.visitante)||0}});
 }
-export async function identityAPI(req,env,adminAuth){
+export async function identityAPI(req,env,adminAuth,ctx){
   const url=new URL(req.url),path=url.pathname,method=req.method,db=env.DB;
   if(!path.startsWith("/api/identity/")&&!path.startsWith("/api/member/")&&!path.startsWith("/api/admin/users")&&!path.startsWith("/api/my/")&&!path.startsWith("/api/notifications"))return null;
   if(path==="/api/identity/register"&&method==="POST")return register(req,env);
   if(path==="/api/identity/login"&&method==="POST")return loginUser(req,env);
   if(path==="/api/identity/upgrade"&&method==="POST")return upgradeLegacy(req,env);
   if(path==="/api/identity/password"&&method==="POST")return changePassword(req,env);
-  if(path==="/api/identity/recover"&&method==="POST")return requestPasswordRecovery(req,env);
+  if(path==="/api/identity/recover"&&method==="POST")return requestPasswordRecovery(req,env,ctx);
   if(path==="/api/identity/reset-by-email"&&method==="POST")return completePasswordRecovery(req,env);
   if(path==="/api/identity/email"&&method==="POST")return updateEmail(req,env,await loggedIn(req,db));
   if(path==="/api/identity/recovery-code")return error("Código antigo desativado. Utilize recuperação por e-mail.",410);
