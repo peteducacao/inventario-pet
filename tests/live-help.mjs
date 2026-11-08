@@ -6,7 +6,9 @@ const files=[
   {path:"/ajuda/ajuda.css",markers:["@media print","@page{size:A4",".help-main"]},
   {path:"/",markers:['id="public-sidebar"'],forbidden:['href="/ajuda/" data-public-action="help"']},
   {path:"/admin/",markers:['data-admin-route="true"'],forbidden:['href="/ajuda/" data-public-action="help"']},
-  {path:"/admin-stage.js",markers:['["ajuda","box","Ajuda"]','function adminHelp(root)','/ajuda/?embed=1','APAGAR TODAS AS RESERVAS','data-rename-group','function adminRenameVariationGroup(']}
+  {path:"/admin-stage.js",markers:['["ajuda","box","Ajuda"]','function adminHelp(root)','/ajuda/?embed=1','reset-reservations-submit','data-rename-group','function adminRenameVariationGroup(','data-link-photo','group-photo-source'],forbidden:['Digite APAGAR TODAS AS RESERVAS','reset-reservations-confirm']},
+  {path:"/final.js",markers:['catalog-photo filament-art','filament-reel','catalog-numbers','group-no-photo'],forbidden:['filament-quantity']},
+  {path:"/final.css",markers:['Cards compactos com indicadores uniformes','align-items:start','height:auto']}
 ];
 for(const {path,markers,forbidden=[]} of files){
   let response=null,body="";
