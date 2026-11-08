@@ -41,6 +41,18 @@ const user=db.prepare("SELECT id FROM usuarios WHERE public_id='PET-TESTE-BACKUP
 db.prepare("UPDATE componentes SET em_uso=em_uso+1 WHERE id=?").run(one.id);
 db.prepare("INSERT INTO reservas(componente_id,nome_solicitante,quantidade,data_inicio,data_devolucao,status,usuario_id,tipo) VALUES(?,?,1,'2027-01-10','2027-01-11','retirada',?,'retirada_direta')").run(one.id,"Usuário teste",user);
 const loan=db.prepare("SELECT id FROM reservas WHERE componente_id=? AND tipo='retirada_direta'").get(one.id).id;
+// O catálogo mostra somente históricos recentes; backup/restauração NÃO podem truncá-los.
+const fixture=1510;
+const addClosed=db.prepare("INSERT INTO reservas(componente_id,nome_solicitante,email,quantidade,data_inicio,data_devolucao,status,solicitado_em) VALUES(?, 'Histórico de teste', '',1,'2027-01-10','2027-01-11','devolvida',?)");
+db.exec("BEGIN IMMEDIATE");
+try{
+  for(let i=0;i<fixture;i++)addClosed.run(one.id,new Date(Date.now()+(i+1)*1000).toISOString());
+  db.exec("COMMIT");
+}catch(e){db.exec("ROLLBACK");throw e;}
+const originalClosed=db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE status='devolvida'").get().n;
+const mailBody=("Prezada pessoa, seu material foi registrado. Confirme a devolução no horário combinado.\\n").repeat(42);
+assert.ok(mailBody.length>100&&mailBody.length<=5000);
+db.prepare("INSERT INTO configuracoes(chave,valor) VALUES('mail_template_hoje_body',?) ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor").run(mailBody);
 const before=await request("/api/admin/backup","GET",null,cookie);
 assert.equal(before.code,200,JSON.stringify(before.data).slice(0,160));
 const saved=before.data;
@@ -50,6 +62,8 @@ assert.equal(saved.categorias.find(x=>x.id===cat.id).visivel_visitante,0);
 assert.equal(saved.filamentos.find(x=>x.cor==="Turquesa").visivel_visitante,0);
 assert.equal(saved.componentes.find(x=>x.id===one.id).grupo_variacoes,"Motores");
 assert.equal(saved.reservas.find(x=>x.id===loan).tipo,"retirada_direta");
+assert.equal(saved.reservas.filter(x=>x.status==="devolvida").length,originalClosed,"Backup deve incluir TODAS as 1.510 devoluções, não apenas o limite de 1.500 do Admin.");
+assert.equal(saved.configuracoes.mail_template_hoje_body,mailBody,"Modelo completo precisa constar no backup.");
 assert.ok(saved.conciliacao_experimentos_backup.length>0);
 db.prepare("UPDATE componentes SET quantidade=quantidade+10 WHERE id=?").run(one.id);
 db.prepare("UPDATE categorias SET visivel_visitante=1 WHERE id=?").run(cat.id);
@@ -66,6 +80,8 @@ assert.equal(db.prepare("SELECT visivel_visitante FROM categorias WHERE id=?").g
 assert.equal(db.prepare("SELECT visivel_visitante FROM filamentos WHERE cor='Turquesa'").get().visivel_visitante,0);
 assert.equal(db.prepare("SELECT tipo FROM reservas WHERE id=?").get(loan).tipo,"retirada_direta");
 assert.equal(db.prepare("SELECT usuario_id FROM reservas WHERE id=?").get(loan).usuario_id,user);
+assert.equal(db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE status='devolvida'").get().n,originalClosed,"Restaurar precisa preservar as 1.510 devoluções.");
+assert.equal(db.prepare("SELECT valor FROM configuracoes WHERE chave='mail_template_hoje_body'").get().valor,mailBody,"Texto completo do Gmail não pode ser truncado em 100 caracteres.");
 assert.equal(db.prepare("SELECT COUNT(*) AS n FROM conciliacao_experimentos_vinculos").get().n,26);
 assert.ok(db.prepare("SELECT COUNT(*) AS n FROM historico_admin").get().n>1);
 console.log("BACKUP V2 OK: quantidades, categorias, cores, visibilidade, empréstimos, histórico e migração.");
