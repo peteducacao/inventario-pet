@@ -197,7 +197,7 @@ assert.equal((await queueUnreceivedReturnEmail(env,rejectedLoan,"primeira-tentat
 const rejectedMail=sqlite.prepare("SELECT assunto,mensagem,situacao FROM mail_queue WHERE reserva_id=? AND evento='nao_recebido'").get(rejectedLoan);
 assert.equal(rejectedMail.assunto,"PET: entrega não recebida #"+rejectedLoan);
 assert.match(rejectedMail.mensagem,/não foi recebido pela equipe/);
-assert.match(rejectedMail.mensagem,/retorno/);
+assert.match(rejectedMail.mensagem,/Visitante de Teste/);
 assert.equal(rejectedMail.situacao,"pendente");
 assert.equal((await queueUnreceivedReturnEmail(env,rejectedLoan,"segunda-tentativa")).queued,true,"Uma nova devolução recusada pode gerar novo aviso.");
 assert.equal(sqlite.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE reserva_id=? AND evento='nao_recebido'").get(rejectedLoan).n,2);
