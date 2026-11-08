@@ -135,6 +135,8 @@ O catálogo público (`public/final.js`) agrupa os materiais por `grupo_variacoe
 - Todas é **filtro combinado**; não é uma tabela independente. A exclusão de um registro concluído faz ele sumir de Concluídas e também de Todas.
 - `aprovada` é estado legado que pode ser regularizado e não deve ser criado por aprovações novas.
 
+**Histórico e empréstimos abertos:** o Admin mantém todas as reservas com status diferente de `devolvida`, `recusada` e `cancelada`, e até 1.500 concluídas recentes. `GET /api/my/loans` e `GET /api/member/history` também preservam todos os empréstimos abertos, limitando apenas os concluídos mais recentes (250 e 300, respectivamente). Assim, o histórico volumoso nunca oculta uma retirada que ainda precisa de devolução. Há teste de regressão com 1.510 conclusões fictícias em D1 local.
+
 ## 5. Administração e principais APIs
 
 **Entradas**: `/admin/` (página independente), `/api/login` (sessão Admin), `/api/logout`. Todas as rotas `/api/admin/*` exigem sessão válida; a sessão pessoal é outra.
