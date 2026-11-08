@@ -1,0 +1,9 @@
+# Cloudflare Workers Static Assets: estes headers são aplicados a arquivos
+# estáticos que normalmente NÃO passam pelo Worker (assets-first).
+# As respostas /api/* continuam protegidas em src/index.js.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
