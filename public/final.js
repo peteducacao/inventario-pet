@@ -339,12 +339,12 @@ async function openMyLoans(){
     target.innerHTML=loans.length?'<div class="reservation-list loans-page-list">'+loans.map(r=>{
       const title=esc(r.componente_nome||"Material"),active=r.status==="retirada",pending=r.status==="pendente";
       const returnPending=active&&!!r.devolucao_solicitada_em,visitor=state.identity?.tag!=="petiano";
-      const label=returnPending?"Aguardando confirmação":({pendente:"Aguardando aprovação",aprovada:"Aprovada (registro antigo)",retirada:"Em uso",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"}[r.status]||r.status);
+      const label=returnPending?"Devolvido · aguardando conferência":({pendente:"Aguardando aprovação",aprovada:"Aprovada (registro antigo)",retirada:"Em uso",devolvida:"Devolvido",recusada:"Recusada",cancelada:"Cancelada"}[r.status]||r.status);
       const owner=(r.status==="recusada"?"Recusada":r.status==="aprovada"?"Aprovada anteriormente":null);
       const by=owner&&r.responsavel_admin?'<small class="loan-decision-by">'+owner+' por '+esc(r.responsavel_admin)+'</small>':"";
-      const waiting=returnPending?'<small class="loan-decision-by">O material continua em uso até a confirmação do Admin.</small>':"";
+      const waiting=returnPending?'<small class="loan-decision-by">Entrega informada. O material continua em uso até o Admin confirmar o recebimento.</small>':"";
       return '<div class="admin-list-row"><div class="main-info"><strong>'+title+' · '+r.quantidade+' un.</strong><small>'+esc(formatDay(r.data_inicio))+' — '+esc(formatDay(r.data_devolucao))+'</small><span class="tag '+(pending||returnPending?"pending":active?"picked":"")+'">'+esc(label)+'</span>'+by+waiting+'</div>'+
-        (active&&!returnPending?'<button type="button" class="primary-button small-button" data-my-return="'+r.id+'">'+(visitor?"Solicitar devolução":"Registrar devolução")+'</button>':'')+'</div>';
+        (active&&!returnPending?'<button type="button" class="primary-button small-button" data-my-return="'+r.id+'">'+(visitor?"Devolvido":"Registrar devolução")+'</button>':'')+'</div>';
     }).join("")+'</div>':'<div class="empty-state">Você ainda não possui empréstimos.</div>';
     $$("[data-my-return]",target).forEach(button=>button.onclick=()=>memberReturnModal(loans.find(r=>r.id===Number(button.dataset.myReturn))));
   }catch(error){if(document.contains(target))target.textContent=error.message;}
