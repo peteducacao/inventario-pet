@@ -5,7 +5,7 @@ function adminCounts(){
   const reservations=state.admin?.reservas||[];
   return {items:items.length,used:items.reduce((n,x)=>n+(Number(x.em_uso)||0),0),
     available:items.reduce((n,x)=>n+stock(x),0),
-    pending:reservations.filter(x=>x.status==="pendente").length};
+    pending:reservations.filter(x=>x.status==="pendente"||(x.status==="retirada"&&x.devolucao_solicitada_em)).length};
 }
 function adminLastUpdate(){
   const items=state.admin?.componentes||[];
@@ -480,6 +480,7 @@ function paintAdminMaterials(){
 /* Reservas: grupos mutuamente exclusivos. */
 function reservationGroup(r){
   if(r.status==="pendente")return "pendente";
+  if(r.status==="retirada"&&r.devolucao_solicitada_em)return "devolucoes";
   if(r.status==="retirada"&&!Number(r.sem_prazo)&&r.data_devolucao<localDate())return "atrasadas";
   if(r.status==="aprovada"||r.status==="retirada")return "ativas";
   return "concluidas";
@@ -487,7 +488,7 @@ function reservationGroup(r){
 function adminReservations(root){
   const all=state.admin.reservas||[];
   const filter=UI.reservationFilter;
-  const filters=[["pendente","Pendentes"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]];
+  const filters=[["pendente","Pendentes"],["devolucoes","Devoluções a confirmar"],["ativas","Ativas"],["atrasadas","Atrasadas"],["concluidas","Concluídas"],["todas","Todas"]];
   root.innerHTML='<section class="admin-panel"><div class="admin-section-head"><div><h2>Reservas e devoluções</h2></div></div>'+
     '<div class="admin-tools" style="gap:8px">'+filters.map(([key,label])=>
       '<button type="button" class="chip '+(filter===key?"active":"")+'" data-admin-res-filter="'+key+'">'+label+' <small>'+all.filter(r=>key==="todas"||reservationGroup(r)===key).length+'</small></button>').join("")+'</div>'+
@@ -503,16 +504,17 @@ function adminReservations(root){
 }
 function reservationRow(r){
   const x=state.admin.componentes.find(z=>z.id===r.componente_id);
-  const group=reservationGroup(r),tag={pendente:"Pendente",ativas:r.status==="aprovada"?"Aprovada":"Retirado",atrasadas:"Atrasada",concluidas:r.status==="devolvida"?"Devolvido":"Encerrada"}[group];
-  const cls=group==="pendente"?"pending":group==="ativas"?(r.status==="retirada"?"picked":"approved"):group==="atrasadas"?"late":"";
+  const group=reservationGroup(r),tag={pendente:"Pendente",devolucoes:"Aguardando conferência",ativas:r.status==="aprovada"?"Aprovada":"Retirado",atrasadas:"Atrasada",concluidas:r.status==="devolvida"?"Devolvido":"Encerrada"}[group];
+  const cls=group==="pendente"||group==="devolucoes"?"pending":group==="ativas"?(r.status==="retirada"?"picked":"approved"):group==="atrasadas"?"late":"";
   const actions=r.status==="pendente"?'<button class="primary-button" type="button" data-res-do="aprovar" data-id="'+r.id+'">'+iconSvg("check",14)+' Aprovar e entregar</button><button type="button" class="danger-button" data-res-do="recusar" data-id="'+r.id+'">Recusar</button>':
     r.status==="aprovada"?'<button type="button" class="outline-button" data-res-do="retirar" data-id="'+r.id+'">Regularizar aprovação antiga</button><button type="button" class="outline-button" data-res-do="recusar" data-id="'+r.id+'">Cancelar</button>':
-    r.status==="retirada"?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>':"";
-  const mailAction=r.status==="retirada"&&(r.email_conta||r.email)?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
+    r.status==="retirada"?(r.devolucao_solicitada_em?'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Confirmar recebimento</button><button type="button" class="outline-button" data-res-do="cancelar_solicitacao_devolucao" data-id="'+r.id+'">Não recebido</button>':'<button type="button" class="primary-button" data-res-do="devolver" data-id="'+r.id+'">Registrar devolução</button>'):"";
+  const mailAction=r.status==="retirada"&&!r.devolucao_solicitada_em&&(r.email_conta||r.email)?'<button type="button" class="outline-button" data-res-do="cobrar" data-id="'+r.id+'">✉ Cobrar por e-mail</button>':"";
   return '<div class="reservation-row">'+(x?thumb(x,"reservation-thumb"):'<div class="reservation-thumb"></div>')+
     '<div><h3>#'+r.id+' · '+esc(r.componente_nome||x?.nome||"Material")+'</h3><small>'+esc(r.nome_solicitante)+' · '+r.quantidade+' un.'+(r.tipo==="retirada_direta"?" · PETiano":"")+'</small>'+
     (r.contato?'<small style="display:block">'+esc(r.contato)+'</small>':"")+
-    (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+'</div>'+
+    (r.observacao?'<small style="display:block" title="'+attr(r.observacao)+'">'+esc(r.observacao.slice(0,120))+'</small>':"")+
+    (r.devolucao_solicitada_em?'<small style="display:block;color:#936000">Devolução solicitada em '+esc(fmt(r.devolucao_solicitada_em))+(r.devolucao_solicitada_observacao?' · '+esc(r.devolucao_solicitada_observacao):"")+'</small>':"")+'</div>'+
     '<div class="reservation-date"><small>Retirada</small><strong>'+esc(formatDay(r.data_inicio))+'</strong></div>'+
     '<div class="reservation-date"><small>Devolução</small><strong>'+(r.sem_prazo?'Sem prazo':esc(formatDay(r.data_devolucao)))+'</strong></div>'+
     '<span class="tag '+cls+'">'+tag+'</span><div class="reservation-actions">'+actions+mailAction+'</div></div>';
@@ -555,6 +557,12 @@ function confirmReservationRefusal(reservation){
 async function adminReservationAction(id,action){
   const r=state.admin.reservas.find(x=>x.id===id);if(!r)return;
   if(action==="devolver")return returnModal(r);
+  if(action==="cancelar_solicitacao_devolucao"){
+    if(!await niceModalConfirm("Material não recebido?","A solicitação de devolução será devolvida ao visitante, e o empréstimo continuará em uso. Confirme apenas se o material não foi recebido.","Não recebido",true))return;
+    try{await api("/api/admin/reservation","POST",{id,acao:action,responsavel:"Administração"});await adminReload();adminBuild();toast("Solicitação devolvida ao visitante.");}
+    catch(e){toast(e.message,true);}
+    return;
+  }
   if(action==="cobrar"){
     try{
       const draft=await api("/api/admin/mail/preview?id="+id);
@@ -583,7 +591,7 @@ async function adminReservationAction(id,action){
     decision=await confirmReservationRefusal(r);
     if(!decision)return;
   }else{
-    const descriptions={aprovar:"Aprovar e confirmar que "+r.nome_solicitante+" recebeu o material? A retirada será registrada automaticamente, e a pessoa poderá registrar a devolução pela própria conta.",retirar:"Regularizar uma aprovação antiga e registrar a retirada?"};
+    const descriptions={aprovar:"Aprovar e confirmar que "+r.nome_solicitante+" recebeu o material? A retirada será registrada automaticamente. Visitantes deverão solicitar a devolução e aguardar a conferência pelo Admin.",retirar:"Regularizar uma aprovação antiga e registrar a retirada?"};
     if(!await niceModalConfirm("Confirmar ação",descriptions[action]||"Confirma a operação?","Confirmar"))return;
   }
   try{
@@ -1259,7 +1267,13 @@ function adminSettings(root){
     '<div class="settings-toggle-grid">'+settingsToggle("v2-mail-auto","Lembretes automáticos","Envia conforme os vencimentos registrados.",cfg.avisos_email==="sim")+
     settingsToggle("v2-mail-pet","Notificar PETianes","Somente com prazo e permissão habilitada.",cfg.notificacoes_petianos==="sim")+
     settingsToggle("v2-mail-visitor","Notificar visitantes","Avisos para empréstimos com prazo.",cfg.notificacoes_visitantes!=="nao")+'</div>'+
-    '<button class="outline-button" type="button" id="v2-mail-history">Ver e-mails pendentes</button></div>'+
+    '<div class="mail-template-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">'+
+      '<button class="outline-button" type="button" id="v2-mail-prepare">Preparar lembretes agora</button>'+
+      '<button class="outline-button" type="button" id="v2-mail-history">Ver fila e histórico de e-mails</button></div>'+
+      '<div class="field"><label for="v2-mail-test-email">Teste de envio para seu e-mail</label>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap"><input style="flex:1;min-width:180px" id="v2-mail-test-email" type="email" autocomplete="email" placeholder="seuemail@exemplo.com" maxlength="180">'+
+      '<button class="primary-button" type="button" id="v2-mail-test-send">Enviar e-mail de teste</button></div>'+
+      '<small>O teste entra na fila Gmail e aparece no histórico. Limite: três testes por hora.</small></div></div>'+
     '<div style="grid-column:1/-1"><button class="primary-button" type="submit">Salvar configurações</button></div></form></section>'+
     scheduleEditor+emailEditor+'<section class="admin-panel" id="admin-backup-section"><div class="admin-section-head"><div><h2>Backup e restauração</h2><p>Para recuperar uma cópia JSON, selecione Restaurar arquivo JSON. Atenção: a restauração substitui os dados atuais do inventário, então faça um backup primeiro.</p></div></div>'+
     '<div class="buttons" style="display:flex;gap:10px;flex-wrap:wrap"><button type="button" class="outline-button" id="v2-backup-download">Baixar backup JSON</button>'+
@@ -1340,12 +1354,41 @@ function adminSettings(root){
     typeSelect.innerHTML=mailTemplates.map(x=>'<option value="'+attr(x.evento)+'">'+esc(x.nome)+'</option>').join("");
     if(mailTemplates.length)loadTemplate(mailTemplates[0].evento);
   }).catch(error=>{if(document.contains(root))typeSelect.innerHTML='<option value="">'+esc(error.message)+'</option>';toast("Não foi possível carregar os modelos de e-mail.",true);});
+  $("#v2-mail-prepare").onclick=async()=>{
+    try{
+      const r=await api("/api/admin/mail/prepare","POST",{});
+      toast("Lembretes verificados: "+r.verificados+". Novos e-mails na fila: "+r.enfileirados+".");
+    }catch(e){toast("Falha ao preparar lembretes: "+e.message,true);}
+  };
+  $("#v2-mail-test-send").onclick=async()=>{
+    const email=$("#v2-mail-test-email").value.trim();
+    if(!email||!$("#v2-mail-test-email").checkValidity()){toast("Digite um e-mail válido para testar.",true);return;}
+    const btn=$("#v2-mail-test-send");btn.disabled=true;
+    try{
+      const result=await api("/api/admin/mail/test","POST",{email});
+      toast(result.mensagem||"Teste colocado na fila do Gmail.");
+    }catch(error){toast(error.message,true);}
+    finally{btn.disabled=false;}
+  };
   $("#v2-mail-history").onclick=async()=>{
     try{
-      const result=await api("/api/admin/mail/log");
-      const items=(result.items||[]).filter(x=>x.situacao==="pendente"||x.situacao==="processando");
-      const body='<div class="modal-main"><p class="notice">Conexão com o Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'</p><div class="admin-list">'+(items.length?items.map(x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.criado_em))+(x.ultimo_erro?" · "+esc(x.ultimo_erro):"")+'</small></div></div>').join(""):'<div class="empty-state">Nenhum e-mail pendente de envio.</div>')+'</div></div>';
-      openModal("E-mails pendentes","Cobranças aguardando envio pelo Gmail.",body);
+      const result=await api("/api/admin/mail/log?historico=1");
+      const items=result.items||[];
+      const active=items.filter(x=>x.situacao==="pendente"||x.situacao==="processando");
+      const past=items.filter(x=>!["pendente","processando"].includes(x.situacao));
+      const record=x=>'<div class="admin-list-row"><div class="main-info"><strong>#'+x.id+' · '+esc(x.assunto)+'</strong><small>'+esc(x.destinatario)+' · '+esc(x.situacao)+' · '+esc(fmt(x.enviado_em||x.criado_em))+(x.ultimo_erro?' · Erro: '+esc(x.ultimo_erro):"")+'</small></div>'+(x.situacao==="erro"?'<button type="button" class="outline-button small-button" data-mail-retry="'+x.id+'">Reenviar</button>':"")+'</div>';
+      const body='<div class="modal-main"><p class="notice">Integração Gmail: '+(result.configurado?"Chave configurada no Worker":"Chave ainda não configurada")+'. Um teste enviado aparece no histórico; a entrega à caixa de entrada depende do Gmail.</p>'+
+        '<h3>Fila atual ('+active.length+')</h3><div class="admin-list">'+(active.length?active.map(record).join(""):'<div class="empty-state">Nenhum e-mail aguardando envio.</div>')+'</div>'+
+        '<h3>Histórico recente ('+past.length+')</h3><div class="admin-list">'+(past.length?past.map(record).join(""):'<div class="empty-state">Nenhum envio finalizado ou com erro no histórico recente.</div>')+'</div></div>';
+      openModal("Fila e histórico do Gmail","Inclui mensagens enviadas, canceladas e com falhas.",body,{size:"wide"});
+      document.querySelectorAll("[data-mail-retry]").forEach(button=>button.onclick=async()=>{
+        button.disabled=true;
+        try{
+          await api("/api/admin/mail/retry","POST",{id:Number(button.dataset.mailRetry)});
+          toast("Reenvio colocado na fila.");
+          $("#v2-mail-history").click();
+        }catch(error){toast(error.message,true);button.disabled=false;}
+      });
     }catch(e){toast(e.message,true);}
   };
   $("#v2-backup-download").onclick=async()=>{try{const result=await api("/api/admin/backup");saveDownload("backup-inventario-pet-"+localDate()+".json",JSON.stringify(result,null,2));toast("Backup preparado.");}catch(e){toast(e.message,true);}};

@@ -19,7 +19,11 @@ async function copyValue(value,field){
   catch{if(field){field.focus();field.select();}toast("Selecione o texto para copiar.");}
 }
 function passwordField(id,label,autocomplete="current-password"){
-  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>'+(autocomplete==="new-password"?'<div id="'+id+'-strength" class="hint" style="margin:5px 0 12px" aria-live="polite"></div>':"");
+  const meter=autocomplete==="new-password"&&!id.endsWith("-confirm");
+  return '<div class="field"><label for="'+id+'">'+esc(label)+'</label><div class="password-input-wrap"><input type="password" id="'+id+'" autocomplete="'+autocomplete+'" required placeholder="Digite sua senha"><button type="button" class="show-password" data-password-show="'+id+'" aria-label="Mostrar senha">Mostrar</button></div></div>'+
+    (meter?'<div id="'+id+'-strength" class="password-strength" data-strength="vazia" role="meter" aria-label="Força da senha" aria-valuemin="0" aria-valuemax="3" aria-valuenow="0" aria-valuetext="Sem senha">'+
+    '<div class="password-strength-track" aria-hidden="true"><span></span><span></span><span></span></div>'+
+    '<small class="password-strength-label">A força da senha aparecerá aqui.</small></div>':"");
 }
 function passwordRating(value){
   const pass=String(value||"");
@@ -40,8 +44,10 @@ function wirePasswordStrength(){
     const box=$("#"+input.id+"-strength");if(!box)return;
     const update=()=>{
       const rating=passwordRating(input.value);
-      box.textContent=rating?"Força da senha: "+rating.toUpperCase()+(rating==="fraca"?" · Maior risco de acesso indevido.":""):"A força da sua senha aparecerá aqui.";
-      box.style.color=rating==="forte"?"#167245":rating==="média"?"#916004":rating==="fraca"?"#b42318":"";
+      box.dataset.strength=rating||"vazia";
+      box.setAttribute("aria-valuenow",String(rating==="forte"?3:rating==="média"?2:rating==="fraca"?1:0));
+      box.setAttribute("aria-valuetext",rating||"Sem senha");
+      box.querySelector(".password-strength-label").textContent=rating?"Força da senha: "+rating.toUpperCase()+(rating==="fraca"?" · Maior risco de acesso indevido.":""):"A força da senha aparecerá aqui.";
     };
     input.addEventListener("input",update);
     update();
@@ -338,22 +344,29 @@ async function memberHistoryModal(){
 }
 function memberReturnModal(loan){
   if(!loan)return memberHistoryModal();
-  const body='<form id="member-return-form" class="modal-main"><p>Confirmar a devolução de <strong>'+loan.quantidade+' unidade(s) de '+esc(loan.componente_nome)+'</strong>?</p>'+
-    '<div class="field"><label for="member-discard">Unidades descartadas (opcional)</label><div class="stepper"><button type="button" class="step" data-target="member-discard" data-delta="-1">−</button><input id="member-discard" type="number" min="0" max="'+loan.quantidade+'" value="0" required><button type="button" class="step" data-target="member-discard" data-delta="1">+</button></div><small>Unidades descartadas saem da quantidade total; as demais ficam disponíveis.</small></div>'+
+  const visitor=state.identity?.tag!=="petiano";
+  if(visitor&&loan.devolucao_solicitada_em){toast("Esta devolução já aguarda confirmação da administração.");return;}
+  const body='<form id="member-return-form" class="modal-main">'+
+    '<p>'+(visitor?'Solicitar devolução de ':'Confirmar a devolução de ')+'<strong>'+loan.quantidade+' unidade(s) de '+esc(loan.componente_nome)+'</strong>?</p>'+
+    (visitor?'<p class="notice">Sua solicitação será enviada ao Admin. O material continuará em uso e só ficará disponível após a confirmação do recebimento.</p>':
+    '<div class="field"><label for="member-discard">Unidades descartadas (opcional)</label><div class="stepper"><button type="button" class="step" data-target="member-discard" data-delta="-1">−</button><input id="member-discard" type="number" min="0" max="'+loan.quantidade+'" value="0" required><button type="button" class="step" data-target="member-discard" data-delta="1">+</button></div><small>Unidades descartadas saem da quantidade total; as demais ficam disponíveis.</small></div>')+
     '<div class="field"><label for="member-return-note">Observações (opcional)</label><textarea id="member-return-note" maxlength="500" placeholder="Condição do material"></textarea></div>'+
-    '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">Confirmar devolução</button></div></form>';
-  openModal("Devolver material","Seu estoque será atualizado imediatamente.",body);
-  $("#member-return-cancel").onclick=()=>{
-    closeModal();openMyLoans();
-  };
-  $$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
+    '<div class="modal-footer" style="border:0;padding:13px 0 0"><button type="button" class="secondary-button" id="member-return-cancel">Cancelar</button><button type="submit" class="primary-button" id="member-return-submit">'+(visitor?'Solicitar devolução':'Confirmar devolução')+'</button></div></form>';
+  openModal(visitor?"Solicitar devolução":"Devolver material",visitor?"Aguardando conferência da administração.":"Seu estoque será atualizado imediatamente.",body);
+  $("#member-return-cancel").onclick=()=>{closeModal();openMyLoans();};
+  if(!visitor)$$(".step").forEach(b=>b.onclick=()=>stepNumber(b.dataset.target,Number(b.dataset.delta)));
   $("#member-return-form").onsubmit=async e=>{
-    e.preventDefault();const btn=$("#member-return-submit");btn.disabled=true;
+    e.preventDefault();
+    const btn=$("#member-return-submit");btn.disabled=true;
     try{
-      await api("/api/my/return","POST",{id:loan.id,descartados:Number($("#member-discard").value),observacao:$("#member-return-note").value});
-      await publicReload();toast("Devolução registrada!");
-      if(document.body.dataset.loansRoute==="true"){closeModal();await openMyLoans();}
-      else {closeModal();await openMyLoans();}
+      const result=await api("/api/my/return","POST",{
+        id:loan.id,
+        ...(visitor?{}:{descartados:Number($("#member-discard").value)}),
+        observacao:$("#member-return-note").value
+      });
+      await publicReload();
+      toast(result.aguardando_confirmacao?"Solicitação enviada! Aguarde a confirmação do Admin.":"Devolução registrada!");
+      closeModal();await openMyLoans();
     }catch(error){toast(error.message,true);btn.disabled=false;}
   };
 }

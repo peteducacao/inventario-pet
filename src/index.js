@@ -1,5 +1,5 @@
 import { identityAPI, currentIdentity } from "./identity.js";
-import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual } from "./mail-bridge.js";
+import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual, queueNewLoanReminder } from "./mail-bridge.js";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 const j = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...extra } });
 const bad = (message, status = 400) => j({ error: message }, status);
@@ -163,7 +163,7 @@ async function safeRate(db, req, prefix, max, hours = 1) {
   await db.prepare("INSERT INTO reserva_limites(hash,criado_em) VALUES(?,?)").bind(hash, now()).run();
   return true;
 }
-async function processRequest(req, env) {
+async function processRequest(req, env, ctx) {
   const url = new URL(req.url), path = url.pathname, method = req.method, db = env.DB;
   if (!db) return bad("O banco de dados não está configurado.", 503);
   if (!["GET", "HEAD"].includes(method)) {
@@ -237,7 +237,7 @@ async function processRequest(req, env) {
     if (token) await db.prepare("DELETE FROM admin_sessions WHERE hash=?").bind(await toHash(token)).run();
     return j({ ok:true },200,{ "set-cookie":"__Host_pet_session=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0" });
   }
-  const identityResponse=await identityAPI(req,env,()=>auth(req,db));
+  const identityResponse=await identityAPI(req,env,()=>auth(req,db),ctx);
   if(identityResponse)return identityResponse;
   if (!path.startsWith("/api/admin/")) return bad("Endereço não encontrado.",404);
   if (!await auth(req,db)) return bad("Entre no painel administrativo.",401);
@@ -626,6 +626,9 @@ async function processRequest(req, env) {
         db.prepare("UPDATE componentes SET em_uso=em_uso+?, ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND quantidade-em_uso>=?").bind(r.quantidade,current,actor,"Retirada da reserva #"+id+": "+r.quantidade+" unidade(s)",item.id,r.quantidade),
         db.prepare("UPDATE reservas SET status='retirada',retirado_em=?,responsavel_admin=? WHERE id=? AND status='aprovada'").bind(current,actor,id)
       ]);
+    } else if (action === "cancelar_solicitacao_devolucao" && r.status === "retirada" && r.devolucao_solicitada_em) {
+      const rejected=await db.prepare("UPDATE reservas SET devolucao_solicitada_em=NULL,devolucao_solicitada_observacao='' WHERE id=? AND status='retirada' AND devolucao_solicitada_em IS NOT NULL").bind(id).run();
+      if(rejected.meta?.changes!==1)return bad("Solicitação já processada.",409);
     } else if (action === "devolver" && r.status === "retirada") {
       const discarded=Number(b.descartados ?? b.defeituosos ?? 0);
       if(!Number.isSafeInteger(discarded)||discarded<0||discarded>r.quantidade)
@@ -636,7 +639,7 @@ async function processRequest(req, env) {
         db.prepare("UPDATE componentes SET em_uso=em_uso-?,quantidade=quantidade-?,com_defeito=0,ultima_alteracao=?,ultimo_responsavel=?,detalhes_alteracao=? WHERE id=? AND em_uso>=? AND quantidade>=?")
           .bind(r.quantidade,discarded,current,actor,"Devolução da reserva #"+id+(discarded?" • "+discarded+" unidade(s) descartada(s)":""),item.id,r.quantidade,discarded),
         db.prepare("UPDATE filamentos SET quantidade=quantidade-? WHERE componente_id=? AND quantidade>=?").bind(discarded,item.id,discarded),
-        db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'")
+        db.prepare("UPDATE reservas SET status='devolvida',devolvido_em=?,devolucao_solicitada_em=NULL,devolucao_solicitada_observacao='',responsavel_admin=?,observacao=? WHERE id=? AND status='retirada'")
           .bind(current,actor,str(b.observacao,500),id)
       ]);
       if(result[0].meta?.changes!==1||result[2].meta?.changes!==1)
@@ -657,9 +660,12 @@ async function processRequest(req, env) {
       }
       else if(action==="retirar"){titulo="Retirada registrada";mensagem="A retirada da "+subject+" foi registrada por "+actorName+".";tipo="retirada";}
       else if(action==="devolver"){titulo="Devolução confirmada";mensagem="A devolução da "+subject+" foi confirmada por "+actorName+".";tipo="devolucao";}
+      else if(action==="cancelar_solicitacao_devolucao"){titulo="Solicitação de devolução não confirmada";mensagem="A solicitação de devolução da "+subject+" não foi confirmada por "+actorName+". O material continua em uso; solicite novamente quando realizar a entrega.";tipo="devolucao";}
       if(titulo)await db.prepare("INSERT INTO notificacoes(usuario_id,reserva_id,titulo,mensagem,tipo) VALUES(?,?,?,?,?)").bind(r.usuario_id,id,titulo,mensagem,tipo).run();
     }
     await auditLog(db,action==="aprovar"?"Aprovou e entregou":action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
+    // O cron diário pode ter ocorrido antes desta aprovação; preparar aviso do dia agora.
+    if(action==="aprovar"||action==="retirar")await queueNewLoanReminder(env,id);
     return j({ ok:true, notificacao_registrada:Boolean(r.usuario_id) });
   }
   if (path === "/api/admin/settings" && method === "POST") {
@@ -674,7 +680,7 @@ async function processRequest(req, env) {
   if (path === "/api/admin/export" && method === "GET") {
     // Exportação completa para Excel, sem senhas/sessões/segredos.
     const data=await state(db);
-    data.reservas=await results(db,"SELECT r.id,r.componente_id,c.nome AS componente_nome,r.nome_solicitante,r.quantidade,r.tipo,r.status,r.data_inicio,r.data_devolucao,r.devolvido_em,r.solicitado_em,r.contato,r.observacao FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.id DESC");
+    data.reservas=await results(db,"SELECT r.id,r.componente_id,c.nome AS componente_nome,r.nome_solicitante,r.quantidade,r.tipo,r.status,r.data_inicio,r.data_devolucao,r.devolvido_em,r.devolucao_solicitada_em,r.devolucao_solicitada_observacao,r.solicitado_em,r.contato,r.observacao FROM reservas r LEFT JOIN componentes c ON c.id=r.componente_id ORDER BY r.id DESC");
     return j({categorias:data.categorias,componentes:data.componentes,
       grupos_variacoes:data.grupos_variacoes,filamentos:data.filamentos,reservas:data.reservas});
   }
@@ -742,12 +748,12 @@ async function processRequest(req, env) {
       const uid=activeUsers.has(Number(r.usuario_id))?Number(r.usuario_id):null;
       // Tipo 'reserva' é temporário apenas durante INSERT para não disparar a
       // proteção de *nova* retirada direta ao reconstruir um histórico antigo.
-      ops.push(db.prepare("INSERT INTO reservas(id,componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,aprovado_em,retirado_em,devolvido_em,responsavel_admin,aviso_atraso_em,usuario_id,tipo) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      ops.push(db.prepare("INSERT INTO reservas(id,componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,observacao,solicitado_em,aprovado_em,retirado_em,devolvido_em,responsavel_admin,aviso_atraso_em,usuario_id,tipo,devolucao_solicitada_em,devolucao_solicitada_observacao) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
         .bind(r.id,r.componente_id,str(r.nome_solicitante,100),str(r.contato,140),
           str(r.email,180),Number(r.quantidade)||1,r.data_inicio,r.data_devolucao,r.status,
           str(r.observacao,500),r.solicitado_em||now(),r.aprovado_em||null,
           r.retirado_em||null,r.devolvido_em||null,str(r.responsavel_admin,100),
-          r.aviso_atraso_em||null,uid,"reserva"));
+          r.aviso_atraso_em||null,uid,"reserva",r.status==="retirada"?(r.devolucao_solicitada_em||null):null,r.status==="retirada"?str(r.devolucao_solicitada_observacao,500):""));
     }
     for(const r of b.reservas)if(r.tipo==="retirada_direta")
       ops.push(db.prepare("UPDATE reservas SET tipo='retirada_direta' WHERE id=?").bind(r.id));
@@ -847,10 +853,10 @@ async function cleanup(db) {
   return removed;
 }
 export default {
-  async fetch(req, env) {
+  async fetch(req, env, ctx) {
     const path = new URL(req.url).pathname;
     if (!path.startsWith("/api/")) return env.ASSETS.fetch(req);
-    try { return await processRequest(req,env); }
+    try { return await processRequest(req,env,ctx); }
     catch (error) {
       console.error("Inventario API:", error?.message || error);
       const msg = String(error?.message || "");
@@ -867,6 +873,7 @@ export default {
         if (setting?.valor === "1min") await cleanup(env.DB);
         return;
       }
+      if(event.cron==="*/15 * * * *"){await generateDailyEmails(env);return;}
       await generateDailyEmails(env);
       await cleanup(env.DB);
     })());

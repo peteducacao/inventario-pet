@@ -56,13 +56,13 @@ function testarConexaoPET() {
   return status;
 }
 
-function processarFilaPET() {
+function processarFilaPET(somenteRecuperacao) {
   const mutex = LockService.getScriptLock();
   if (!mutex.tryLock(1000)) return;
   try {
     const props = PropertiesService.getScriptProperties();
     for (let i = 0; i < 10; i++) {
-      const retorno = chamadaPET_("/api/mail/next");
+      const retorno = chamadaPET_("/api/mail/next" + (somenteRecuperacao === true ? "?tipo=recuperacao" : ""));
       const item = retorno.item;
       if (!item) break;
       const chave = "enviado_" + item.id;
@@ -110,4 +110,29 @@ function instalarGatilhoPET() {
     .forEach(function (t) { ScriptApp.deleteTrigger(t); });
   ScriptApp.newTrigger("processarFilaPET").timeBased().everyMinutes(5).create();
   Logger.log("Gatilho de 5 em 5 minutos instalado.");
+}
+
+/**
+ * Opcional: para recuperar senhas quase imediatamente, publicar este projeto
+ * em Implantar > Nova implantação > Aplicativo da Web > Executar como: eu.
+ * Permitir acesso externo, e configurar a URL /exec como PET_MAIL_WEBHOOK_URL
+ * (segredo) no Cloudflare Worker. Nunca publicar PET_MAIL_TOKEN no navegador.
+ * O botão de recuperação só dispara a fila de recuperação: não processa cobranças.
+ */
+function doPost(e) {
+  let payload = {};
+  try { payload = JSON.parse((e && e.postData && e.postData.contents) || "{}"); }
+  catch (erro) { return ContentService.createTextOutput(JSON.stringify({ok:false})).setMimeType(ContentService.MimeType.JSON); }
+  const expected = PropertiesService.getScriptProperties().getProperty("PET_MAIL_TOKEN") || "";
+  if (expected.length < 32 || payload.acao !== "recuperacao" ||
+      typeof payload.token !== "string" || payload.token !== expected) {
+    return ContentService.createTextOutput(JSON.stringify({ok:false})).setMimeType(ContentService.MimeType.JSON);
+  }
+  try {
+    processarFilaPET(true);
+    return ContentService.createTextOutput(JSON.stringify({ok:true})).setMimeType(ContentService.MimeType.JSON);
+  } catch (erro) {
+    Logger.log("Falha no acionamento imediato de recuperação: " + String(erro));
+    return ContentService.createTextOutput(JSON.stringify({ok:false})).setMimeType(ContentService.MimeType.JSON);
+  }
 }

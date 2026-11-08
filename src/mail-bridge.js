@@ -52,7 +52,7 @@ async function current(db,id){
   return row;
 }
 async function allowed(db,row,event=null){
-  if(!row||row.status!=="retirada"||!emailOK(row.email)||Number(row.permite_usuario)===0)return false;
+  if(!row||row.status!=="retirada"||row.devolucao_solicitada_em||!emailOK(row.email)||Number(row.permite_usuario)===0)return false;
   const flag=row.tag==="petiano"?"notificacoes_petianos":"notificacoes_visitantes";
   if(await pref(db,flag,row.tag==="petiano"?"nao":"sim")!=="sim")return false;
   return event===null||await eventEnabled(db,row.tag,event);
@@ -71,6 +71,21 @@ export async function queueManual(db,id,custom=null){
   if(!row)return {ok:false,reason:"Empréstimo não encontrado."};
   return queue(db,row,"manual","manual",custom);
 }
+// Acompanhamento pontual de novas retiradas aprovadas depois do cron diário.
+function eventForDue(date,due){
+  if(!due)return null;
+  const days=Math.round((Date.parse(date+"T12:00:00Z")-Date.parse(due+"T12:00:00Z"))/86400000);
+  return days===-1?"antes":days===0?"hoje":days===2?"atraso2":days===7?"atraso7":null;
+}
+export async function queueNewLoanReminder(env,id){
+  try{
+    if(!env.DB||await pref(env.DB,"avisos_email","nao")!=="sim")return {ok:false};
+    const row=await current(env.DB,id);
+    if(!row||row.sem_prazo)return {ok:false};
+    const event=eventForDue(dayBR(),row.data_devolucao);
+    return event?await queue(env.DB,row,event):{ok:true,queued:false};
+  }catch(error){console.error("Falha ao preparar aviso da retirada",String(error).slice(0,140));return {ok:false};}
+}
 export async function generateDailyEmails(env){
   if(!env.DB||await pref(env.DB,"avisos_email","nao")!=="sim")return {ok:false,reason:"Lembretes automáticos desativados.",verificados:0,enfileirados:0};
   const today=dayBR();let checked=0,queued=0;
@@ -80,8 +95,7 @@ export async function generateDailyEmails(env){
       const row=await current(env.DB,record.id);
       if(!row)continue;
       checked++;
-      const days=Math.round((Date.parse(today+"T12:00:00Z")-Date.parse(row.data_devolucao+"T12:00:00Z"))/86400000);
-      const event=days===-1?"antes":days===0?"hoje":days===2?"atraso2":days===7?"atraso7":null;
+      const event=eventForDue(today,row.data_devolucao);
       if(event && await allowed(env.DB,row,event)){
         const outcome=await queue(env.DB,row,event);
         if(outcome.queued)queued++;
@@ -89,6 +103,30 @@ export async function generateDailyEmails(env){
     }catch(e){console.error("Erro ao preparar lembrete",record.id,String(e).slice(0,120));}
   }
   return {ok:true,verificados:checked,enfileirados:queued,hoje:today};
+}
+// Caminho opcional de entrega imediata: Google Apps Script publicado como Web App.
+// Sem configuração, o mesmo e-mail segue na fila normal (gatilho de 5 minutos).
+export async function triggerRecoveryEmail(env){
+  const endpoint=String(env?.PET_MAIL_WEBHOOK_URL||"").trim();
+  if(!endpoint||!env?.MAIL_BRIDGE_TOKEN)return false;
+  let url;
+  try{
+    url=new URL(endpoint);
+    if(url.protocol!=="https:"||url.hostname!=="script.google.com"||!/^\/macros\/s\/[^/]+\/exec$/.test(url.pathname))throw Error("URL de Apps Script inválida");
+    const response=await fetch(url.toString(),{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({acao:"recuperacao",token:env.MAIL_BRIDGE_TOKEN}),
+      signal:AbortSignal.timeout(25000)
+    });
+    if(!response.ok)throw Error("HTTP "+response.status);
+    const result=await response.json();
+    if(result?.ok!==true)throw Error("Web App não confirmou o acionamento");
+    return true;
+  }catch(error){
+    console.error("Envio imediato de recuperação indisponível; mensagem permanece na fila:",String(error?.message||error).slice(0,180));
+    return false;
+  }
 }
 export async function mailAdminAPI(req,env){
   const path=new URL(req.url).pathname, db=env.DB;
@@ -145,7 +183,8 @@ export async function mailAdminAPI(req,env){
     return reply({ok:true,id,destinatario:row.email,assunto:msg.subject,mensagem:msg.body});
   }
   if(path==="/api/admin/mail/log"&&req.method==="GET"){
-    const items=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,origem,situacao,criado_em,enviado_em,ultimo_erro FROM mail_queue WHERE situacao IN ('pendente','processando') ORDER BY id DESC LIMIT 150");
+    const history=new URL(req.url).searchParams.get("historico")==="1";
+    const items=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,origem,situacao,criado_em,enviado_em,ultimo_erro FROM mail_queue "+(history?"":"WHERE situacao IN ('pendente','processando') ")+"ORDER BY id DESC LIMIT 150");
     return reply({ok:true,items,configurado:!!env.MAIL_BRIDGE_TOKEN&&env.MAIL_BRIDGE_TOKEN.length>=32});
   }
   if(path==="/api/admin/mail/queue"&&req.method==="POST"){
@@ -160,6 +199,30 @@ export async function mailAdminAPI(req,env){
     }
     const result=await queueManual(db,id,custom);
     return result.ok?reply({ok:true,queued:result.queued,mensagem:result.queued?"Cobrança colocada na fila do Gmail.":"Já existe uma cobrança manual deste empréstimo para hoje."}):fail(result.reason,409);
+  }
+  if(path==="/api/admin/mail/prepare"&&req.method==="POST"){
+    const result=await generateDailyEmails(env);
+    return reply(result,result.ok?200:409);
+  }
+  if(path==="/api/admin/mail/retry"&&req.method==="POST"){
+    let data;try{data=await req.json();}catch{return fail("Dados inválidos.");}
+    const id=Number(data?.id);
+    if(!Number.isSafeInteger(id)||id<1)return fail("E-mail inválido.");
+    const pending=await db.prepare("UPDATE mail_queue SET situacao='pendente',processado_em=NULL,token_reserva=NULL,ultimo_erro=NULL,tentativa=0 WHERE id=? AND situacao='erro'").bind(id).run();
+    if(pending.meta?.changes!==1)return fail("Este e-mail não está com erro ou já foi reenviado.",409);
+    return reply({ok:true,mensagem:"Reenvio colocado na fila. Confira o histórico."});
+  }
+  if(path==="/api/admin/mail/test"&&req.method==="POST"){
+    let data;try{data=await req.json();}catch{return fail("Dados inválidos.");}
+    const email=clean(data?.email,180).toLowerCase();
+    if(!emailOK(email))return fail("Informe um e-mail válido.");
+    const start=new Date(Date.now()-3600000).toISOString();
+    const recent=await db.prepare("SELECT COUNT(*) AS n FROM mail_queue WHERE evento='teste' AND criado_em>?").bind(start).first();
+    if(Number(recent?.n||0)>=3)return fail("Limite de três testes de e-mail por hora. Aguarde para tentar de novo.",429);
+    const stamp=iso(),id=crypto.randomUUID();
+    const outcome=await db.prepare("INSERT INTO mail_queue(reserva_id,evento,chave_unica,destinatario,assunto,mensagem,prazo_referencia,origem,criado_em) VALUES(NULL,'teste',?,?,?,?,?,'manual',?)")
+      .bind("teste:"+id,email,"Teste de e-mail - Inventário PET Educação","Este é um e-mail de teste solicitado pelo administrador do Inventário PET Educação. O envio pela integração Gmail está funcionando até a etapa de entrega ao serviço de e-mail.\n\nData: "+stamp+"\n\nPET Educação - UFS","",stamp).run();
+    return outcome.meta?.changes===1?reply({ok:true,mensagem:"E-mail de teste colocado na fila. Consulte o histórico para confirmar o envio."}):fail("Não foi possível enfileirar o teste.",409);
   }
   if(path==="/api/admin/mail/settings"&&req.method==="POST"){
     let payload;
@@ -180,9 +243,10 @@ export async function mailBridgeAPI(req,env){
   const db=env.DB;
   if(path==="/api/mail/status" && req.method==="GET")return reply({ok:true,servico:"Gmail bridge",autenticado:true});
   if(path==="/api/mail/next"&&req.method==="GET"){
+    const onlyRecovery=new URL(req.url).searchParams.get("tipo")==="recuperacao";
     const deadline=new Date(Date.now()-15*60000).toISOString();
     // Recuperações e avisos da conta compartilham o Apps Script, sem se misturar às cobranças.
-    const accountCandidates=await rows(db,"SELECT id,usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem FROM identity_mail_queue WHERE situacao='pendente' OR (situacao='processando' AND processado_em<?) ORDER BY id ASC LIMIT 20",[deadline]);
+    const accountCandidates=await rows(db,"SELECT id,usuario_id,tipo,recovery_hash,destinatario,assunto,mensagem FROM identity_mail_queue WHERE (situacao='pendente' OR (situacao='processando' AND processado_em<?)) "+(onlyRecovery?"AND tipo='recuperacao' ":"")+"ORDER BY id ASC LIMIT 20",[deadline]);
     for(const item of accountCandidates){
       if(item.tipo==="recuperacao"){
         const valid=await db.prepare("SELECT 1 AS n FROM identity_recovery_tokens WHERE hash=? AND usuario_id=? AND usado_em IS NULL AND expira_em>?").bind(item.recovery_hash,item.usuario_id,iso()).first();
@@ -195,10 +259,12 @@ export async function mailBridgeAPI(req,env){
       const marked=await db.prepare("UPDATE identity_mail_queue SET situacao='processando',processado_em=?,token_reserva=?,tentativa=tentativa+1 WHERE id=? AND (situacao='pendente' OR (situacao='processando' AND processado_em<?))").bind(iso(),lock,item.id,deadline).run();
       if(marked.meta?.changes===1)return reply({ok:true,item:{id:"conta-"+item.id,to:item.destinatario,subject:item.assunto,body:item.mensagem,lock}});
     }
+    if(onlyRecovery)return reply({ok:true,item:null});
     const candidates=await rows(db,"SELECT id,reserva_id,evento,destinatario,assunto,mensagem,prazo_referencia FROM mail_queue WHERE situacao='pendente' OR (situacao='processando' AND processado_em<?) ORDER BY id ASC LIMIT 20",[deadline]);
     for(const item of candidates){
       const row=item.reserva_id?await current(db,item.reserva_id):null;
-      if(!row||!await allowed(db,row,item.evento)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||Number(row.sem_prazo)===1){
+      if(!(item.evento==="teste"&&item.reserva_id==null&&emailOK(item.destinatario))&&
+        (!row||!await allowed(db,row,item.evento)||row.email!==item.destinatario||row.data_devolucao!==item.prazo_referencia||Number(row.sem_prazo)===1)){
         await db.prepare("UPDATE mail_queue SET situacao='cancelado',ultimo_erro='Empréstimo modificado, devolvido ou notificações desativadas' WHERE id=? AND situacao IN ('pendente','processando')").bind(item.id).run();
         continue;
       }
