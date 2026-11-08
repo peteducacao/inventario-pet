@@ -1,5 +1,5 @@
 import { identityAPI, currentIdentity } from "./identity.js";
-import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual, queueNewLoanReminder } from "./mail-bridge.js";
+import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual, queueNewLoanReminder, queueUnreceivedReturnEmail } from "./mail-bridge.js";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
 // Proteções aplicadas tanto aos arquivos públicos quanto às respostas da API.
 const CONTENT_SECURITY_POLICY = [
@@ -740,7 +740,12 @@ async function processRequest(req, env, ctx) {
     await auditLog(db,action==="aprovar"?"Aprovou e entregou":action[0].toUpperCase()+action.slice(1),"reserva",id,item.nome+" · #"+id+" · "+r.quantidade+" unidade(s)",actorName);
     // O cron diário pode ter ocorrido antes desta aprovação; preparar aviso do dia agora.
     if(action==="aprovar"||action==="retirar")await queueNewLoanReminder(env,id);
-    return j({ ok:true, notificacao_registrada:Boolean(r.usuario_id) });
+    // A decisão "Não recebido" mantém o estoque em uso. Somente após a
+    // atualização bem-sucedida é preparada a notificação editável por Gmail.
+    const unreceivedEmail=action==="cancelar_solicitacao_devolucao"
+      ?await queueUnreceivedReturnEmail(env,id,r.devolucao_solicitada_em):null;
+    return j({ok:true,notificacao_registrada:Boolean(r.usuario_id),
+      ...(unreceivedEmail?{email_nao_recebido_enfileirado:Boolean(unreceivedEmail.queued)}:{})});
   }
   if (path === "/api/admin/settings" && method === "POST") {
     const b = await input(req,4000), days = String(b.limpeza_reservas);
