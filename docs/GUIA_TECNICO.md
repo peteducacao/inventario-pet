@@ -128,6 +128,12 @@ O catálogo público (`public/final.js`) agrupa os materiais por `grupo_variacoe
 2. `POST /api/member/withdraw` registra `tipo=retirada_direta` e status `retirada` imediatamente, sem aprovação.
 3. PETianes usam `POST /api/my/return` ou `/api/member/return` para concluir a própria devolução diretamente, sem segunda aprovação.
 
+### Fidelidade de backup, templates Gmail e segurança dos erros
+`GET /api/admin/state` limita registros encerrados para desempenho da tela, mas `GET /api/admin/backup` não aplica esse limite: salva **todas** as reservas. Na restauração, configurações `mail_template_<evento>_body` preservam até 5.000 caracteres e quebras de linha; assuntos preservam até 180. Outros valores seguem o limite de 100. Os testes inserem 1.510 reservas concluídas fictícias e um corpo de e-mail extenso, fazem backup e restauração e comparam o conteúdo. Erros internos inesperados no Worker retornam mensagem genérica ao navegador, sem expor SQL ou detalhes privados; erros de validação seguem descritivos com HTTP 400.
+
+### Robustez de operações simultâneas
+Confirmações do Admin podem ocorrer com outra guia aberta ou o mesmo botão acionado em dois dispositivos. Os `UPDATE` da reserva e do componente são executados no mesmo `DB.batch` transacional e vinculados a `status` e `changes()=1`: um segundo envio com informação desatualizada retorna **409** sem duplicar `Em uso`, sem devolver material de outro empréstimo, sem subtrair filamento e sem notificar novamente. A recusa também verifica o status atual. A devolução direta de PETiane preserva o mesmo bloqueio, inclusive ao descartar rolos. O teste adversarial em `tests/loans-permissions.test.mjs` simula uma leitura antiga da reserva antes da decisão.
+
 ### Estados e abas
 - `pendente` → Pendentes.
 - `retirada` → Ativas, ou Atrasadas se vencida com prazo.

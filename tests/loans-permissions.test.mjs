@@ -20,10 +20,20 @@ sqlite.prepare("INSERT INTO filamentos(cor,hexadecimal,quantidade,ordem,atualiza
 sqlite.exec(readFileSync("migrations/0015_autorizacao_emprestimos.sql","utf8"));
 sqlite.exec(readFileSync("migrations/0016_permissoes_por_perfil.sql","utf8"));
 sqlite.exec(readFileSync("migrations/0023_devolucoes_visitantes_pendentes.sql","utf8"));
+// Simular respostas SQL antigas para reproduzir corrida de dois cliques do Admin.
+let staleAdminRow=null,staleMemberRow=null;
 class Statement{
  constructor(sql){this.sql=sql;this.args=[];}
  bind(...args){this.args=args;return this;}
- async first(){return sqlite.prepare(this.sql).get(...this.args)||null;}
+ async first(){
+  if(staleAdminRow&&this.sql==="SELECT * FROM reservas WHERE id=?"&&this.args[0]===staleAdminRow.id){
+    const row=staleAdminRow.row;staleAdminRow=null;return row;
+  }
+  if(staleMemberRow&&this.sql==="SELECT * FROM reservas WHERE id=? AND usuario_id=? AND status='retirada'"&&this.args[0]===staleMemberRow.id){
+    const row=staleMemberRow.row;staleMemberRow=null;return row;
+  }
+  return sqlite.prepare(this.sql).get(...this.args)||null;
+ }
  async all(){return {results:sqlite.prepare(this.sql).all(...this.args)};}
  async run(){const r=sqlite.prepare(this.sql).run(...this.args);return {meta:{changes:r.changes,last_row_id:Number(r.lastInsertRowid)}};}
 }
@@ -202,5 +212,75 @@ assert.equal(adminHistory.status,200);
 assert.ok(adminHistory.body.reservas.some(x=>x.id===live.body.retirada_id),"Admin precisa manter o empréstimo ativo anterior a 1.500 conclusões.");
 assert.ok(adminHistory.body.reservas.filter(x=>x.status==="devolvida").length<=1500,"Admin deve limitar apenas o histórico concluído.");
 assert.equal((await req("/api/my/return","POST",{id:live.body.retirada_id,descartados:0},member)).status,200,"Mesmo com histórico volumoso, a devolução deve continuar acessível.");
-console.log("EMPRÉSTIMOS OK: permissões, reservas, estoque, visitantes/PETianes, devolução e histórico volumoso.");
+// Teste adversarial: duas ações concorrentes enxergam uma linha antiga da mesma reserva.
+const raceMat=await postAdmin("/api/admin/item",{
+  categoria_id:electronic.id,nome:"Auditoria de concorrência",imagem:"",patrimonio:"",identificacao:"",
+  quantidade:10,em_uso:0,observacoes:"",unidade:"unidades",permitir_petianos:true,permitir_visitantes:true
+});
+assert.equal(raceMat.status,200,JSON.stringify(raceMat.body));
+const raceItem=sqlite.prepare("SELECT id FROM componentes WHERE nome='Auditoria de concorrência'").get().id;
+const owner=sqlite.prepare("SELECT id FROM usuarios WHERE public_id=?").get(user.body.usuario.id).id;
+function raceLoan(status,qty=2){
+ const result=sqlite.prepare("INSERT INTO reservas(componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,solicitado_em,usuario_id,tipo) VALUES(?,?,'',?,?,?, ?,?, ?,?,'reserva')")
+  .run(raceItem,"Pessoa Visitante","visitante-test@example.com",qty,today,end,status,new Date().toISOString(),owner);
+ return Number(result.lastInsertRowid);
+}
+function raceStock(){return sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(raceItem);}
+const raceApprovedId=raceLoan("pendente");
+const beforeApprove=sqlite.prepare("SELECT * FROM reservas WHERE id=?").get(raceApprovedId);
+assert.equal((await postAdmin("/api/admin/reservation",{id:raceApprovedId,acao:"aprovar"})).status,200);
+assert.equal(raceStock().em_uso,2);
+staleAdminRow={id:raceApprovedId,row:beforeApprove};
+const repeatApprove=await postAdmin("/api/admin/reservation",{id:raceApprovedId,acao:"aprovar"});
+assert.equal(repeatApprove.status,409,"Aprovação obsoleta não pode contar estoque novamente.");
+assert.equal(raceStock().em_uso,2,"A segunda aprovação não pode duplicar a baixa.");
+const secondApproved=raceLoan("aprovada");
+const beforeLegacy=sqlite.prepare("SELECT * FROM reservas WHERE id=?").get(secondApproved);
+assert.equal((await postAdmin("/api/admin/reservation",{id:secondApproved,acao:"retirar"})).status,200);
+assert.equal(raceStock().em_uso,4);
+staleAdminRow={id:secondApproved,row:beforeLegacy};
+assert.equal((await postAdmin("/api/admin/reservation",{id:secondApproved,acao:"retirar"})).status,409,"A regularização duplicada deve falhar.");
+assert.equal(raceStock().em_uso,4,"A regularização duplicada não pode incrementar Em uso.");
+const pendingToReject=raceLoan("pendente");
+const savedPending=sqlite.prepare("SELECT * FROM reservas WHERE id=?").get(pendingToReject);
+assert.equal((await postAdmin("/api/admin/reservation",{id:pendingToReject,acao:"aprovar"})).status,200);
+const stockBeforeStaleReject=raceStock().em_uso;
+staleAdminRow={id:pendingToReject,row:savedPending};
+assert.equal((await postAdmin("/api/admin/reservation",{id:pendingToReject,acao:"recusar"})).status,409,"Recusa antiga não pode desfazer retirada já entregue.");
+assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(pendingToReject).status,"retirada");
+assert.equal(raceStock().em_uso,stockBeforeStaleReject);
+const activeA=sqlite.prepare("SELECT * FROM reservas WHERE id=?").get(raceApprovedId);
+assert.equal((await postAdmin("/api/admin/reservation",{id:raceApprovedId,acao:"devolver"})).status,200);
+const afterReturnA=raceStock().em_uso;
+staleAdminRow={id:raceApprovedId,row:activeA};
+assert.equal((await postAdmin("/api/admin/reservation",{id:raceApprovedId,acao:"devolver"})).status,409,"Confirmação antiga de devolução deve falhar.");
+assert.equal(raceStock().em_uso,afterReturnA,"Duas confirmações não podem diminuir o saldo de outras pessoas.");
+assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(secondApproved).status,"retirada","A segunda retirada continua em uso.");
+// Checagem adicional: filamento descartado não deve ser baixado duas vezes por resposta antiga.
+const memberOwner=sqlite.prepare("SELECT id FROM usuarios WHERE public_id=?").get(memberUser.body.usuario.id).id;
+const memberActive=sqlite.prepare("INSERT INTO reservas(componente_id,nome_solicitante,contato,email,quantidade,data_inicio,data_devolucao,status,solicitado_em,usuario_id,tipo) VALUES(?,?,'',?,?,?,?,'retirada',?,?,'retirada_direta')");
+sqlite.prepare("UPDATE componentes SET em_uso=4 WHERE id=?").run(blue.componente_id);
+const directA=Number(memberActive.run(blue.componente_id,"Pessoa PETiane","petiane-test@example.com",2,today,end,new Date().toISOString(),memberOwner).lastInsertRowid);
+const directB=Number(memberActive.run(blue.componente_id,"Pessoa PETiane","petiane-test@example.com",2,today,end,new Date().toISOString(),memberOwner).lastInsertRowid);
+const savedMember=sqlite.prepare("SELECT * FROM reservas WHERE id=?").get(directA);
+assert.equal((await req("/api/my/return","POST",{id:directA,descartados:1},member)).status,200);
+const qtyOnce=sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(blue.componente_id);
+const filamentOnce=sqlite.prepare("SELECT quantidade FROM filamentos WHERE id=?").get(blue.id).quantidade;
+staleMemberRow={id:directA,row:savedMember};
+assert.equal((await req("/api/my/return","POST",{id:directA,descartados:1},member)).status,409,"Resposta antiga de PETiane não pode permitir devolução duplicada.");
+assert.deepEqual(sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(blue.componente_id),qtyOnce,"Baixa duplicada não pode reduzir componentes.");
+assert.equal(sqlite.prepare("SELECT quantidade FROM filamentos WHERE id=?").get(blue.id).quantidade,filamentOnce,"Baixa duplicada não pode consumir um segundo rolo.");
+assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(directB).status,"retirada","Outra retirada do PETiane permanece ativa.");
+// Se os rolos estiverem inconsistentes, a tentativa de descarte não pode
+// concluir a retirada nem baixar o material parcialmente.
+sqlite.prepare("UPDATE filamentos SET quantidade=0 WHERE id=?").run(blue.id);
+const beforeFailedDiscard=sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(blue.componente_id);
+const failedDiscard=await req("/api/my/return","POST",{id:directB,descartados:1},member);
+assert.equal(failedDiscard.status,409,"Descarte de rolos incoerente deve falhar.");
+assert.deepEqual(sqlite.prepare("SELECT quantidade,em_uso FROM componentes WHERE id=?").get(blue.componente_id),beforeFailedDiscard,"Erro não pode baixar componente.");
+assert.equal(sqlite.prepare("SELECT status FROM reservas WHERE id=?").get(directB).status,"retirada","Erro não pode encerrar empréstimo.");
+sqlite.prepare("UPDATE filamentos SET quantidade=? WHERE id=?").run(filamentOnce,blue.id);
+assert.equal((await req("/api/my/return","POST",{id:directB,descartados:1},member)).status,200,"Após corrigir saldos, a devolução deve funcionar.");
+
+console.log("EMPRÉSTIMOS OK: permissões, reservas, estoque, visitantes/PETianes, devolução e histórico volumoso e corridas administrativas.");
 sqlite.close();
