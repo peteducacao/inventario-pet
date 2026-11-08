@@ -1,6 +1,32 @@
 import { identityAPI, currentIdentity } from "./identity.js";
 import { mailBridgeAPI, mailAdminAPI, generateDailyEmails, queueManual, queueNewLoanReminder } from "./mail-bridge.js";
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
+// Proteções aplicadas tanto aos arquivos públicos quanto às respostas da API.
+const CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "script-src-attr 'none'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "frame-src 'none'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'"
+].join("; ");
+function secureResponse(response){
+  const headers=new Headers(response.headers);
+  headers.set("x-content-type-options","nosniff");
+  headers.set("x-frame-options","DENY");
+  headers.set("referrer-policy","no-referrer");
+  headers.set("permissions-policy","camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  if(headers.get("content-type")?.toLowerCase().includes("text/html")){
+    headers.set("content-security-policy",CONTENT_SECURITY_POLICY);
+  }
+  return new Response(response.body,{status:response.status,statusText:response.statusText,headers});
+}
 const j = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), { status, headers: { ...JSON_HEADERS, ...extra } });
 const bad = (message, status = 400) => j({ error: message }, status);
 const now = () => new Date().toISOString();
@@ -876,22 +902,22 @@ async function cleanup(db) {
 export default {
   async fetch(req, env, ctx) {
     const path = new URL(req.url).pathname;
-    if (!path.startsWith("/api/")) return env.ASSETS.fetch(req);
-    try { return await processRequest(req,env,ctx); }
+    if (!path.startsWith("/api/")) return secureResponse(await env.ASSETS.fetch(req));
+    try { return secureResponse(await processRequest(req,env,ctx)); }
     catch (error) {
       console.error("Inventario API:", error?.message || error);
       const msg = String(error?.message || "");
-      if (msg.includes("UNIQUE constraint")) return bad("Já existe um cadastro com esse nome.",409);
-      if (msg.includes("FOREIGN KEY constraint")) return bad("O registro está ligado a outros dados.",409);
-      if (msg.includes("CHECK constraint")) return bad("As quantidades ou os dados são inconsistentes.",409);
+      if (msg.includes("UNIQUE constraint")) return secureResponse(bad("Já existe um cadastro com esse nome.",409));
+      if (msg.includes("FOREIGN KEY constraint")) return secureResponse(bad("O registro está ligado a outros dados.",409));
+      if (msg.includes("CHECK constraint")) return secureResponse(bad("As quantidades ou os dados são inconsistentes.",409));
       // Apenas mensagens validadas da própria API são exibidas ao público.
       // Erros internos (SQLite, Worker, infraestrutura) nunca devem expor SQL/segredos.
       const inputs=new Set(["Identificador inválido.","Dados grandes demais.","Dados muito grandes.",
         "Os dados enviados são inválidos.","Use o formato JSON.",
         "Dados inválidos.","Informe o nome do material.","Confira as quantidades.",
         "Em uso não pode ultrapassar a quantidade total.","A imagem deve ser uma foto válida."]);
-      if(inputs.has(msg))return bad(msg,400);
-      return bad("Não foi possível concluir a operação. Tente novamente ou procure a administração.",500);
+      if(inputs.has(msg))return secureResponse(bad(msg,400));
+      return secureResponse(bad("Não foi possível concluir a operação. Tente novamente ou procure a administração.",500));
     }
   },
   async scheduled(event, env, ctx) {
