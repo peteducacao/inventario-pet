@@ -141,7 +141,7 @@ jobs:
           const users=await fetch(root+"/api/admin/users");
           if(users.status!==401)throw Error("Listagem de usuarios publica");
           const loan=await fetch(root+"/api/member/withdraw",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({componente_id:1,quantidade:1,data_devolucao:"2027-01-01"})});
-          if(loan.status!==403)throw Error("Retirada sem tag PETiano permitida");
+          if(loan.status!==401)throw Error("Retirada sem login pessoal não foi bloqueada com 401");
           const js=await fetch(root+"/identity-ui.js");
           if(!js.ok || !(await js.text()).includes("Registrar retirada"))throw Error("Interface de identidade nao publicada");
           const html=await fetch(root+"/");
