@@ -7,19 +7,19 @@ const CONTENT_SECURITY_POLICY = [
   "script-src 'self'",
   "script-src-attr 'none'",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https:",
+  "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "connect-src 'self'",
   "object-src 'none'",
-  "frame-src 'none'",
-  "frame-ancestors 'none'",
+  "frame-src 'self'",
+  "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'"
 ].join("; ");
 function secureResponse(response){
   const headers=new Headers(response.headers);
   headers.set("x-content-type-options","nosniff");
-  headers.set("x-frame-options","DENY");
+  headers.set("x-frame-options","SAMEORIGIN");
   headers.set("referrer-policy","no-referrer");
   headers.set("permissions-policy","camera=(), microphone=(), geolocation=(), payment=(), usb=()");
   if(headers.get("content-type")?.toLowerCase().includes("text/html")){
