@@ -128,18 +128,29 @@ async function catalog(db, isAdmin = false, member = false) {
     items=items.filter(item=>cats.some(c=>c.id===item.categoria_id));
     for (const item of items) { delete item.ultimo_responsavel; delete item.detalhes_alteracao; }
   }
-  return { categorias: cats, componentes: items };
+  // Exibir metadados de imagem somente de grupos que têm componente visível
+  // neste perfil. Fotos de membros ocultos nunca podem ser usadas como capa pública.
+  const visibleGroups=new Set(items.map(x=>String(x.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")).filter(Boolean));
+  const groups=(await listVariationGroups(db)).filter(g=>isAdmin||visibleGroups.has(g.nome.toLocaleLowerCase("pt-BR")));
+  return { categorias: cats, componentes: items, grupos_variacoes: groups };
 }
 async function listVariationGroups(db) {
   const existing=await results(db,"SELECT DISTINCT TRIM(grupo_variacoes) AS nome FROM componentes WHERE TRIM(COALESCE(grupo_variacoes,''))<>''");
   try {
-    const stored=await results(db,"SELECT nome FROM grupos_variacoes ORDER BY nome COLLATE NOCASE");
-    return [...new Map([...stored,...existing].filter(x=>x.nome).map(x=>[x.nome.toLocaleLowerCase("pt-BR"),{nome:x.nome}])).values()]
-      .sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
+    let stored;
+    try{stored=await results(db,"SELECT nome,imagem,imagem_componente_id FROM grupos_variacoes ORDER BY nome COLLATE NOCASE");}
+    catch(error){
+      // Bancos locais de testes com migração 0020, sem a 0024.
+      if(!String(error).includes("no such column"))throw error;
+      stored=await results(db,"SELECT nome FROM grupos_variacoes ORDER BY nome COLLATE NOCASE");
+    }
+    const merged=new Map(existing.filter(x=>x.nome).map(x=>[x.nome.toLocaleLowerCase("pt-BR"),{nome:x.nome,imagem:"",imagem_componente_id:null}]));
+    for(const g of stored)if(g.nome)merged.set(g.nome.toLocaleLowerCase("pt-BR"),{nome:g.nome,imagem:g.imagem||"",imagem_componente_id:g.imagem_componente_id||null});
+    return [...merged.values()].sort((a,b)=>a.nome.localeCompare(b.nome,"pt-BR",{sensitivity:"base"}));
   } catch(error) {
     // Compatibilidade com bancos de teste de migrações anteriores à 0020.
     if(!String(error).includes("no such table"))throw error;
-    return existing;
+    return existing.map(x=>({nome:x.nome,imagem:"",imagem_componente_id:null}));
   }
 }
 async function state(db) {
@@ -323,12 +334,30 @@ async function processRequest(req, env, ctx) {
     return j({ok:true,alterados:changes.length,inalterados:objects.length-changes.length});
   }
   if(path==="/api/admin/variation-groups" && method==="POST"){
-    const body=await input(req,2500),action=str(body.acao,20);
+    const body=await input(req,116000),action=str(body.acao,20);
     const name=str(body.nome,80),next=str(body.novo_nome,80);
     const norm=value=>String(value||"").trim().toLocaleLowerCase("pt-BR");
     const known=await listVariationGroups(db);
     const matches=value=>known.find(group=>norm(group.nome)===norm(value));
     const actor=str(body.responsavel,100)||"Admin";
+    if(action==="imagem"){
+      const current=matches(name);
+      if(!current)return bad("Vínculo não encontrado.",404);
+      let image="",source=null;
+      if(body.modo==="propria"){
+        image=body.imagem;
+        if(typeof image!=="string"||image.length>110000||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(image))
+          return bad("Envie uma foto PNG, JPG ou WEBP válida.",400);
+      }else if(body.modo==="integrante"){
+        source=requireId(body.componente_id);
+        const linked=await db.prepare("SELECT id FROM componentes WHERE id=? AND LOWER(TRIM(grupo_variacoes))=LOWER(?) AND arquivado=0").bind(source,current.nome).first();
+        if(!linked)return bad("Escolha um componente pertencente ao vínculo.",409);
+      }else if(body.modo!=="nenhuma")return bad("Selecione uma fonte de imagem válida.",400);
+      await db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES(?)").bind(current.nome).run();
+      await db.prepare("UPDATE grupos_variacoes SET imagem=?,imagem_componente_id=? WHERE nome=?").bind(image,source,current.nome).run();
+      await auditLog(db,"Alterou capa do vínculo","material",null,current.nome+" · "+(source?"Foto de componente":image?"Foto própria":"Sem imagem"),actor);
+      return j({ok:true,nome:current.nome,imagem_componente_id:source});
+    }
     if(action==="criar"){
       if(name.length<2)return bad("Informe um nome de vínculo com pelo menos 2 caracteres.");
       if(matches(name))return bad("Já existe um vínculo com esse nome.",409);
@@ -774,6 +803,16 @@ async function processRequest(req, env, ctx) {
       const names=new Map([...saved.map(x=>typeof x==="string"?x:x?.nome),...b.componentes.map(x=>x.grupo_variacoes)]
         .map(x=>str(x,80)).filter(x=>x.length>=2).map(x=>[x.toLocaleLowerCase("pt-BR"),x]));
       for(const name of names.values())ops.push(db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES(?)").bind(name));
+      // Backups atuais preservam a foto própria ou a escolha de integrante;
+      // backups antigos (somente nomes) continuam compatíveis.
+      for(const raw of saved){
+        if(!raw||typeof raw!=="object")continue;
+        const name=str(raw.nome,80);
+        if(!names.has(name.toLocaleLowerCase("pt-BR")))continue;
+        const own=typeof raw.imagem==="string"&&raw.imagem.length<=110000&&/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.imagem)?raw.imagem:"";
+        const picked=Number.isSafeInteger(Number(raw.imagem_componente_id))&&Number(raw.imagem_componente_id)>0?Number(raw.imagem_componente_id):null;
+        ops.push(db.prepare("UPDATE grupos_variacoes SET imagem=?,imagem_componente_id=? WHERE nome=?").bind(own,own?null:picked,name));
+      }
     }
     for (const c of b.categorias){
       ops.push(db.prepare("INSERT INTO categorias(id,nome,ordem,visivel_visitante,arquivada,permitir_emprestimos,permitir_petianos,permitir_visitantes) VALUES(?,?,?,?,?,?,?,?)")
@@ -861,7 +900,7 @@ async function processRequest(req, env, ctx) {
   }
   if (path === "/api/admin/reservations/reset" && method === "POST") {
     const b=await input(req,2000);
-    if(b.confirmar!=="APAGAR TODAS AS RESERVAS")return bad("Confirmação incorreta. Nenhum registro foi excluído.",400);
+    if(b.confirmar!==true)return bad("Confirme a exclusão pelo painel administrativo.",400);
     const active=await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE status IN ('retirada','aprovada')").first();
     if(Number(active?.n)>0)return bad("Existem "+active.n+" retirada(s) ativas ou aprovações antigas. Registre todas as devoluções antes de apagar os registros para proteger o estoque.",409);
     const existing=await db.prepare("SELECT COUNT(*) AS n FROM reservas").first();
