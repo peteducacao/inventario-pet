@@ -184,13 +184,12 @@ function finalCard(original,siblings=[]){
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
   const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
-  const groupedAction=grouped&&!selection;
-  const openModel=grouped?'<button type="button" class="variant-open" data-open-variants="'+attr(groupKey)+'">'+
-    (selection?'Trocar modelo':'Ver variações')+' <span aria-hidden="true">›</span></button>':"";
+
   const imageAction=grouped?'data-open-variants="'+attr(groupKey)+'"':'data-photo="'+x.id+'"';
   const photoLabel=grouped?'Escolher variação de '+original.grupo_variacoes:'Ampliar ilustração de '+x.nome;
-  const action=groupedAction?
-    '<button type="button" class="primary-button variant-main-button" data-open-variants="'+attr(groupKey)+'">'+iconSvg("box",16)+' Escolher modelo</button>':
+  const action=grouped?
+    '<button type="button" class="primary-button variant-main-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-open-variants="'+attr(groupKey)+'" data-start-reservation="1">'+
+    iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>':
     '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0||!loanOK?"disabled":"")+'>'+
     iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>';
   return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" '+imageAction+' aria-label="'+attr(photoLabel)+'">'+
@@ -198,13 +197,13 @@ function finalCard(original,siblings=[]){
       '<span class="group-no-photo" aria-label="Vínculo sem foto">Sem foto do vínculo</span>')+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
     '<div class="catalog-body"><h3>'+esc(familyName||x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
-    (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':"")+openModel:
+    (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':""):
       (familyName?'<span class="variant-selected">Modelo: '+esc(x.nome)+'</span>':""))+
     (asset&&!showGroupTotals?'<span class="catalog-asset" title="'+attr(asset)+'">'+asset+'</span>':"")+
     '<div class="catalog-numbers"><div><span>Quantidade</span><strong>'+total+'</strong></div><div><span>Em uso</span><strong>'+used+'</strong></div><div><span>Disponível</span><strong>'+free+'</strong></div></div>'+
     action+'</div></article>';
 }
-function openVariantChoices(groupKey){
+function openVariantChoices(groupKey,startReservation=false){
   const group=String(groupKey||"").trim().toLocaleLowerCase("pt-BR");
   const variants=(state.data.componentes||[]).filter(item=>!isArchived(item)&&
     String(item.grupo_variacoes||"").trim().toLocaleLowerCase("pt-BR")===group);
@@ -221,10 +220,22 @@ function openVariantChoices(groupKey){
   openModal(title,"Escolha a variação. Cada modelo mantém seu próprio estoque e empréstimos.",
     '<div class="modal-main"><div class="variant-picker">'+rows+'</div></div>',{size:"wide"});
   $$("[data-pick-variant]",$("#modal-root")).forEach(button=>button.onclick=()=>{
-    UI.variantChoice[group]=Number(button.dataset.pickVariant);
+    const selectedId=Number(button.dataset.pickVariant);
+    UI.variantChoice[group]=selectedId;
     closeModal();
     finalRender();
-    document.querySelector('.grouped-card .variant-open')?.focus();
+    if(startReservation){
+      // O botão principal abre o modelo e, em seguida, o formulário correto.
+      // As permissões e a disponibilidade continuam validadas pela API.
+      if(!state.identity){identityLoginModal();return;}
+      const selected=variants.find(item=>Number(item.id)===selectedId);
+      if(!borrowableItem(selected)){toast("Este modelo não está habilitado para empréstimo na sua conta.",true);return;}
+      if(identityIsMember())memberWithdrawModal(selectedId);
+      else reserveModal(selectedId);
+    }else{
+      Array.from(document.querySelectorAll('.grouped-card .variant-main-button'))
+        .find(element=>element.dataset.openVariants===group)?.focus();
+    }
   });
 }
 function finalRender(){
