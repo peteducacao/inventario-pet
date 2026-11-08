@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
 import {DatabaseSync} from "node:sqlite";
-import {queueManual,generateDailyEmails,mailBridgeAPI,mailAdminAPI} from "../src/mail-bridge.js";
+import {queueManual,generateDailyEmails,mailBridgeAPI,mailAdminAPI,queueNewLoanReminder,triggerRecoveryEmail} from "../src/mail-bridge.js";
 const sqlite=new DatabaseSync(":memory:");
 sqlite.exec("PRAGMA foreign_keys=ON");
 for(const f of ["0001_base.sql","0002_avisos_email.sql","0003_dados_demonstracao.sql","0004_usuarios_e_retiradas.sql","0005_proteger_reservas.sql","0006_login_senha.sql","0007_inventario_oficial.sql","0008_notificacoes.sql","0009_filamentos.sql","0010_historico_visibilidade.sql","0011_conciliar_experimentos.sql","0012_linkar_variacoes_iniciais.sql","0013_gmail_queue.sql","0014_email_usuarios.sql","0015_autorizacao_emprestimos.sql","0016_permissoes_por_perfil.sql","0022_seguranca_contas_email_recuperacao.sql"]){
@@ -135,6 +135,38 @@ const expiredId=Number(sqlite.prepare("INSERT INTO identity_mail_queue(usuario_i
   .run(petUser,recoveryHash,"pet@example.com","Expirado","Link expirado",created).lastInsertRowid);
 await call("/api/mail/next");
 assert.equal(sqlite.prepare("SELECT situacao FROM identity_mail_queue WHERE id=?").get(expiredId).situacao,"cancelado","Nunca enviar link expirado.");
+
+// Prazo hoje: notificar mesmo quando a retirada ocorreu depois do cron diário.
+const todayLoan=insert("alerta-hoje@example.com",today);
+const sameDay=await queueNewLoanReminder(env,todayLoan);
+assert.equal(sameDay.queued,true,"O aviso do dia deve entrar na fila ao registrar a retirada.");
+assert.equal((await queueNewLoanReminder(env,todayLoan)).queued,false,"Nunca duplicar aviso do mesmo dia.");
+assert.equal(sqlite.prepare("SELECT evento FROM mail_queue WHERE reserva_id=? AND evento='hoje'").get(todayLoan).evento,"hoje");
+const pendingToday=await(await adminCall("/api/admin/mail/log")).json();
+assert.ok(pendingToday.items.some(item=>item.reserva_id===todayLoan),"O aviso de hoje deve aparecer entre pendentes.");
+const history=await(await adminCall("/api/admin/mail/log?historico=1")).json();
+assert.ok(history.items.some(item=>item.situacao==="enviado"),"O histórico administrativo deve revelar os enviados.");
+const diagnostic=await adminCall("/api/admin/mail/test",{email:"teste-inventario@example.com"});
+assert.equal(diagnostic.status,200);
+assert.equal(sqlite.prepare("SELECT evento FROM mail_queue WHERE destinatario=? ORDER BY id DESC LIMIT 1").get("teste-inventario@example.com").evento,"teste");
+const prepare=await adminCall("/api/admin/mail/prepare",{});
+assert.equal(prepare.status,200,"O Admin deve poder preparar lembretes manualmente.");
+const onlyRecovery=await(await call("/api/mail/next?tipo=recuperacao")).json();
+assert.equal(onlyRecovery.item,null,"O acionamento imediato da recuperação não deve disparar cobranças.");
+assert.equal(await triggerRecoveryEmail(env),false,"Sem Web App configurado mantém a fila de recuperação normal.");
+const realFetch=globalThis.fetch;
+let triggered=false;
+try{
+  globalThis.fetch=async (url,options)=>{
+    triggered=true;
+    assert.match(String(url),/^https:\/\/script\.google\.com\/macros\/s\//);
+    assert.equal(JSON.parse(options.body).acao,"recuperacao");
+    assert.equal(JSON.parse(options.body).token,token);
+    return new Response(JSON.stringify({ok:true}),{status:200,headers:{"content-type":"application/json"}});
+  };
+  assert.equal(await triggerRecoveryEmail({...env,PET_MAIL_WEBHOOK_URL:"https://script.google.com/macros/s/teste-app/exec"}),true);
+  assert.equal(triggered,true);
+}finally{globalThis.fetch=realFetch;}
 
 console.log("AGENDAMENTO POR TAG OK: visitantes/PETianes, pré-vencimento e cobrança manual.");
 console.log("MODELOS GMAIL OK: salvar, prévia, validação, edição manual e não duplicação.");
