@@ -100,7 +100,7 @@ function defaultImage(name){return componentArt(name);}
 function itemImage(x){return imageForPETItem(x);}
 function thumb(x,clazz="material-thumb"){
   const img=itemImage(x);
-  return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">':"")+'</div>';
+  return '<div class="'+clazz+'">'+(img?'<img src="'+attr(img)+'" alt="" loading="lazy" data-pet-board-fallback>':"")+'</div>';
 }
 function groupPublicMaterials(items){
   const list=[],byGroup=new Map();
@@ -178,7 +178,7 @@ function finalCard(original,siblings=[]){
     '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0||!loanOK?"disabled":"")+'>'+
     iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>';
   return '<article class="catalog-card'+(grouped?" grouped-card":"")+'"><button type="button" class="catalog-photo" '+imageAction+' aria-label="'+attr(photoLabel)+'">'+
-    '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" onerror="this.onerror=null;this.src=&quot;/img/reference-board.svg&quot;">'+
+    '<img src="'+attr(img)+'" alt="Ilustração de '+attr(x.nome)+'" loading="lazy" data-pet-board-fallback>'+
     '<span class="status-dot '+type+'"><span aria-hidden="true">'+statusIcon+'</span> '+status+'</span></button>'+
     '<div class="catalog-body"><h3>'+esc(familyName||x.nome)+'</h3><span class="catalog-category">'+iconSvg("box",13)+' '+esc(category)+'</span>'+
     (grouped?(selection?'<span class="variant-selected">Modelo escolhido: '+esc(selection.nome)+'</span>':"")+openModel:
