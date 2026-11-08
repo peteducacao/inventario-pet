@@ -145,6 +145,10 @@ assert.equal((await post("/api/identity/login",{login:"sergio01",senha:senhaA}))
 const temp=await post("/api/identity/login",{login:"sergio01",senha:reset.body.senha_temporaria});
 assert.equal(temp.status,200,JSON.stringify(temp.body));
 assert.equal(temp.body.usuario.trocar_senha,true);
+const beforeForcedName=db.prepare("SELECT nome FROM usuarios WHERE login='sergio01'").get().nome;
+const forcedRename=await post("/api/identity/name",{nome:"Renomeado antes da troca"},temp.cookie);
+assert.equal(forcedRename.status,403,"Senha temporária não pode editar o perfil antes da troca obrigatória.");
+assert.equal(db.prepare("SELECT nome FROM usuarios WHERE login='sergio01'").get().nome,beforeForcedName,"Nome deve permanecer intacto enquanto senha é temporária.");
 assert.equal((await post("/api/member/withdraw",{componente_id:item.id,quantidade:1,data_devolucao:end},temp.cookie)).status,403,"Senha temporária não deve permitir retirar.");
 const changed=await post("/api/identity/password",{nova_senha:"SenhaNovaDefinitiva!2026"},temp.cookie);
 assert.equal(changed.status,200,JSON.stringify(changed.body));
