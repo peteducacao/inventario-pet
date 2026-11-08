@@ -348,6 +348,10 @@ async function processRequest(req, env, ctx) {
         image=body.imagem;
         if(typeof image!=="string"||image.length>110000||!/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(image))
           return bad("Envie uma foto PNG, JPG ou WEBP válida.",400);
+      }else if(body.modo==="padrao"){
+        // Marcador interno: o navegador gera a arte a partir do nome do grupo.
+        // Nunca armazenar SVG arbitrário nem modificar fotos dos integrantes.
+        image="__PET_GROUP_DEFAULT__";
       }else if(body.modo==="integrante"){
         source=requireId(body.componente_id);
         const linked=await db.prepare("SELECT id FROM componentes WHERE id=? AND LOWER(TRIM(grupo_variacoes))=LOWER(?) AND arquivado=0").bind(source,current.nome).first();
@@ -355,7 +359,7 @@ async function processRequest(req, env, ctx) {
       }else if(body.modo!=="nenhuma")return bad("Selecione uma fonte de imagem válida.",400);
       await db.prepare("INSERT OR IGNORE INTO grupos_variacoes(nome) VALUES(?)").bind(current.nome).run();
       await db.prepare("UPDATE grupos_variacoes SET imagem=?,imagem_componente_id=? WHERE nome=?").bind(image,source,current.nome).run();
-      await auditLog(db,"Alterou capa do vínculo","material",null,current.nome+" · "+(source?"Foto de componente":image?"Foto própria":"Sem imagem"),actor);
+      await auditLog(db,"Alterou capa do vínculo","material",null,current.nome+" · "+(source?"Foto de componente":image==="__PET_GROUP_DEFAULT__"?"Imagem padrão":image?"Foto própria":"Sem imagem"),actor);
       return j({ok:true,nome:current.nome,imagem_componente_id:source});
     }
     if(action==="criar"){
@@ -819,7 +823,8 @@ async function processRequest(req, env, ctx) {
         if(!raw||typeof raw!=="object")continue;
         const name=str(raw.nome,80);
         if(!names.has(name.toLocaleLowerCase("pt-BR")))continue;
-        const own=typeof raw.imagem==="string"&&raw.imagem.length<=110000&&/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.imagem)?raw.imagem:"";
+        const own=raw.imagem==="__PET_GROUP_DEFAULT__"?"__PET_GROUP_DEFAULT__":
+          (typeof raw.imagem==="string"&&raw.imagem.length<=110000&&/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(raw.imagem)?raw.imagem:"");
         const picked=Number.isSafeInteger(Number(raw.imagem_componente_id))&&Number(raw.imagem_componente_id)>0?Number(raw.imagem_componente_id):null;
         ops.push(db.prepare("UPDATE grupos_variacoes SET imagem=?,imagem_componente_id=? WHERE nome=?").bind(own,own?null:picked,name));
       }
