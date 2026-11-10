@@ -242,7 +242,8 @@ function identityProfileModal(){
     '<button type="button" class="outline-button" id="identity-email-edit">Alterar meu e-mail</button>'+
     '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button>'+
     '<button type="button" class="outline-button" id="identity-change-password">Alterar minha senha</button>'+
-    '<button type="button" class="danger-button" id="identity-logout">Sair deste dispositivo</button></div></div>';
+    '<button type="button" class="danger-button" id="identity-logout">Sair deste dispositivo</button>'+ 
+    '<div class="identity-delete-zone"><span>Deseja encerrar seu cadastro?</span><button type="button" class="outline-button" id="identity-delete-account">Excluir minha conta</button></div></div></div>';
   openModal("Meu perfil","Login individual e permissões.",body);
   $("#identity-copy-id").onclick=()=>copyValue(u.id,$("#identity-public-id"));
   if(member)$("#identity-open-withdraw").onclick=()=>memberWithdrawModal();
@@ -251,6 +252,29 @@ function identityProfileModal(){
   $("#identity-rename").onclick=identityRenameModal;
   $("#identity-email-edit").onclick=()=>identityEmailModal();
   $("#identity-logout").onclick=()=>{if(confirm("Deseja sair deste dispositivo?"))identityLogout();};
+  $("#identity-delete-account").onclick=identityDeleteAccountModal;
+}
+function identityDeleteAccountModal(){
+  const u=state.identity;if(!u)return identityLoginModal();
+  openModal("Excluir minha conta","Confirmação de exclusão permanente",
+    '<form class="modal-main" id="identity-delete-form">'+
+    '<p class="notice warning"><strong>Atenção: esta ação é permanente.</strong> Sua conta, seu acesso e suas notificações serão removidos. Não será possível recuperar este cadastro. O histórico de movimentações concluídas permanece no inventário para controle do PET.</p>'+
+    '<p class="hint">Caso existam reservas ou retiradas em andamento, conclua-as antes de excluir a conta.</p>'+
+    passwordField("identity-delete-password","Confirme sua senha atual")+
+    '<div class="modal-footer" style="border:0;padding:15px 0 0"><button type="button" class="secondary-button" id="identity-delete-cancel">Cancelar</button><button type="submit" class="danger-button" id="identity-delete-confirm">Sim, excluir minha conta</button></div></form>');
+  wirePasswordVisibility();
+  $("#identity-delete-cancel").onclick=identityProfileModal;
+  $("#identity-delete-form").onsubmit=async e=>{
+    e.preventDefault();
+    const btn=$("#identity-delete-confirm"),senha=$("#identity-delete-password").value;
+    btn.disabled=true;btn.textContent="Excluindo conta…";
+    try{
+      await api("/api/identity/delete","POST",{confirmar:true,senha_atual:senha});
+      closeModal();setIdentity(null);toast("Sua conta foi excluída.");
+    }catch(error){
+      toast(error.message,true);btn.disabled=false;btn.textContent="Sim, excluir minha conta";
+    }
+  };
 }
 function identityEmailModal(required=false){
   const u=state.identity;if(!u)return identityLoginModal();

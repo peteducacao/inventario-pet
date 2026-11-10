@@ -343,23 +343,43 @@ async function adminResetPassword(req,env){
   await identityAudit(env.DB,"Redefiniu senha","usuario",user.id,user.nome+" · login "+login);
   return respond({ok:true,id:user.public_id,nome:user.nome,login,senha_temporaria:temporary});
 }
+// Exclusão de conta: sem apagar o histórico de movimentações e sem afetar empréstimos ativos.
+// O mesmo fluxo transacional protege a exclusão pelo Admin e pelo próprio titular.
+async function deleteAccount(db,user,actor="Admin",selfService=false){
+  const pending=await db.prepare("SELECT COUNT(*) AS n FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada')").bind(user.id).first();
+  if(Number(pending?.n||0)>0)return error("Há reservas ou retiradas em andamento nesta conta. Conclua-as antes de excluir.",409);
+  await db.batch([
+    // Não enviar e-mails após o titular encerrar a conta. Preservar apenas registros já enviados.
+    db.prepare("UPDATE mail_queue SET situacao='cancelado',token_reserva=NULL,ultimo_erro='Conta excluída' WHERE reserva_id IN (SELECT id FROM reservas WHERE usuario_id=?) AND situacao IN ('pendente','processando','erro')").bind(user.id),
+    db.prepare("UPDATE identity_mail_queue SET situacao='cancelado',mensagem='',token_reserva=NULL WHERE usuario_id=? AND situacao IN ('pendente','processando','erro')").bind(user.id),
+    db.prepare("UPDATE reservas SET usuario_id=NULL WHERE usuario_id=? AND status NOT IN ('pendente','aprovada','retirada')").bind(user.id),
+    db.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id),
+    db.prepare("DELETE FROM usuarios WHERE id=? AND NOT EXISTS (SELECT 1 FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada'))").bind(user.id,user.id)
+  ]);
+  // A exclusão condicional também impede operações concorrentes de retirar materiais.
+  const remains=await db.prepare("SELECT id FROM usuarios WHERE id=?").bind(user.id).first();
+  if(remains)return error("A conta não pôde ser excluída. Confira se há movimentações em aberto.",409);
+  await identityAudit(db,selfService?"Excluiu a própria conta":"Excluiu usuário","usuario",user.id,user.nome+" · "+user.public_id,actor);
+  return null;
+}
 async function adminDeleteUser(req,env){
   const b=await bodyJson(req,3000),id=clean(b.id,30).toUpperCase();
   if(!/^PET-[0-9A-F]{12}$/.test(id))return error("ID inválido.");
   const user=await env.DB.prepare("SELECT id,public_id,nome FROM usuarios WHERE public_id=?").bind(id).first();
   if(!user)return error("Usuário não encontrado.",404);
-  const pending=await env.DB.prepare("SELECT COUNT(*) AS n FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada')").bind(user.id).first();
-  if(pending?.n>0)return error("Este usuário tem reservas ou retiradas em andamento. Finalize-as antes de excluir.",409);
-  const done=await env.DB.batch([
-    env.DB.prepare("UPDATE reservas SET usuario_id=NULL WHERE usuario_id=? AND status NOT IN ('pendente','aprovada','retirada')").bind(user.id),
-    env.DB.prepare("DELETE FROM usuario_sessoes WHERE usuario_id=?").bind(user.id),
-    env.DB.prepare("DELETE FROM usuarios WHERE id=? AND NOT EXISTS (SELECT 1 FROM reservas WHERE usuario_id=? AND status IN ('pendente','aprovada','retirada'))").bind(user.id,user.id)
-  ]);
-  // D1 pode contabilizar também efeitos ON DELETE de filas de segurança; verifique a existência real.
-  const remains=await env.DB.prepare("SELECT id FROM usuarios WHERE id=?").bind(user.id).first();
-  if(remains)return error("O usuário não pôde ser excluído.",409);
-  await identityAudit(env.DB,"Excluiu usuário","usuario",user.id,user.nome+" · "+id);
+  const failed=await deleteAccount(env.DB,user);
+  if(failed)return failed;
   return respond({ok:true,excluido:id});
+}
+async function selfDeleteAccount(req,env,user){
+  if(!user)return error("Entre na sua conta pessoal para excluí-la.",401);
+  if(!user.login||!user.password_hash)return error("Finalize o cadastro da conta antes de excluí-la.",403);
+  const b=await bodyJson(req,3500);
+  if(b.confirmar!==true)return error("Confirme a exclusão da sua conta.",400);
+  if(!await verifyPassword(b.senha_atual,user))return error("Senha atual incorreta.",401);
+  const failed=await deleteAccount(env.DB,user,user.nome,true);
+  if(failed)return failed;
+  return respond({ok:true},200,{"set-cookie":clearCookie()});
 }
 async function adminList(env){
   // Contar no D1, e não apenas na página carregada, para manter totais corretos.
@@ -387,6 +407,8 @@ export async function identityAPI(req,env,adminAuth,ctx){
     const u=await loggedIn(req,db);
     return respond({ok:true,usuario:u?publicUser(u):null});
   }
+  if(path==="/api/identity/delete"&&method==="POST")return selfDeleteAccount(req,env,await loggedIn(req,db));
+  if(path==="/api/identity/delete")return error("Método não permitido.",405);
   if(path==="/api/identity/logout"&&method==="POST"){
     const token=cookieValue(req);
     if(token)await db.prepare("DELETE FROM usuario_sessoes WHERE hash=?").bind(await sha256(token)).run();
