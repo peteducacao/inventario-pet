@@ -4,25 +4,25 @@ import {JSDOM} from "jsdom";
 const source=readFileSync("public/component-art.js","utf8");
 const w={};new Function("window",source)(w);
 const cases=[
- ["Led Vermelho","#ee4754","LED VERMELHO"],
- ["Led Verde Grande","#3ec883","LED VERDE GRANDE"],
- ["Led Verde Pequeno","#3ec883","LED VERDE PEQUENO"],
- ["Led Amarelo","#f0c33f","LED AMARELO"],
- ["Led Azul","#389bed","LED AZUL"],
- ["Led Branco","#f6fbfa","LED BRANCO"],
- ["Led Transparente","#d6e6e9","LED TRANSPARENTE"],
- ["Led transparente 4 pinos","#d6e6e9","LED RGB 4 PINOS"],
- ["Led com soquete verde","#3ec883","LED VERDE"]
+ ["Led Vermelho","#ee4754"],
+ ["Led Verde Grande","#3ec883"],
+ ["Led Verde Pequeno","#3ec883"],
+ ["Led Amarelo","#f0c33f"],
+ ["Led Azul","#389bed"],
+ ["Led Branco","#f6fbfa"],
+ ["Led Transparente","#d6e6e9"],
+ ["Led transparente 4 pinos","#d6e6e9"],
+ ["Led com soquete verde","#3ec883"]
 ];
 const xml=new JSDOM("").window.DOMParser;
 const parser=new xml();
 const urls=[];
-for(const [name,color,caption] of cases){
+for(const [name,color] of cases){
  const url=w.componentArt(name);
  assert.ok(url.startsWith("data:image/svg+xml;"),name+" não foi gerado em SVG.");
  const svg=decodeURIComponent(url.slice(url.indexOf(",")+1));
  assert.ok(svg.includes(color),name+" deveria usar a cor "+color);
- assert.ok(svg.includes(">"+caption+"</text>"),name+" deveria ser identificado individualmente.");
+ assert.ok(!svg.includes("<text"),name+": nenhuma arte automática de LED deve ter legenda inferior.");
  assert.equal(parser.parseFromString(svg,"image/svg+xml").querySelectorAll("parsererror").length,0,name+" SVG inválido.");
  urls.push(url);
 }
