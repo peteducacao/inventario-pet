@@ -127,11 +127,12 @@ function matchesCatalogSearch(value,query){
   const compactNeedle=needle.replace(/[^a-z0-9]/g,"");
   return compactNeedle.length>=2&&haystack.replace(/[^a-z0-9]/g,"").includes(compactNeedle);
 }
+function displayFilamentName(item){return "Filamento "+String(item?.cor||"").trim();}
 function orderedCatalogGroups(groups,sort){
   if(sort!=="az"&&sort!=="za")return groups;
   const title=group=>{
     const item=group[0]||{};
-    return String(item._filament?item.cor:(item.grupo_variacoes||item.nome)||"").trim();
+    return String(item._filament?displayFilamentName(item):(item.grupo_variacoes||item.nome)||"").trim();
   };
   const compare=(a,b)=>title(a).localeCompare(title(b),"pt-BR",{sensitivity:"base",numeric:true});
   return [...groups].sort((a,b)=>{
@@ -160,7 +161,7 @@ function finalCard(original,siblings=[]){
       '<div class="catalog-photo filament-art" style="--filament-color:'+attr(x.hexadecimal)+'">'+
       '<div class="filament-reel" aria-hidden="true"><div class="filament-reel-core"></div></div>'+
       '<span class="status-dot '+type+'"><span aria-hidden="true">'+mark+'</span> '+status+'</span></div>'+
-      '<div class="catalog-body"><h3>'+esc(x.cor)+'</h3>'+
+      '<div class="catalog-body"><h3>'+esc(displayFilamentName(x))+'</h3>'+
       '<span class="catalog-category">'+iconSvg("box",13)+' Filamentos</span>'+
       '<div class="catalog-numbers"><div><span>Quantidade</span><strong>'+quantity+'</strong></div>'+
       '<div><span>Em uso</span><strong>'+used+'</strong></div>'+
@@ -250,7 +251,7 @@ function finalRender(){
   }
   $("#demo-notice").hidden=!state.data.demonstracao;
   const ordinary=(state.data.componentes||[]).filter(x=>!isArchived(x)&&!/^FILAMENTO-\d+$/.test(String(x.import_key||"")));
-  const colorItems=(UI.filaments||[]).map(x=>({...x,_filament:true,nome:"Filamento - "+x.cor,mostrar_quantidade:1}));
+  const colorItems=(UI.filaments||[]).map(x=>({...x,_filament:true,nome:displayFilamentName(x),mostrar_quantidade:1}));
   const items=[...ordinary,...colorItems];
   // Uma categoria antiga pode ter sido arquivada após reorganização do acervo.
   // Não deixar usuários presos num filtro salvo que ficou sem itens.
