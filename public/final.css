@@ -973,6 +973,10 @@ body:not(.admin-mode) .inventory-section .catalog-photo.filament-art{
   border:0;
   background:linear-gradient(165deg,#fff 0%,#fafdfe 100%);
 }
+/* O filamento acompanha o mesmo espaçamento entre nome e categoria dos outros materiais. */
+body:not(.admin-mode) .inventory-section .filament-public-card .catalog-body{
+  gap:0;
+}
 body:not(.admin-mode) .inventory-section .filament-public-card .catalog-body h3{
   min-height:23px;
   margin-bottom:5px;
