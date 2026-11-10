@@ -24,5 +24,9 @@ const code=await get("/component-art.js",["sharpener:()=>","cutter:()=>","cerami
 const window={};(new Function("window",code))(window);
 const src=window.componentArt("Apontador"),scissors=window.componentArt("Tesoura");
 assert.notEqual(src,scissors,"Apontador e tesoura aparecem com a mesma imagem.");
-assert.ok(decodeURIComponent(src).includes("APONTADOR"),"Desenho incorreto do apontador.");
-console.log("ILUSTRAÇÕES PUBLICADAS OK: apontador, estilete e classificação revisada presentes no site.");
+assert.notEqual(src,window.componentArt("Material totalmente desconhecido"),"Apontador deve ter ilustração própria.");
+for(const name of ["Apontador","LED Vermelho","LED Verde Grande","Teste 11"]){
+  const svg=decodeURIComponent(window.componentArt(name));
+  assert.ok(!svg.includes("<text"),name+": legenda inferior não deve aparecer na arte publicada.");
+}
+console.log("ILUSTRAÇÕES PUBLICADAS OK: artes específicas e genérica sem legendas inferiores.");
