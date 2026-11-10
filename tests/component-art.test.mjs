@@ -22,7 +22,8 @@ function illustration(name){
     const document=xml.parseFromString(svg,"image/svg+xml");
     assert.equal(document.querySelectorAll("parsererror").length,0,name+": SVG malformado");
     assert.ok(document.querySelector("svg"),name+": SVG ausente");
-    assert.ok(!svg.includes(">COMPONENTE</text>"),name+": desenho genérico para material identificado");
+    const captions=[...document.querySelectorAll("text")].map(node=>node.textContent.trim()).filter(label=>label!=="UNO");
+    assert.deepEqual(captions,[],name+": ilustração padrão não deve incluir texto de legenda");
     return svg;
   }
   assert.ok(readFileSync("public"+src,"utf8").includes("<svg"),name+": arquivo SVG local ausente");
@@ -66,8 +67,7 @@ const scenarios=[
 ];
 for(const [name,expected] of scenarios){
   const svg=illustration(name);
-  if(name==="Esp 32 doit")assert.notEqual(svg.includes("ARDUINO UNO"),true,"ESP32 não é Arduino Uno.");
-  else assert.ok(svg.includes(">"+expected+"</text>"),name+" deve mostrar "+expected);
+  assert.notEqual(svg,illustration("Material totalmente desconhecido"),name+": deve manter sua ilustração específica sem legenda");
 }
 assert.notEqual(exposed.componentArt("Apontador"),exposed.componentArt("Tesoura"));
 assert.notEqual(exposed.componentArt("Tesoura"),exposed.componentArt("Estiletes"));
@@ -75,4 +75,7 @@ assert.notEqual(exposed.componentArt("Arduino Uno"),exposed.componentArt("Esp 32
 assert.equal(exposed.imageForPETItem({nome:"Apontador",imagem:""}),exposed.componentArt("Apontador"));
 const ownPhoto="data:image/png;base64,aGVsbG8=";
 assert.equal(exposed.imageForPETItem({nome:"Apontador",imagem:ownPhoto}),ownPhoto,"Foto própria deve permanecer intacta");
-console.log("ILUSTRAÇÕES OK: 213 registros, SVGs válidos, 33 correspondências específicas e fotos próprias preservadas.");
+for(const name of ["Teste 11","LED vermelho","LED verde grande","LED RGB 4 pinos"]){
+  assert.ok(!illustration(name).includes("<text"),name+": arte automática sem legenda inferior");
+}
+console.log("ILUSTRAÇÕES OK: 213 registros, SVGs válidos, artes sem legenda, desenhos específicos e fotos próprias preservadas.");
