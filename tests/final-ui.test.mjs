@@ -261,6 +261,11 @@ w.__adminTestState.query="";w.__finalRender();
 assert.equal(d.querySelectorAll(".catalog-card").length,4,"Estoque agrupado não deveria gerar cards repetidos.");
 assert.equal(d.querySelectorAll(".filament-public-card").length,1,"Filamentos devem continuar na grade do catálogo.");
 const spoolCard=d.querySelector(".filament-public-card");
+assert.equal(spoolCard.querySelector(".catalog-body h3")?.textContent,"Filamento Azul",
+  "No catálogo, a cor deve ser apresentada como Filamento Azul.");
+assert.match(visualCss,/\.filament-public-card \.catalog-body\s*\{\s*gap:0;/,
+  "O espaço entre título e categoria do filamento deve ser igual ao dos demais materiais.");
+assert.ok(catalogTitles().includes("Filamento Azul"),"A ordenação deve usar o título completo do filamento.");
 const ordinaryCard=d.querySelector(".catalog-card:not(.filament-public-card)");
 assert.ok(spoolCard?.querySelector(".status-dot"),"Filamento precisa ter o mesmo selo de disponibilidade dos materiais.");
 assert.equal(spoolCard.querySelectorAll(".catalog-numbers>div").length,3,"Filamento deve mostrar Quantidade, Em uso e Disponível na mesma linha.");
