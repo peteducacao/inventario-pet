@@ -395,6 +395,13 @@ lw.dispatchEvent(new lw.Event("focus"));
 await wait(140);
 assert.match(ld.querySelector("#modal-root").textContent,/PETiano/,"O cargo deve ser sincronizado ao retornar à guia.");
 assert.equal(ld.querySelector("#v2-refresh-role"),null);
+assert.ok(ld.querySelector("#v2-delete-account"),"A tela Minha conta atual deve mostrar Excluir minha conta.");
+await realLogin.click("#v2-delete-account");
+assert.equal(ld.querySelector("#identity-delete-form")!==null,true,"Botão precisa abrir confirmação da exclusão.");
+assert.ok(ld.querySelector("#identity-delete-password"),"Confirmação deve exigir senha atual.");
+assert.match(ld.querySelector("#modal-root").textContent,/Sim, excluir minha conta/);
+await realLogin.click("#identity-delete-cancel");
+assert.ok(ld.querySelector("#v2-delete-account"),"Cancelar volta ao perfil sem excluir.");
 assert.deepEqual(realLogin.errors,[],"Erros no login e sincronização do cargo.");
 realLogin.dom.window.close();
 
