@@ -11,7 +11,8 @@
   const circ=(x,y,rad,fill,stroke="",sw=2)=>'<circle cx="'+x+'" cy="'+y+'" r="'+rad+'" fill="'+fill+'" '+(stroke?'stroke="'+stroke+'" stroke-width="'+sw+'"':"")+'/>';
   const pins=(x,y,w,count=8,vertical=false)=>Array.from({length:count},(_,i)=>vertical?r(x-7,y+i*15,11,7,c.metal,2):r(x+i*(w/(count-1))-3,y-7,7,12,c.metal,2)).join("");
   const hole=(x,y)=>circ(x,y,4,"#dce8ef","#56758d",2);
-  const t=(label)=>'<text x="200" y="239" text-anchor="middle" fill="#567084" font-family="Arial,Helvetica,sans-serif" font-size="15" font-weight="700" letter-spacing="1">'+label+'</text>';
+  // A legenda do material fica no título do card, nunca dentro da arte padrão.
+  const t=()=>"";
   const plate=(fill="#14394d")=>'<g transform="rotate(-8 200 120)">'+r(102,57,196,136,fill,15,'stroke="#356a80" stroke-width="3"')+pins(123,57,156,10)+pins(123,193,156,10)+[hole(118,73),hole(282,73),hole(118,177),hole(282,177)].join("")+r(153,94,72,62,"#253b4a",8,'stroke="#65828f" stroke-width="3"')+Array.from({length:5},(_,i)=>r(241,95+i*15,29,8,i%2?"#2e9c8b":"#1b6579",2)).join("")+'</g>';
   const battery=(mini=false)=>'<g transform="rotate(-16 200 125)">'+r(116,87,172,80,"#c5d3db",19,'stroke="#627b89" stroke-width="4"')+r(132,87,60,80,c.yellow,6)+r(190,87,85,80,"#fbf9f2",3)+r(288,112,13,30,"#a9b7c5",2)+line(222,120,244,120,"#265e80",6)+line(233,108,233,132,"#265e80",5)+'</g>';
   const builtin={
@@ -245,8 +246,7 @@
       line(200+offset,176,200+offset,218+(i%2?9:0),"#96aab4",5)).join("");
     const rgb=four?[circ(186,141,10,"#ee5a62"),circ(200,141,10,"#45ba86"),circ(214,141,10,"#368ce0")].join(""):"";
     const connector=socket?r(122,158,156,51,"#304b51",11)+r(145,169,110,20,"#d7e2da",4):"";
-    return connector+ledHead+rgb+legs+
-      '<text x="200" y="246" text-anchor="middle" fill="#567084" font-family="Arial,Helvetica,sans-serif" font-size="'+(label.length>16?12:15)+'" font-weight="700" letter-spacing=".6">'+label+'</text>';
+    return connector+ledHead+rgb+legs;
   }
   const path={
     esp32:"/img/reference-board.svg",
