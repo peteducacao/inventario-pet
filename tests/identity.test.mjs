@@ -226,5 +226,39 @@ assert.equal((await post("/api/identity/login",{login:"sergio02",senha:senhaB}))
 assert.equal((await post("/api/identity/login",{login:"sergio02",senha:"7"})).status,200,"Nova senha simples é permitida por escolha do usuário.");
 assert.ok(db.prepare("SELECT id FROM identity_mail_queue WHERE assunto LIKE 'Senha redefinida%'").get(),"A alteração de senha precisa produzir aviso de segurança.");
 
+
+// Exclusão voluntária: autenticação independente do Admin, senha atual, revogação,
+// preservação do histórico fechado e bloqueio enquanto houver retirada ativa.
+const selfReg=await registration("Conta para exclusão","autoexclusao","SenhaParaExcluir!2026");
+assert.equal(selfReg.status,201);
+const selfCookie=selfReg.cookie,selfId=selfReg.body.usuario.id;
+const selfBefore=db.prepare("SELECT id FROM usuarios WHERE public_id=?").get(selfId).id;
+assert.equal((await post("/api/identity/delete",{confirmar:true,senha_atual:"SenhaParaExcluir!2026"})).status,401,"Não é possível excluir conta sem sessão pessoal.");
+assert.equal((await call("/api/identity/delete","GET",null,selfCookie)).status,405);
+assert.equal((await post("/api/identity/delete",{senha_atual:"SenhaParaExcluir!2026"},selfCookie)).status,400,"Exclusão requer confirmação explícita.");
+assert.equal((await post("/api/identity/delete",{confirmar:true,senha_atual:"incorreta"},selfCookie)).status,401,"Senha atual é obrigatória.");
+assert.ok(db.prepare("SELECT id FROM usuarios WHERE id=?").get(selfBefore),"Senha errada não remove cadastro.");
+assert.equal((await post("/api/admin/users",{id:selfId,tag:"petiano"},"",true)).status,200);
+const activeSelf=await post("/api/member/withdraw",{componente_id:item.id,quantidade:1,data_devolucao:end},selfCookie);
+assert.equal(activeSelf.status,201,JSON.stringify(activeSelf.body));
+const blockedSelf=await post("/api/identity/delete",{confirmar:true,senha_atual:"SenhaParaExcluir!2026"},selfCookie);
+assert.equal(blockedSelf.status,409,"Conta com retirada em aberto não pode ser excluída.");
+assert.ok(db.prepare("SELECT id FROM usuarios WHERE id=?").get(selfBefore),"Tentativa bloqueada não deve excluir a conta.");
+assert.equal((await post("/api/member/return",{id:activeSelf.body.retirada_id,descartados:0},selfCookie)).status,200);
+db.prepare("INSERT INTO notificacoes(usuario_id,titulo,mensagem,tipo) VALUES (?,?,?,?)")
+  .run(selfBefore,"Aviso temporário","Esta notificação deve desaparecer.","info");
+db.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,destinatario,assunto,mensagem) VALUES (?,'aviso',?,?,?)")
+  .run(selfBefore,"autoexclusao@example.com","Aviso teste","Não enviar após exclusão.");
+const selfDelete=await post("/api/identity/delete",{confirmar:true,senha_atual:"SenhaParaExcluir!2026",id:b.body.usuario.id},selfCookie);
+assert.equal(selfDelete.status,200,JSON.stringify(selfDelete.body));
+assert.match(selfDelete.headers.get("set-cookie")||"",/Max-Age=0/,"Exclusão deve limpar o cookie pessoal.");
+assert.equal(db.prepare("SELECT COUNT(*) AS n FROM usuarios WHERE id=?").get(selfBefore).n,0);
+assert.equal((await call("/api/identity/me","GET",null,selfCookie)).body.usuario,null,"Sessões devem ser revogadas.");
+assert.equal((await post("/api/identity/login",{login:"autoexclusao",senha:"SenhaParaExcluir!2026"})).status,401,"Login da conta excluída não pode voltar.");
+assert.equal(db.prepare("SELECT usuario_id FROM reservas WHERE id=?").get(activeSelf.body.retirada_id).usuario_id,null,"Histórico encerrado preservado e desvinculado.");
+assert.equal(db.prepare("SELECT COUNT(*) AS n FROM notificacoes WHERE usuario_id=?").get(selfBefore).n,0);
+assert.equal(db.prepare("SELECT situacao FROM identity_mail_queue WHERE destinatario='autoexclusao@example.com' AND assunto='Aviso teste'").get().situacao,"cancelado","Avisos pendentes devem ser cancelados.");
+assert.ok(db.prepare("SELECT id FROM usuarios WHERE public_id=?").get(b.body.usuario.id),"Exclusão própria não pode afetar outra pessoa.");
+
 console.log("LOGIN OK: conta única, PBKDF2 com sal, tags, retiradas, troca de senha, reset admin, bloqueio temporário, exclusão e migração legada.");
 db.close();
