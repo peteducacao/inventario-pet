@@ -247,8 +247,8 @@ assert.ok(db.prepare("SELECT id FROM usuarios WHERE id=?").get(selfBefore),"Tent
 assert.equal((await post("/api/member/return",{id:activeSelf.body.retirada_id,descartados:0},selfCookie)).status,200);
 db.prepare("INSERT INTO notificacoes(usuario_id,titulo,mensagem,tipo) VALUES (?,?,?,?)")
   .run(selfBefore,"Aviso temporário","Esta notificação deve desaparecer.","info");
-db.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,destinatario,assunto,mensagem) VALUES (?,'aviso',?,?,?)")
-  .run(selfBefore,"autoexclusao@example.com","Aviso teste","Não enviar após exclusão.");
+db.prepare("INSERT INTO identity_mail_queue(usuario_id,tipo,destinatario,assunto,mensagem,criado_em) VALUES (?,'aviso',?,?,?,?)")
+  .run(selfBefore,"autoexclusao@example.com","Aviso teste","Não enviar após exclusão.",new Date().toISOString());
 const selfDelete=await post("/api/identity/delete",{confirmar:true,senha_atual:"SenhaParaExcluir!2026",id:b.body.usuario.id},selfCookie);
 assert.equal(selfDelete.status,200,JSON.stringify(selfDelete.body));
 assert.match(selfDelete.headers.get("set-cookie")||"",/Max-Age=0/,"Exclusão deve limpar o cookie pessoal.");
