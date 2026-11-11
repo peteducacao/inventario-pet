@@ -5,6 +5,12 @@ Sistema web para gestão de materiais, equipamentos e filamentos do PET Educaç�
 **Site em produção:** https://inventario-pet.pet-educacao.workers.dev  
 **Central de Ajuda (inclui impressão/salvar PDF):** https://inventario-pet.pet-educacao.workers.dev/ajuda/
 
+## Instalar como aplicativo
+
+Abra o site, entre em **Minha conta** e escolha **Baixar aplicativo**. É um PWA instalável no Android e em computadores compatíveis (Chrome ou Edge), e pode ser adicionado à tela inicial pelo Safari no iPhone. Não instala APK/EXE separado e as reservas continuam dependentes da conexão à internet. O cache guarda somente arquivos estáticos públicos; dados pessoais e APIs não são armazenados.
+
+No catálogo, o selo é **Disponível** se há alguma unidade livre e **Sem estoque** quando esgotado; os contadores Quantidade, Em uso e Disponível permanecem. Sem estoque, não é possível reservar nem retirar.
+
 ## Documentação
 
 - **[Central de Ajuda](public/ajuda/index.html)** — manual de uso e administração, telas, reservas, devoluções, filamentos, Gmail, backup, Cloudflare e dúvidas frequentes. Abra `/ajuda/` no site para imprimir ou salvar em PDF. Também pode ser consultado na aba **Ajuda** do Admin.

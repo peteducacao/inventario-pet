@@ -152,9 +152,9 @@ function finalCard(original,siblings=[]){
     const free=Math.max(0,quantity-used);
     const member=identityIsMember();
     const enabled=Number(x.componente_id)>0&&Number(member?x.permitir_petianos:x.permitir_visitantes)===1&&Number(member?x.categoria_petianos:x.categoria_visitantes)===1;
-    const type=free===0?"empty":used>free?"busy":"";
-    const status=free===0?"Sem estoque":used>free?"Em uso":"Disponível";
-    const mark=type==="empty"?"×":type==="busy"?"◉":"✓";
+    const type=free===0?"empty":"";
+    const status=free===0?"Sem estoque":"Disponível";
+    const mark=free===0?"×":"✓";
     // Todos os cards usam título, categoria, indicadores e botão na mesma ordem;
     // o filamento diferencia-se apenas pela ilustração da bobina colorida.
     return '<article class="catalog-card filament-public-card" aria-label="Filamento '+attr(x.cor)+'">'+
@@ -176,8 +176,8 @@ function finalCard(original,siblings=[]){
   const total=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.quantidade)||0),0):Number(x.quantidade)||0;
   const used=showGroupTotals?siblings.reduce((n,v)=>n+(Number(v.em_uso)||0),0):Number(x.em_uso)||0;
   const free=showGroupTotals?siblings.reduce((n,v)=>n+stock(v),0):stock(x);
-  const status=free===0?"Sem estoque":used>free?"Em uso":"Disponível";
-  const type=free===0?"empty":used>free?"busy":"";
+  const status=free===0?"Sem estoque":"Disponível";
+  const type=free===0?"empty":"";
   // A capa do vínculo é independente da foto de Arduino Uno/Nano etc.
   // Sem capa configurada o grupo fica intencionalmente sem foto, mesmo após escolher modelo.
   const groupCover=grouped?(state.data.grupos_variacoes||[]).find(g=>String(g.nome||"").trim().toLocaleLowerCase("pt-BR")===groupKey):null;
@@ -189,12 +189,12 @@ function finalCard(original,siblings=[]){
   const canWithdraw=identityIsMember(),loanOK=typeof borrowableItem==="function"?borrowableItem(x):true;
   const category=nameCategory(x.categoria_id);
   const asset=x.patrimonio?'Patrimônio: '+esc(x.patrimonio):x.identificacao?esc(x.identificacao):"";
-  const statusIcon=type==="empty"?"×":type==="busy"?"◉":"✓";
+  const statusIcon=free===0?"×":"✓";
 
   const imageAction=grouped?'data-open-variants="'+attr(groupKey)+'"':'data-photo="'+x.id+'"';
   const photoLabel=grouped?'Escolher variação de '+original.grupo_variacoes:'Ampliar ilustração de '+x.nome;
   const action=grouped?
-    '<button type="button" class="primary-button variant-main-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-open-variants="'+attr(groupKey)+'" data-start-reservation="1">'+
+    '<button type="button" class="primary-button variant-main-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-open-variants="'+attr(groupKey)+'" data-start-reservation="1"'+(free===0?' disabled aria-disabled="true"':'')+'>'+
     iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>':
     '<button type="button" class="primary-button '+(canWithdraw?"withdraw-button":"reserve-card-button")+'" data-reserve-item="'+x.id+'" '+(free===0||!loanOK?"disabled":"")+'>'+
     iconSvg(canWithdraw?"logout":"calendar",16)+' '+(canWithdraw?"Retirar":"Reservar")+'</button>';
@@ -215,10 +215,10 @@ function openVariantChoices(groupKey,startReservation=false){
   const title=variants[0].grupo_variacoes;
   const rows=variants.map(v=>{
     const quantity=Number(v.quantidade)||0,free=stock(v),used=Number(v.em_uso)||0;
-    return '<button type="button" class="variant-picker-option" data-pick-variant="'+v.id+'" data-pick-group="'+attr(group)+'">'+
+    return '<button type="button" class="variant-picker-option" data-pick-variant="'+v.id+'" data-pick-group="'+attr(group)+'"'+(free===0?' disabled aria-disabled="true"':'')+'>'+
       '<span class="variant-picker-photo"><img src="'+attr(itemImage(v))+'" alt="" loading="lazy"></span>'+
       '<span class="variant-picker-details"><strong>'+esc(v.nome)+'</strong>'+
-      '<small>'+free+' '+(free===1?"disponível":"disponíveis")+' · '+quantity+' no total · '+used+' em uso</small></span>'+
+      '<small>'+(free===0?"Sem estoque":free+" "+(free===1?"disponível":"disponíveis"))+' · '+quantity+' no total · '+used+' em uso</small></span>'+
       '<span class="variant-picker-arrow" aria-hidden="true">›</span></button>';
   }).join("");
   openModal(title,"Escolha a variação. Cada modelo mantém seu próprio estoque e empréstimos.",
@@ -233,6 +233,7 @@ function openVariantChoices(groupKey,startReservation=false){
       // As permissões e a disponibilidade continuam validadas pela API.
       if(!state.identity){identityLoginModal();return;}
       const selected=variants.find(item=>Number(item.id)===selectedId);
+      if(!selected||stock(selected)===0){toast("Sem estoque para este modelo.",true);return;}
       if(!borrowableItem(selected)){toast("Este modelo não está habilitado para empréstimo na sua conta.",true);return;}
       if(identityIsMember())memberWithdrawModal(selectedId);
       else reserveModal(selectedId);
@@ -346,9 +347,10 @@ function finalAccount(){
     '<div class="identity-profile-head"><span class="identity-avatar">'+esc(u.nome[0].toUpperCase())+'</span><div><strong>'+esc(u.nome)+'</strong><span class="tag '+cls+'">'+(u.tag==="petiano"?"PETiano":"Visitante")+'</span></div></div>'+
     '<div class="field-grid">'+inputField("v2-account-name","Nome",u.nome,{max:80})+inputField("v2-account-login","Login",u.login,{max:24})+'</div>'+
     '<div class="field" style="margin-top:12px"><label>Meu e-mail</label><input readonly value="'+attr(u.email||"")+'"></div>'+ 
-    '<div class="identity-actions"><button type="button" class="secondary-button" id="v2-change-name">Alterar nome</button><button type="button" class="outline-button" id="v2-change-email">Alterar e-mail</button><button type="button" class="outline-button" id="v2-change-password">Alterar senha</button>'+ 
+    '<div class="identity-actions"><button type="button" class="secondary-button" id="v2-change-name">Alterar nome</button><button type="button" class="outline-button" id="v2-change-email">Alterar e-mail</button><button type="button" class="outline-button" id="v2-change-password">Alterar senha</button>'+petAppInstallCard()+ 
     '<div class="identity-delete-zone"><span>Quer encerrar seu cadastro?</span><button type="button" class="outline-button" id="v2-delete-account">Excluir minha conta</button></div></div>'+
     '</div>');
+  wirePetAppInstall();
   $("#v2-account-login").readOnly=true;$("#v2-account-name").readOnly=true;
   $("#v2-change-name").onclick=identityRenameModal;
   $("#v2-change-email").onclick=()=>identityEmailModal(false);
