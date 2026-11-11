@@ -1062,3 +1062,16 @@ body:not(.admin-mode) .inventory-section .filament-public-card .catalog-numbers{
 @media(max-width:650px){
   .admin-reservations-panel .reservation-filament-reel{width:39px;height:39px}
 }
+
+/* PWA: ação de instalação na conta, responsiva para celular e desktop. */
+.pet-pwa-card{display:grid;gap:10px;padding:16px;border:1px solid #d4e8e2;border-radius:15px;background:linear-gradient(125deg,#f5fbf9,#eef7fd);margin:14px 0;text-align:left;min-width:0}
+.pet-pwa-heading{display:flex;align-items:center;gap:11px;min-width:0}
+.pet-pwa-icon{width:42px;height:42px;flex:none;border-radius:12px;background:#0d4056;display:grid;place-items:center;color:#b9f2e0;font-size:22px}
+.pet-pwa-copy{display:grid;gap:4px;min-width:0}
+.pet-pwa-copy strong{font-size:14px;line-height:1.3;color:#173e50}
+.pet-pwa-copy small{font-size:12px;line-height:1.45;color:#637a89}
+.pet-pwa-card .primary-button{width:100%;min-height:43px;font-weight:800}
+.pet-pwa-help{margin:0;color:#305766;font-size:12px;line-height:1.5;padding:8px 10px;border-radius:9px;background:#fff;border:1px solid #d7e8ed}
+.pet-pwa-help[hidden]{display:none}
+.variant-picker-option:disabled{opacity:.55;cursor:not-allowed;background:#f6f7f8}
+.variant-picker-option:disabled .variant-picker-arrow{display:none}
