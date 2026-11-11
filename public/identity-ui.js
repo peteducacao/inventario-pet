@@ -241,11 +241,11 @@ function identityProfileModal(){
     '<button type="button" class="outline-button" id="identity-my-items">Meus empréstimos e devoluções</button>'+
     '<button type="button" class="outline-button" id="identity-email-edit">Alterar meu e-mail</button>'+
     '<button type="button" class="outline-button" id="identity-rename">Alterar meu nome</button>'+
-    '<button type="button" class="outline-button" id="identity-change-password">Alterar minha senha</button>'+petAppInstallCard()+
+    '<button type="button" class="outline-button" id="identity-change-password">Alterar minha senha</button>'+(typeof petAppInstallCard==="function"?petAppInstallCard():"")+
     '<button type="button" class="danger-button" id="identity-logout">Sair deste dispositivo</button>'+ 
     '<div class="identity-delete-zone"><span>Deseja encerrar seu cadastro?</span><button type="button" class="outline-button" id="identity-delete-account">Excluir minha conta</button></div></div></div>';
   openModal("Meu perfil","Login individual e permissões.",body);
-  wirePetAppInstall();
+  if(typeof wirePetAppInstall==="function")wirePetAppInstall();
   $("#identity-copy-id").onclick=()=>copyValue(u.id,$("#identity-public-id"));
   if(member)$("#identity-open-withdraw").onclick=()=>memberWithdrawModal();
   $("#identity-my-items").onclick=()=>openMyLoans();
